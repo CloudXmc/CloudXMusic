@@ -1,4 +1,4 @@
-###这是一个 Minecraft Fabric 客户端音乐播放器 Mod，最终目标是配合 Folia 1.21.11 服务端插件，实现：
+这是一个 Minecraft Fabric 客户端音乐播放器 Mod，最终目标是配合 Folia 1.21.11 服务端插件，实现：
 
 - Minecraft 内的 ClickGUI 音乐界面
 - 顶部 HUD 灵动岛
