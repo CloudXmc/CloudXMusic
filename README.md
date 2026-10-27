@@ -1,50 +1,82 @@
-# CloudXmusic · 云朵音乐盒
+# 云朵音乐盒 · CloudXmusic
 
 <p align="center">
-  <img src="cloudxmusic-client/src/main/resources/assets/cloudxmusic/icon.png" width="160" alt="云朵音乐盒图标">
+  <img src="cloudxmusic-client/src/main/resources/assets/cloudxmusic/icon.png" width="120" alt="云朵音乐盒图标">
 </p>
 
-<p align="center">轻量级 Minecraft Fabric 网易云音乐播放器</p>
+<p align="center">
+  <strong>把音乐带进方块世界</strong><br>
+  Minecraft Java Edition 的 Fabric 客户端音乐播放器
+</p>
 
-CloudXmusic（云朵音乐盒）是一个面向 Minecraft Java Edition 的 Fabric 客户端模组。它提供游戏内磨砂玻璃音乐界面、顶部灵动岛、网易云登录与搜索、收藏、队列、专辑封面、滚动歌词和 MP3 流式播放。
+<p align="center">
+  <img src="https://img.shields.io/badge/Version-2.4.7-D96A91?style=flat-square" alt="版本 2.4.7">
+  <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
+  <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
+  <img src="https://img.shields.io/badge/Java-21-ED8B00?style=flat-square" alt="Java 21">
+</p>
+
+<p align="center">
+  <img src="docs/images/cloudxmusic-settings-preview.png" width="920" alt="CloudXmusic 设置页与底部播放器预览">
+</p>
+
+<p align="center"><sub>白粉磨砂界面 · 自定义字体 · 游戏内灵动岛</sub></p>
+
+## 目录
+
+[功能](#功能) · [安装](#安装) · [使用](#使用) · [构建](#构建) · [配置与隐私](#配置与隐私) · [已知限制](#已知限制) · [开发资料](#开发资料)
+
+## 项目简介
+
+CloudXmusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客户端模组，提供游戏内音乐库、网易云音乐接入、歌词与独立 HUD 灵动岛。界面使用模组内置字体和抗锯齿画布绘制。
 
 开发者：Lzasn、xWtree、cloudfl4re、xiaota888。
 
-> 首次使用时须在游戏内阅读并确认免责声明。模组是非官方第三方客户端，与网易云音乐及其运营方无隶属、授权或背书关系；服务请求由客户端直接发送给网易云音乐相关服务及音频 CDN。登录 Cookie 以未加密文本保存在 `config/cloudxmusic/cookies.json`，请勿分享。用户须遵守服务条款、所在地法律法规及作品版权要求。详见游戏内首次使用说明。
+> **首次使用说明**：首次使用时须在游戏内阅读并确认免责声明。CloudXmusic 是非官方第三方客户端，与网易云音乐及其运营方无隶属、授权或背书关系。服务请求由客户端直接发送至网易云音乐相关服务及音频 CDN。登录 Cookie 以未加密文本保存在本机，请勿分享；使用时请遵守服务条款、所在地法律法规及作品版权要求。
 
 ## 功能
 
-- 抗锯齿自绘音乐界面：正在播放、每日推荐、搜索、收藏、队列、设置与关于
-- 内置 Inter + Noto Sans SC 字体、圆角卡片、磨砂半透明材质和柔影
-- 网易云扫码登录、短信验证码登录、密码与邮箱登录
-- 每日推荐自动刷新，搜索歌曲/歌手，加载收藏与歌单
-- 标准 / 较高 / 极高 MP3 音质切换
-- 歌曲列表真实专辑封面与播放页大封面
-- 网易云式滚动歌词：原文、翻译、当前行高亮
-- 顶部 HUD 灵动岛，支持原文/双语歌词模式
-- 队列单首删除、一键清空、重启恢复
-- 当前歌曲、队列、音质、歌词模式和登录态持久化
-- 首次使用免责声明：确认前不会发起网易云 API 请求
-- 中文/英文快捷键名称
-
-## 环境要求
-
-| 项目 | 版本 |
+| 音乐与账号 | 播放与界面 |
 | --- | --- |
-| Minecraft | 1.21.11 |
-| Fabric Loader | 0.18.1+ |
-| Fabric API | 0.141.6+1.21.11 |
-| Java | 21 |
+| 网易云扫码、短信验证码、手机号密码和邮箱登录 | 播放队列、单曲循环、列表循环与随机播放 |
+| 每日推荐、歌曲/歌手搜索、收藏与歌单导入 | 进度和音量控制，播放状态与队列持久化 |
+| MP3 标准、较高、极高三档音质 | 滚动歌词、原文/双语模式与游戏内灵动岛 |
+| 专辑封面与当前歌曲信息 | 独立字体、圆角磨砂界面与低对比柔和阴影 |
 
-播放使用 `javax.sound.sampled`，需要包含 `java.desktop` 的完整 Java 运行时。官方启动器自带的 Microsoft/OpenJDK 通常可以直接使用。
+首次确认免责声明前不会发起网易云 API 或封面请求。模组不会把登录 Cookie 保存在项目服务器上。
 
 ## 安装
 
-1. 安装 Minecraft 1.21.11、Fabric Loader 和 Fabric API。
-2. 将构建出的 `CloudXmusic-<version>.jar` 放入实例的 `mods/` 目录。
-3. 启动客户端，按 `H` 打开/关闭云朵音乐盒。首次打开需要确认免责声明。
+1. 使用 Minecraft `1.21.11`，安装 Fabric Loader `0.18.1` 或更新版本及 Fabric API。
+2. 将 `CloudXmusic-2.4.7.jar` 放入游戏实例的 `mods/` 目录。
+3. 启动游戏，按 `H` 打开云朵音乐盒；首次打开时确认免责声明。
+
+播放使用 `javax.sound.sampled`，Java 运行时需包含 `java.desktop` 模块。官方启动器提供的 Microsoft/OpenJDK 通常满足要求。
+
+## 使用
+
+按 `H` 打开或关闭音乐盒。界面内可切换正在播放、发现、搜索、收藏、队列和设置页面。客户端命令统一以 `/cxm` 开头：
+
+| 命令 | 说明 |
+| --- | --- |
+| `/cxm login qr` | 打开网易云扫码登录 |
+| `/cxm login phone <手机号>` | 发送短信验证码 |
+| `/cxm login code <验证码>` | 使用验证码完成登录 |
+| `/cxm login phone <手机号> <密码>` | 手机号密码登录 |
+| `/cxm login email <邮箱> <密码>` | 邮箱登录 |
+| `/cxm refresh` | 刷新每日推荐 |
+| `/cxm search <关键词>` | 搜索歌曲或歌手 |
+| `/cxm fav` | 加载网易云收藏 |
+| `/cxm playlist <歌单 ID>` | 加载歌单 |
+| `/cxm play <关键词>` | 搜索并播放第一首结果 |
+| `/cxm quality [standard\|higher\|exhigh]` | 切换播放音质 |
+| `/cxm lyric [off\|original\|bilingual]` | 设置灵动岛歌词模式 |
+| `/cxm pause`、`/cxm next`、`/cxm prev` | 播放控制 |
+| `/cxm stop`、`/cxm status`、`/cxm logout` | 停止、查看状态或退出登录 |
 
 ## 构建
+
+需要 Java 21 和网络连接，以下载 Minecraft、Fabric 与编译依赖。
 
 Windows：
 
@@ -52,102 +84,48 @@ Windows：
 .\gradlew.bat :cloudxmusic-client:build
 ```
 
-Linux/macOS（使用标准 Gradle Wrapper）：
+Linux/macOS：
 
 ```bash
 ./gradlew :cloudxmusic-client:build
 ```
 
-产物位于：
-
-```text
-cloudxmusic-client/build/libs/CloudXmusic-<version>.jar
-```
-
-项目使用 Mojang 官方映射、Java 21 和 Fabric Loom。构建需要网络下载 Minecraft、Fabric 和编译依赖。
-
-## 使用
-
-按 `H` 打开界面。客户端命令以 `/cxm` 开头：
-
-| 命令 | 说明 |
-| --- | --- |
-| `/cxm login qr` | 在游戏内显示网易云扫码登录二维码 |
-| `/cxm login phone <手机号>` | 发送短信验证码 |
-| `/cxm login code <验证码>` | 使用验证码完成登录 |
-| `/cxm login phone <手机号> <密码>` | 手机号密码登录 |
-| `/cxm refresh` | 手动刷新每日推荐 |
-| `/cxm search <关键词>` | 搜索歌曲并显示在搜索页 |
-| `/cxm fav` | 加载我喜欢的音乐 |
-| `/cxm playlist <歌单 ID>` | 加载歌单 |
-| `/cxm play <关键词>` | 搜索并播放第一首 |
-| `/cxm quality [standard\|higher\|exhigh]` | 切换音质 |
-| `/cxm lyric [off\|original\|bilingual]` | 切换灵动岛歌词模式 |
-| `/cxm pause` | 播放/暂停 |
-| `/cxm next` / `/cxm prev` | 下一首 / 上一首 |
-| `/cxm stop` | 停止播放 |
-| `/cxm status` | 查看登录、音质、歌词和播放状态 |
-| `/cxm logout` | 退出网易云登录并停止播放 |
+构建产物位于 `cloudxmusic-client/build/libs/CloudXmusic-<version>.jar`。
 
 ## 配置与隐私
 
-配置保存在实例目录：
-
-```text
-config/cloudxmusic/
-```
+配置目录：`config/cloudxmusic/`
 
 | 文件 | 内容 |
 | --- | --- |
-| `cookies.json` | 网易云登录 Cookie 与游客会话 Cookie |
+| `cookies.json` | 网易云登录 Cookie 与游客会话 Cookie，未加密保存 |
 | `netease.json` | 昵称、UID、音质与歌词偏好 |
 | `state.json` | 当前歌曲与播放队列 |
 
-- 账号 Cookie 只保存在本地客户端。
-- 不会把 Cookie、密码或音频凭证发送到任何服务端。
-- `cookies.json` 属于敏感文件，请勿上传、截图或分享。
-- 退出登录会清理本地 Cookie。
+- Cookie 仅保存于本机客户端，并会随网易云请求发送至网易云相关服务。
+- 请勿上传、截图或分享 `cookies.json`；退出登录会清理本地 Cookie。
+- 不要把账号密码、Cookie 或音频凭证提交到 Git 仓库或公开工单。
 
 ## 已知限制
 
-- 仅支持 MP3 三档音质；FLAC / Hi-Res 尚未接入。
-- 网易云接口为第三方非官方接口，可能随服务端调整而失效。
-- 当前只实现客户端；Folia 多人音乐房间和客户端/服务端协议尚未实现。
-- 需要有效的网易云登录态才能访问每日推荐、收藏和会员歌曲。
-- 部分受版权或账号权限限制的歌曲仍可能无法播放。
+- 目前播放网易云 MP3 音源，提供标准、较高和极高三档；FLAC / Hi-Res 尚未接入。
+- 网易云接口为非官方接口，可能随服务端变化而失效。
+- 部分受版权、地区或账号权限限制的曲目可能无法播放。
+- 当前仓库实现客户端功能；Folia 多人音乐房间及客户端/服务端协议尚未实现。
 
-## 项目结构
+## 开发资料
 
-```text
-CloudXmusic/
-├── cloudxmusic-client/
-│   ├── src/main/java/dev/lzasn/cloudxmusic/client/
-│   │   ├── audio/       MP3 流式播放
-│   │   ├── command/     /cxm 客户端命令
-│   │   ├── gui/         自绘界面、封面缓存、二维码界面
-│   │   ├── hud/         顶部灵动岛
-│   │   ├── lyric/       LRC 歌词解析
-│   │   ├── netease/     登录、Cookie、网易云 API
-│   │   ├── state/       播放状态与队列持久化
-│   │   └── util/        异步与浏览器工具
-│   └── src/main/resources/
-├── libs/                JLayer 与 ZXing
-├── tools/               资源/图集辅助工具
-├── DEVELOPMENT_STATUS.md 开发交接记录
-└── THIRD_PARTY_NOTICES.md 第三方组件声明
-```
+- [UI 知识点与维护约定](UI_KNOWLEDGE.md)
+- [UI 重构记录](UI_REFACTOR.md)
+- [开发状态与交接记录](DEVELOPMENT_STATUS.md)
+- [第三方组件与许可证](THIRD_PARTY_NOTICES.md)
 
-## 第三方组件
+主要代码位于 `cloudxmusic-client/src/main/java/dev/lzasn/cloudxmusic/client/`：`audio/` 处理音频，`command/` 注册客户端命令，`gui/` 绘制界面，`hud/` 绘制灵动岛，`lyric/` 解析歌词，`netease/` 处理登录与 API，`state/` 管理播放状态。
 
-- [JLayer](https://repo1.maven.org/maven2/javazoom/jlayer/)：MP3 解码，LGPL-3.0-or-later
-- [ZXing Core](https://github.com/zxing/zxing)：二维码编码，Apache-2.0
+## 第三方组件与许可证
 
-完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- [JLayer](https://repo1.maven.org/maven2/javazoom/jlayer/)：MP3 解码，LGPL-3.0-or-later。
+- [ZXing Core](https://github.com/zxing/zxing)：二维码编码，Apache-2.0。
+- Inter 与 Noto Sans SC 字体的许可证随资源一并提供。
 
-## 开发状态
-
-详细开发记录、接口处理和已知问题见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md)。
-
-## License
-
-[MIT](LICENSE) © 2026 Lzasn, xWtree, cloudfl4re, xiaota888
+完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目采用 [MIT License](LICENSE)；版权归 Lzasn、xWtree、cloudfl4re、xiaota888 所有。
