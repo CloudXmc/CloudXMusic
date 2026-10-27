@@ -1,0 +1,566 @@
+package dev.lzasn.cloudxmusic.client.state;
+
+import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
+import dev.lzasn.cloudxmusic.client.audio.Mp3Player;
+import dev.lzasn.cloudxmusic.client.lyric.Lyric;
+import dev.lzasn.cloudxmusic.client.netease.NeteaseApi;
+import dev.lzasn.cloudxmusic.client.netease.NeteaseQuality;
+import dev.lzasn.cloudxmusic.client.netease.NeteaseSession;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import dev.lzasn.cloudxmusic.client.util.Async;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.Minecraft;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 全局播放状态。
+ *
+ * <p>两种来源并存：本地演示曲（{@code Track.id() == null}）只推进一个假进度；
+ * 网易云的歌走 {@link Mp3Player} 真实播放，进度、跳转、暂停都转发给它。</p>
+ *
+ * <p>所有网络/解码都在后台线程，回主线程才改状态（{@link Async#main}）。</p>
+ */
+public final class MusicState {
+    /** 还没有歌时占位，保证 GUI 拿到的 current 永远非空。 */
+    private static final Track NOTHING = new Track("未播放", "等待网易云登录", 0);
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+    private final Mp3Player player = new Mp3Player();
+    /** 发现（每日推荐）。 */
+    private final List<Track> discovery = new ArrayList<>();
+    /** 我喜欢的音乐。 */
+    private final List<Track> favorites = new ArrayList<>();
+    /** 搜索结果。 */
+    private final List<Track> searchResults = new ArrayList<>();
+    /** 队列只由用户动作填充（点歌/加队列），不再自动塞。 */
+    private final List<Track> queue = new ArrayList<>();
+    private String searchKeyword = "";
+    private boolean searchLoading;
+    private boolean favoritesLoading;
+    private boolean favoritesLoaded;
+    private boolean discoveryLoading;
+
+    private Track current = NOTHING;
+    private boolean playing;
+    private long lastTickNanos = System.nanoTime();
+    private String roomName = "尚未加入房间";
+    private int memberCount;
+    private boolean islandEnabled = true;
+    private Lyric lyric = Lyric.EMPTY;
+    private String statusLine = "";
+    private int consecutiveFailures;
+
+    // ------------------------------------------------------------ tick
+
+    public void tick(Minecraft client) {
+        lastTickNanos = System.nanoTime();
+        if (!current.netease()) return;
+        if (player.finished() && playing) {
+            next();
+            return;
+        }
+        if (!player.error().isEmpty()) {
+            statusLine = "播放失败：" + player.error();
+        }
+    }
+
+    // ------------------------------------------------------------ 状态
+
+    public List<Track> library() {
+        return discovery;
+    }
+
+    public List<Track> favorites() {
+        return favorites;
+    }
+
+    public List<Track> searchResults() {
+        return searchResults;
+    }
+
+    public String searchKeyword() {
+        return searchKeyword;
+    }
+
+    public boolean searchLoading() {
+        return searchLoading;
+    }
+
+    public boolean favoritesLoading() {
+        return favoritesLoading;
+    }
+
+    public boolean discoveryLoading() {
+        return discoveryLoading;
+    }
+
+    public List<Track> queue() {
+        return queue;
+    }
+
+    public Track current() {
+        return current;
+    }
+
+    public boolean playing() {
+        // 解析地址期间 player 还没 active，用 playing 标志兜住，避免灵动岛闪一下消失
+        if (current.netease()) return playing && !player.isPaused();
+        return playing;
+    }
+
+    /** 秒。以解码进度为准，没有在播就是 0。 */
+    public float position() {
+        return current.netease() ? player.positionMs() / 1000f : 0f;
+    }
+
+    public String positionText() {
+        return Track.format((int) position());
+    }
+
+    public String roomName() {
+        return roomName;
+    }
+
+    public int memberCount() {
+        return memberCount;
+    }
+
+    public boolean islandEnabled() {
+        return islandEnabled;
+    }
+
+    public void toggleIsland() {
+        islandEnabled = !islandEnabled;
+    }
+
+    public Lyric lyric() {
+        return lyric;
+    }
+
+    public String statusLine() {
+        return statusLine;
+    }
+
+    public void statusLine(String value) {
+        statusLine = value;
+    }
+
+    public float volume() {
+        return player.volume();
+    }
+
+    public void volume(float value) {
+        player.setVolume(value);
+    }
+
+    public NeteaseQuality quality() {
+        return NeteaseSession.INSTANCE.quality();
+    }
+
+    // ------------------------------------------------------------ 持久化
+
+    private static Path stateFile() {
+        return FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic").resolve("state.json");
+    }
+
+    /** 恢复上次的队列和当前歌曲；只恢复为暂停态，不自动播放。 */
+    public void loadPersisted() {
+        Path path = stateFile();
+        if (!Files.isRegularFile(path)) return;
+        try {
+            JsonObject root = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8)).getAsJsonObject();
+            List<Track> restored = new ArrayList<>();
+            JsonArray array = root.has("queue") ? root.getAsJsonArray("queue") : new JsonArray();
+            for (JsonElement element : array) {
+                if (!element.isJsonObject()) continue;
+                Track track = trackFromJson(element.getAsJsonObject());
+                if (track != null && !restored.contains(track)) restored.add(track);
+            }
+            queue.clear();
+            queue.addAll(restored);
+
+            Track restoredCurrent = root.has("current") && root.get("current").isJsonObject()
+                    ? trackFromJson(root.getAsJsonObject("current")) : null;
+            if (restoredCurrent != null) {
+                current = restoredCurrent;
+                if (!queue.contains(current)) queue.add(current);
+            } else if (!queue.isEmpty()) {
+                current = queue.getFirst();
+            } else {
+                current = NOTHING;
+            }
+            playing = false;
+            lyric = Lyric.EMPTY;
+            if (current != NOTHING) {
+                statusLine = "已恢复上次队列：" + queue.size() + " 首（按播放继续）";
+            }
+            CloudXMusicClient.LOGGER.info("已恢复播放队列：{} 首，当前歌曲：{} - {}",
+                    queue.size(), current.title(), current.artist());
+        } catch (Exception e) {
+            CloudXMusicClient.LOGGER.warn("恢复播放队列失败：{}", e.getMessage());
+        }
+    }
+
+    private void savePersisted() {
+        JsonObject root = new JsonObject();
+        if (current != NOTHING) root.add("current", trackToJson(current));
+        JsonArray array = new JsonArray();
+        for (Track track : queue) array.add(trackToJson(track));
+        root.add("queue", array);
+        Path path = stateFile();
+        Path temp = path.resolveSibling(path.getFileName() + ".tmp");
+        try {
+            Files.createDirectories(path.getParent());
+            Files.writeString(temp, GSON.toJson(root), StandardCharsets.UTF_8);
+            try {
+                Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception e) {
+            CloudXMusicClient.LOGGER.warn("保存播放队列失败：{}", e.getMessage());
+        }
+    }
+
+    private static JsonObject trackToJson(Track track) {
+        JsonObject json = new JsonObject();
+        json.addProperty("title", track.title());
+        json.addProperty("artist", track.artist());
+        json.addProperty("durationSeconds", track.durationSeconds());
+        json.addProperty("id", track.id());
+        json.addProperty("album", track.album());
+        json.addProperty("coverUrl", track.coverUrl());
+        return json;
+    }
+
+    private static Track trackFromJson(JsonObject json) {
+        String title = json.has("title") ? json.get("title").getAsString() : "";
+        if (title.isBlank()) return null;
+        String artist = json.has("artist") ? json.get("artist").getAsString() : "";
+        int duration = json.has("durationSeconds") ? json.get("durationSeconds").getAsInt() : 0;
+        String id = json.has("id") && !json.get("id").isJsonNull() ? json.get("id").getAsString() : null;
+        String album = json.has("album") ? json.get("album").getAsString() : "";
+        String cover = json.has("coverUrl") ? json.get("coverUrl").getAsString() : "";
+        return new Track(title, artist, Math.max(0, duration), id, album, cover);
+    }
+
+    // ------------------------------------------------------------ 控制
+
+    public void togglePlaying() {
+        if (current.netease()) {
+            if (!player.isActive()) {
+                startNetease(current, (long) (position() * 1000));
+                playing = true;
+                return;
+            }
+            if (player.isPaused()) {
+                player.resume();
+                playing = true;
+            } else {
+                player.pause();
+                playing = false;
+            }
+            return;
+        }
+        playing = !playing;
+    }
+
+    public void addToQueue(Track track) {
+        if (!queue.contains(track)) {
+            queue.add(track);
+            savePersisted();
+        }
+    }
+
+    public void next() {
+        if (queue.isEmpty()) {
+            playing = false;
+            return;
+        }
+        int index = queue.indexOf(current);
+        select(queue.get((Math.max(index, -1) + 1) % queue.size()));
+    }
+
+    public void previous() {
+        if (queue.isEmpty()) {
+            playing = false;
+            return;
+        }
+        int index = queue.indexOf(current);
+        select(queue.get(index < 0 ? 0 : (index - 1 + queue.size()) % queue.size()));
+    }
+
+    public void select(Track track) {
+        if (!queue.contains(track)) queue.add(track);
+        current = track;
+        playing = true;
+        lyric = Lyric.EMPTY;
+        savePersisted();
+        if (track.netease()) {
+            startNetease(track, 0);
+        } else {
+            player.stop();
+        }
+    }
+
+    public void seek(float value) {
+        if (current.netease()) player.seek((long) (Math.max(0, value) * 1000));
+    }
+
+    /** 播放网易云的歌：先取播放地址和歌词，再交给播放器。 */
+    private void startNetease(Track track, long startMs) {
+        statusLine = "正在解析播放地址…";
+        Async.run(() -> {
+            String url = null;
+            String failure = "";
+            try {
+                url = NeteaseApi.playableUrl(track.id(), NeteaseSession.INSTANCE.quality());
+                if (url == null) failure = "没有可用播放地址（版权受限/需要会员，或 CDN 拒绝）";
+            } catch (Exception e) {
+                failure = "取播放地址失败：" + e.getMessage();
+            }
+            Lyric parsed = Lyric.EMPTY;
+            try {
+                parsed = NeteaseApi.lyric(track.id());
+            } catch (Exception ignored) {
+                // 没歌词不影响播放
+            }
+            String finalUrl = url;
+            String finalFailure = failure;
+            Lyric finalLyric = parsed;
+            Async.main(() -> {
+                lyric = finalLyric;
+                if (finalUrl == null) {
+                    consecutiveFailures++;
+                    playing = false;
+                    statusLine = "《" + track.title() + "》播不了：" + finalFailure;
+                    if (consecutiveFailures <= 3 && queue.size() > 1) {
+                        statusLine += "（自动跳过）";
+                        next();
+                    } else if (consecutiveFailures > 3) {
+                        statusLine = "连续 " + consecutiveFailures + " 首都播不了，检查登录态：/cxm status";
+                    }
+                    return;
+                }
+                consecutiveFailures = 0;
+                statusLine = "";
+                player.play(finalUrl, startMs, track.durationSeconds() * 1000L);
+            });
+        });
+    }
+
+    /** 离开世界/退出时停掉播放，别在主菜单继续放。 */
+    public void stopAll() {
+        playing = false;
+        consecutiveFailures = 0;
+        player.stop();
+        lyric = Lyric.EMPTY;
+        statusLine = "";
+    }
+
+    /** 刷新网易云"每日推荐"作为列表来源。 */
+    public void refreshLibrary() {
+        if (discoveryLoading) return;
+        if (!NeteaseSession.INSTANCE.loggedIn()) {
+            statusLine = "还没登录网易云";
+            return;
+        }
+        discoveryLoading = true;
+        statusLine = "正在拉取每日推荐…";
+        Async.run(() -> {
+            try {
+                List<Track> tracks = NeteaseApi.dailyRecommendation();
+                Async.main(() -> {
+                    discovery.clear();
+                    discovery.addAll(tracks);
+                    discoveryLoading = false;
+                    long withCover = tracks.stream().filter(t -> t.coverUrl() != null && !t.coverUrl().isBlank()).count();
+                    CloudXMusicClient.LOGGER.info("每日推荐已加载：{} 首，有封面 {} 首", tracks.size(), withCover);
+                    statusLine = "已加载 " + tracks.size() + " 首每日推荐（点歌才播放）";
+                });
+            } catch (Exception e) {
+                Async.main(() -> {
+                    discoveryLoading = false;
+                    statusLine = "拉取每日推荐失败：" + e.getMessage();
+                });
+            }
+        });
+    }
+
+    /** 每次进入世界自动刷新一次；已经加载过则不重复请求。 */
+    public void refreshLibraryIfNeeded() {
+        if (discovery.isEmpty() && !discoveryLoading) refreshLibrary();
+    }
+
+    /** 用歌单替换当前列表。 */
+    public void loadPlaylist(String playlistId) {
+        statusLine = "正在拉取歌单…";
+        Async.run(() -> {
+            try {
+                List<Track> tracks = NeteaseApi.playlistTracks(playlistId);
+                Async.main(() -> {
+                    discovery.clear();
+                    discovery.addAll(tracks);
+                    statusLine = "歌单已加载：" + tracks.size() + " 首（点歌才播放）";
+                });
+            } catch (Exception e) {
+                Async.main(() -> statusLine = "拉取歌单失败：" + e.getMessage());
+            }
+        });
+    }
+
+    /** 搜索：只填搜索结果列表，播放由用户点。 */
+    public void search(String keyword) {
+        String query = keyword == null ? "" : keyword.trim();
+        if (query.isEmpty() || searchLoading) return;
+        searchKeyword = query;
+        searchLoading = true;
+        searchResults.clear();
+        statusLine = "正在搜索「" + query + "」…";
+        Async.run(() -> {
+            try {
+                List<Track> tracks = NeteaseApi.searchSongs(query, 30);
+                Async.main(() -> {
+                    searchResults.clear();
+                    searchResults.addAll(tracks);
+                    searchLoading = false;
+                    statusLine = tracks.isEmpty()
+                            ? "没搜到：" + query
+                            : "搜索到 " + tracks.size() + " 首（点行播放）";
+                });
+            } catch (Exception e) {
+                Async.main(() -> {
+                    searchLoading = false;
+                    statusLine = "搜索失败：" + e.getMessage();
+                });
+            }
+        });
+    }
+
+    /** 搜索并直接播第一首（命令用）。 */
+    public void searchAndPlay(String keyword) {
+        searchKeyword = keyword;
+        statusLine = "正在搜索「" + keyword + "」…";
+        Async.run(() -> {
+            try {
+                List<Track> tracks = NeteaseApi.searchSongs(keyword, 20);
+                Async.main(() -> {
+                    searchResults.clear();
+                    searchResults.addAll(tracks);
+                    if (tracks.isEmpty()) {
+                        statusLine = "没搜到：" + keyword;
+                        return;
+                    }
+                    statusLine = "搜索到 " + tracks.size() + " 首";
+                    select(tracks.getFirst());
+                });
+            } catch (Exception e) {
+                Async.main(() -> statusLine = "搜索失败：" + e.getMessage());
+            }
+        });
+    }
+
+    /** 我喜欢的音乐。 */
+    public void loadFavorites() {
+        if (favoritesLoading) return;
+        if (!NeteaseSession.INSTANCE.loggedIn()) {
+            favoritesLoaded = false;
+            statusLine = "还没登录，拿不到收藏";
+            return;
+        }
+        favoritesLoading = true;
+        statusLine = "正在拉取我喜欢的音乐…";
+        Async.run(() -> {
+            try {
+                String uid = NeteaseSession.INSTANCE.uid();
+                if (uid == null || uid.isBlank()) {
+                    // 启动时账号信息异步恢复，收藏页可能先被点开；这里补一次账号同步。
+                    NeteaseApi.LoginResult account = NeteaseApi.account();
+                    if (account.ok()) {
+                        NeteaseSession.INSTANCE.applyLogin(account);
+                        uid = account.uid();
+                    }
+                }
+                if (uid == null || uid.isBlank()) throw new IllegalStateException("账号信息还没恢复，请稍后再试");
+                List<Track> tracks = NeteaseApi.likedTracks(uid, 200);
+                Async.main(() -> {
+                    favorites.clear();
+                    favorites.addAll(tracks);
+                    favoritesLoading = false;
+                    favoritesLoaded = true;
+                    statusLine = "收藏已加载：" + tracks.size() + " 首（点歌才播放）";
+                });
+            } catch (Exception e) {
+                Async.main(() -> {
+                    favoritesLoading = false;
+                    favoritesLoaded = false;
+                    statusLine = "拉取收藏失败：" + e.getMessage();
+                });
+            }
+        });
+    }
+
+    /** 切到收藏页时自动加载一次；不会自动播放。 */
+    public void ensureFavoritesLoaded() {
+        if (!favoritesLoaded && !favoritesLoading) loadFavorites();
+    }
+
+    /** 「加队列」按钮：只入队，不改变播放。 */
+    public void enqueue(Track track) {
+        if (!queue.contains(track)) {
+            queue.add(track);
+            statusLine = "已加入队列：" + track.title();
+            savePersisted();
+        }
+    }
+
+    /** 从队列删除单首；删除当前歌曲时切到下一首并保持暂停。 */
+    public void removeFromQueue(Track track) {
+        if (track == null || !queue.remove(track)) return;
+        if (track.equals(current)) {
+            player.stop();
+            playing = false;
+            lyric = Lyric.EMPTY;
+            consecutiveFailures = 0;
+            current = queue.isEmpty() ? NOTHING : queue.getFirst();
+            statusLine = queue.isEmpty()
+                    ? "队列已清空"
+                    : "已移除当前歌曲，已切到：" + current.title() + "（暂停）";
+        } else {
+            statusLine = "已从队列移除：" + track.title();
+        }
+        savePersisted();
+    }
+
+    /** 一键清空队列并停止播放。 */
+    public void clearQueue() {
+        if (queue.isEmpty()) return;
+        player.stop();
+        playing = false;
+        lyric = Lyric.EMPTY;
+        consecutiveFailures = 0;
+        queue.clear();
+        current = NOTHING;
+        statusLine = "队列已清空";
+        savePersisted();
+    }
+
+    /** 切歌时按新音质重取地址。 */
+    public void applyQuality() {
+        if (current.netease() && playing) {
+            startNetease(current, (long) (position() * 1000));
+        }
+    }
+}

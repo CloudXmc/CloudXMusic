@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime data
+run/
+config/
+logs/
+*.log
+
+# Local development notes and generated previews
+.workbuddy/
+$null
+*.tmp
+
+# Obsolete bundled Modern UI / config-port jars
+libs/nested/

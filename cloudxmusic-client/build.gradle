@@ -1,0 +1,59 @@
+plugins {
+    id "net.fabricmc.fabric-loom-remap" version "${loom_version}"
+    id "maven-publish"
+}
+
+base {
+    archivesName = project.archives_base_name
+}
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft("com.mojang:minecraft:${project.minecraft_version}")
+    mappings loom.officialMojangMappings()
+    modImplementation("net.fabricmc:fabric-loader:${project.loader_version}")
+    modImplementation("net.fabricmc.fabric-api:fabric-api:${project.fabric_version}")
+
+    // 无第三方前置：界面全部自绘（fill + 程序化矢量图标），不再内置 Modern UI。
+    // MP3 解码（LGPL-3.0）：只用来把网易云的 mp3 流转成 PCM，类会合并进产物 jar。
+    implementation files(rootProject.file("libs/jlayer-1.0.1.jar"))
+    // 二维码编码（Apache-2.0）：扫码登录要在游戏里画出真的二维码
+    implementation files(rootProject.file("libs/zxing-core-3.5.3.jar"))
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+    inputs.property "archivesName", project.base.archivesName
+    from("LICENSE") {
+        rename { "${it}_${project.base.archivesName}" }
+    }
+    // 把 JLayer 的类直接并进来（不是模组，不能走 jar-in-jar）
+    from({ zipTree(rootProject.file("libs/jlayer-1.0.1.jar")) }) {
+        exclude "META-INF/**"
+    }
+    from({ zipTree(rootProject.file("libs/zxing-core-3.5.3.jar")) }) {
+        exclude "META-INF/**"
+    }
+}

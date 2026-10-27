@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "cloudxmusic",
+  "version": "${version}",
+  "name": "CloudXMusic",
+  "description": "A lightweight in-game music room player for Folia servers.",
+  "authors": ["Lzasn"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/cloudxmusic/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.lzasn.cloudxmusic.client.CloudXMusicClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.1",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
