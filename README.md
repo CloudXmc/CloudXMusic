@@ -11,6 +11,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Version-2.4.7-D96A91?style=flat-square" alt="版本 2.4.7">
+  <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
   <img src="https://img.shields.io/badge/Java-21-ED8B00?style=flat-square" alt="Java 21">
@@ -128,4 +129,4 @@ Linux/macOS：
 - [ZXing Core](https://github.com/zxing/zxing)：二维码编码，Apache-2.0。
 - Inter 与 Noto Sans SC 字体的许可证随资源一并提供。
 
-完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目采用 [MIT License](LICENSE)；版权归 Lzasn、xWtree、cloudfl4re、xiaota888 所有。
+完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目原创代码采用 [GNU GPL-3.0-only](LICENSE)；版权归 Lzasn、xWtree、cloudfl4re、xiaota888 所有。

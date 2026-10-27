@@ -1,5 +1,9 @@
 # 第三方组件声明 / Third-Party Notices
 
+## 项目自身代码许可
+
+CloudXmusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [LICENSE](LICENSE)。该许可不改变下列第三方组件各自的许可证；字体资源也继续遵循随文件提供的 SIL Open Font License 1.1。
+
 ## 当前状态：不内置任何第三方**模组**（但内置 MP3 解码与二维码库）
 
 ## 内置代码：JLayer (MP3 解码)
