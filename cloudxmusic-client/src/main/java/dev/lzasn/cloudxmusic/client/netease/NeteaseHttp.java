@@ -1,6 +1,7 @@
 package dev.lzasn.cloudxmusic.client.netease;
 
 import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
+import dev.lzasn.cloudxmusic.client.gui.FirstRunNotice;
 
 import java.net.CookieManager;
 import java.net.CookiePolicy;
@@ -38,6 +39,13 @@ public final class NeteaseHttp {
     /** 有没有登录态。 */
     public static boolean hasSession() {
         return STORE.hasSession();
+    }
+
+    public static String csrfToken() {
+        for (HttpCookie cookie : STORE.get(URI.create("https://music.163.com/"))) {
+            if (cookie.getName().equals("__csrf")) return cookie.getValue();
+        }
+        return "";
     }
 
     /** 退出登录：清空所有 Cookie。 */
@@ -94,11 +102,13 @@ public final class NeteaseHttp {
     }
 
     public static Response get(String url) throws Exception {
+        FirstRunNotice.requireAccepted();
         HttpRequest.Builder builder = base(url).GET();
         return send(builder.build());
     }
 
     public static Response postForm(String url, String form) throws Exception {
+        FirstRunNotice.requireAccepted();
         HttpRequest.Builder builder = base(url)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(form, StandardCharsets.UTF_8));

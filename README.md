@@ -1,18 +1,21 @@
-# CloudXMusic
+# CloudXmusic · 云朵音乐盒
 
 <p align="center">
-  <img src="cloudxmusic-client/src/main/resources/assets/cloudxmusic/icon.png" width="160" alt="CloudXMusic icon">
+  <img src="cloudxmusic-client/src/main/resources/assets/cloudxmusic/icon.png" width="160" alt="云朵音乐盒图标">
 </p>
 
 <p align="center">轻量级 Minecraft Fabric 网易云音乐播放器</p>
 
-CloudXMusic 是一个面向 Minecraft Java Edition 的 Fabric 客户端模组。它提供游戏内自绘音乐界面、顶部灵动岛、网易云登录与搜索、收藏、队列、专辑封面、滚动歌词和 MP3 流式播放。
+CloudXmusic（云朵音乐盒）是一个面向 Minecraft Java Edition 的 Fabric 客户端模组。它提供游戏内磨砂玻璃音乐界面、顶部灵动岛、网易云登录与搜索、收藏、队列、专辑封面、滚动歌词和 MP3 流式播放。
 
-> 本项目是非官方第三方客户端，与网易云音乐官方无关。请遵守网易云音乐服务条款及当地法律法规，仅用于个人学习和客户端体验，不要分发受版权保护的音乐内容。
+开发者：Lzasn、xWtree、cloudfl4re、xiaota888。
+
+> 首次使用时须在游戏内阅读并确认免责声明。模组是非官方第三方客户端，与网易云音乐及其运营方无隶属、授权或背书关系；服务请求由客户端直接发送给网易云音乐相关服务及音频 CDN。登录 Cookie 以未加密文本保存在 `config/cloudxmusic/cookies.json`，请勿分享。用户须遵守服务条款、所在地法律法规及作品版权要求。详见游戏内首次使用说明。
 
 ## 功能
 
-- 自绘 ClickGUI：正在播放、每日推荐、搜索、收藏、队列、关于
+- 抗锯齿自绘音乐界面：正在播放、每日推荐、搜索、收藏、队列、设置与关于
+- 内置 Inter + Noto Sans SC 字体、圆角卡片、磨砂半透明材质和柔影
 - 网易云扫码登录、短信验证码登录、密码与邮箱登录
 - 每日推荐自动刷新，搜索歌曲/歌手，加载收藏与歌单
 - 标准 / 较高 / 极高 MP3 音质切换
@@ -21,6 +24,7 @@ CloudXMusic 是一个面向 Minecraft Java Edition 的 Fabric 客户端模组。
 - 顶部 HUD 灵动岛，支持原文/双语歌词模式
 - 队列单首删除、一键清空、重启恢复
 - 当前歌曲、队列、音质、歌词模式和登录态持久化
+- 首次使用免责声明：确认前不会发起网易云 API 请求
 - 中文/英文快捷键名称
 
 ## 环境要求
@@ -37,8 +41,8 @@ CloudXMusic 是一个面向 Minecraft Java Edition 的 Fabric 客户端模组。
 ## 安装
 
 1. 安装 Minecraft 1.21.11、Fabric Loader 和 Fabric API。
-2. 将构建出的 `CloudXMusic-<version>.jar` 放入实例的 `mods/` 目录。
-3. 启动客户端，按 `H` 打开/关闭 CloudXMusic 界面。
+2. 将构建出的 `CloudXmusic-<version>.jar` 放入实例的 `mods/` 目录。
+3. 启动客户端，按 `H` 打开/关闭云朵音乐盒。首次打开需要确认免责声明。
 
 ## 构建
 
@@ -57,7 +61,7 @@ Linux/macOS（使用标准 Gradle Wrapper）：
 产物位于：
 
 ```text
-cloudxmusic-client/build/libs/CloudXMusic-<version>.jar
+cloudxmusic-client/build/libs/CloudXmusic-<version>.jar
 ```
 
 项目使用 Mojang 官方映射、Java 21 和 Fabric Loom。构建需要网络下载 Minecraft、Fabric 和编译依赖。
@@ -115,7 +119,7 @@ config/cloudxmusic/
 ## 项目结构
 
 ```text
-CloudXMusic/
+CloudXmusic/
 ├── cloudxmusic-client/
 │   ├── src/main/java/dev/lzasn/cloudxmusic/client/
 │   │   ├── audio/       MP3 流式播放
@@ -146,4 +150,4 @@ CloudXMusic/
 
 ## License
 
-[MIT](LICENSE) © 2026 Lzasn
+[MIT](LICENSE) © 2026 Lzasn, xWtree, cloudfl4re, xiaota888

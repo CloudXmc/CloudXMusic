@@ -73,7 +73,7 @@ public final class Mp3Player {
     }
 
     private void spawn() {
-        worker = new Thread(this::runLoop, "CloudXMusic-Audio");
+        worker = new Thread(this::runLoop, "CloudXmusic-Audio");
         worker.setDaemon(true);
         worker.start();
     }

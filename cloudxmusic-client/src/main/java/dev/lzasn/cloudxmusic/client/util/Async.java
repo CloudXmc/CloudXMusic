@@ -24,7 +24,7 @@ public final class Async {
             try {
                 task.run();
             } catch (Throwable t) {
-                dev.lzasn.cloudxmusic.client.CloudXMusicClient.LOGGER.error("CloudXMusic 后台任务失败", t);
+                dev.lzasn.cloudxmusic.client.CloudXMusicClient.LOGGER.error("云朵音乐盒后台任务失败", t);
             }
         });
     }

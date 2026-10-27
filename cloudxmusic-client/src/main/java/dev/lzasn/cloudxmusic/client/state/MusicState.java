@@ -13,6 +13,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.lzasn.cloudxmusic.client.util.Async;
+import dev.lzasn.cloudxmusic.client.gui.FirstRunNotice;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 
@@ -22,7 +23,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 全局播放状态。
@@ -42,6 +45,8 @@ public final class MusicState {
     private final List<Track> discovery = new ArrayList<>();
     /** 我喜欢的音乐。 */
     private final List<Track> favorites = new ArrayList<>();
+    private final Set<String> likedIds = new HashSet<>();
+    private final Set<String> favoriteChanges = new HashSet<>();
     /** 搜索结果。 */
     private final List<Track> searchResults = new ArrayList<>();
     /** 队列只由用户动作填充（点歌/加队列），不再自动塞。 */
@@ -50,6 +55,7 @@ public final class MusicState {
     private boolean searchLoading;
     private boolean favoritesLoading;
     private boolean favoritesLoaded;
+    private Track pendingFavoriteTrack;
     private boolean discoveryLoading;
 
     private Track current = NOTHING;
@@ -58,6 +64,7 @@ public final class MusicState {
     private String roomName = "尚未加入房间";
     private int memberCount;
     private boolean islandEnabled = true;
+    private PlaybackMode playbackMode = PlaybackMode.REPEAT_LIST;
     private Lyric lyric = Lyric.EMPTY;
     private String statusLine = "";
     private int consecutiveFailures;
@@ -68,7 +75,8 @@ public final class MusicState {
         lastTickNanos = System.nanoTime();
         if (!current.netease()) return;
         if (player.finished() && playing) {
-            next();
+            if (playbackMode == PlaybackMode.REPEAT_ONE) select(current);
+            else next();
             return;
         }
         if (!player.error().isEmpty()) {
@@ -114,6 +122,10 @@ public final class MusicState {
         return current;
     }
 
+    public boolean hasCurrentTrack() {
+        return !current.equals(NOTHING);
+    }
+
     public boolean playing() {
         // 解析地址期间 player 还没 active，用 playing 标志兜住，避免灵动岛闪一下消失
         if (current.netease()) return playing && !player.isPaused();
@@ -143,6 +155,75 @@ public final class MusicState {
 
     public void toggleIsland() {
         islandEnabled = !islandEnabled;
+    }
+
+    public PlaybackMode playbackMode() {
+        return playbackMode;
+    }
+
+    public void playbackMode(PlaybackMode value) {
+        if (value == null || playbackMode == value) return;
+        playbackMode = value;
+        savePersisted();
+    }
+
+    public boolean isFavorite(Track track) {
+        return track != null && track.netease() && likedIds.contains(track.id());
+    }
+
+    public void toggleFavoriteCurrent() {
+        Track track = current;
+        if (!track.netease()) {
+            statusLine = "本地曲目无法同步到网易云收藏";
+            return;
+        }
+        if (!NeteaseSession.INSTANCE.loggedIn()) {
+            statusLine = "请先登录网易云再收藏歌曲";
+            return;
+        }
+        if (!favoritesLoaded || favoritesLoading) {
+            pendingFavoriteTrack = track;
+            if (!favoritesLoading) loadFavorites();
+            statusLine = "正在确认歌曲收藏状态…";
+            return;
+        }
+        toggleFavorite(track);
+    }
+
+    private void toggleFavorite(Track track) {
+        if (!NeteaseSession.INSTANCE.loggedIn()) {
+            pendingFavoriteTrack = null;
+            statusLine = "请先登录网易云再收藏歌曲";
+            return;
+        }
+        String id = track.id();
+        if (!favoriteChanges.add(id)) return;
+        boolean liked = !likedIds.contains(id);
+        Async.run(() -> {
+            String failure = "";
+            try {
+                NeteaseApi.setLiked(id, liked);
+            } catch (Exception e) {
+                failure = e.getMessage() == null ? "网络请求失败" : e.getMessage();
+            }
+            String error = failure;
+            Async.main(() -> {
+                favoriteChanges.remove(id);
+                if (!error.isEmpty()) {
+                    statusLine = "收藏操作失败：" + error;
+                    return;
+                }
+                if (liked) {
+                    likedIds.add(id);
+                    favorites.removeIf(item -> id.equals(item.id()));
+                    favorites.add(0, track);
+                } else {
+                    likedIds.remove(id);
+                    favorites.removeIf(item -> id.equals(item.id()));
+                }
+                statusLine = liked ? "已加入网易云收藏" : "已取消网易云收藏";
+            });
+        });
     }
 
     public Lyric lyric() {
@@ -201,6 +282,13 @@ public final class MusicState {
             } else {
                 current = NOTHING;
             }
+            if (root.has("playbackMode")) {
+                try {
+                    playbackMode = PlaybackMode.valueOf(root.get("playbackMode").getAsString());
+                } catch (IllegalArgumentException ignored) {
+                    playbackMode = PlaybackMode.REPEAT_LIST;
+                }
+            }
             playing = false;
             lyric = Lyric.EMPTY;
             if (current != NOTHING) {
@@ -219,6 +307,7 @@ public final class MusicState {
         JsonArray array = new JsonArray();
         for (Track track : queue) array.add(trackToJson(track));
         root.add("queue", array);
+        root.addProperty("playbackMode", playbackMode.name());
         Path path = stateFile();
         Path temp = path.resolveSibling(path.getFileName() + ".tmp");
         try {
@@ -289,8 +378,9 @@ public final class MusicState {
             playing = false;
             return;
         }
-        int index = queue.indexOf(current);
-        select(queue.get((Math.max(index, -1) + 1) % queue.size()));
+        PlaybackMode mode = playbackMode == PlaybackMode.REPEAT_ONE ? PlaybackMode.REPEAT_LIST : playbackMode;
+        int index = mode.nextIndex(queue, current);
+        if (index >= 0) select(queue.get(index));
     }
 
     public void previous() {
@@ -401,6 +491,7 @@ public final class MusicState {
 
     /** 每次进入世界自动刷新一次；已经加载过则不重复请求。 */
     public void refreshLibraryIfNeeded() {
+        if(!FirstRunNotice.accepted()) return;
         if (discovery.isEmpty() && !discoveryLoading) refreshLibrary();
     }
 
@@ -494,18 +585,25 @@ public final class MusicState {
                     }
                 }
                 if (uid == null || uid.isBlank()) throw new IllegalStateException("账号信息还没恢复，请稍后再试");
-                List<Track> tracks = NeteaseApi.likedTracks(uid, 200);
+                NeteaseApi.LikedTracks liked = NeteaseApi.likedTracksAndIds(uid, 200);
+                List<Track> tracks = liked.tracks();
                 Async.main(() -> {
                     favorites.clear();
                     favorites.addAll(tracks);
+                    likedIds.clear();
+                    likedIds.addAll(liked.ids());
                     favoritesLoading = false;
                     favoritesLoaded = true;
                     statusLine = "收藏已加载：" + tracks.size() + " 首（点歌才播放）";
+                Track pending = pendingFavoriteTrack;
+                pendingFavoriteTrack = null;
+                if (pending != null) toggleFavorite(pending);
                 });
             } catch (Exception e) {
                 Async.main(() -> {
                     favoritesLoading = false;
                     favoritesLoaded = false;
+                pendingFavoriteTrack = null;
                     statusLine = "拉取收藏失败：" + e.getMessage();
                 });
             }

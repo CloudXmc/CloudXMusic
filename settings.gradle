@@ -5,5 +5,5 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-rootProject.name = "CloudXMusic"
+rootProject.name = "CloudXmusic"
 include("cloudxmusic-client")

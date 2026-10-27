@@ -1,13 +1,13 @@
-# CloudXMusic 开发交接文档
+# CloudXmusic（云朵音乐盒）开发交接文档
 
 更新时间：2026-10-27
-作者：Lzasn
-当前版本：0.4.4
+开发者：Lzasn,xWtree,cloudfl4re,xiaota888
+当前版本：2.4.7
 目标环境：Minecraft 1.21.11、Fabric 客户端、Java 21
 
 ## 1. 项目定位
 
-这是一个 Minecraft Fabric 客户端音乐播放器 Mod，最终目标是配合 Folia 1.21.11 服务端插件，实现：
+这是一个 Minecraft Fabric 客户端音乐播放器 Mod，后续可配合 Folia 1.21.11 服务端插件，实现：
 
 - Minecraft 内的 ClickGUI 音乐界面
 - 顶部 HUD 灵动岛
@@ -30,25 +30,17 @@
 - 使用 Fabric Loom `1.17.21`。
 - 使用 Fabric Loader `0.20.1`。
 - 使用 Fabric API `0.141.6+1.21.11`。
-- 作者信息设置为 `Lzasn`。
+- 开发者信息：`Lzasn,xWtree,cloudfl4re,xiaota888`。
 - 注册默认快捷键 `H`。
 - `H` 的职责是打开/关闭整个音乐界面，不负责播放/暂停。
 - 实现了 Minecraft 内 HUD 灵动岛原型。
-- 灵动岛为圆角方形卡片，显示歌曲名、歌手、播放进度。
-- 实现了圆角矩形、边框、阴影等基础绘制工具。
-- ClickGUI 已按参考图的方向调整为左右两个独立面板：
-  - 左侧分类导航面板
-  - 右侧模块内容面板
-  - 深色半透明背景
-  - 青绿色选中态
-  - 左侧选中指示条
-  - 分类右侧箭头
-  - 紧凑的模块列表
-  - 悬浮高亮样式
-  - 面板进入动画
-- 当前本地演示数据包含多首测试歌曲。
-- 实现了本地播放状态模型：当前歌曲、播放/暂停、进度、队列、房间名称、成员数、灵动岛开关。
-- UI 中预留了音乐、发现、搜索、房间、队列、设置等页面概念。
+- 灵动岛显示歌曲、歌词和播放进度。
+- 0.4.5 将 GUI 重构为独立字体和抗锯齿画布：左侧导航、播放、发现、搜索、收藏、队列和设置页。
+- 歌曲页使用固定设计网格，歌词卡片、队列卡片和列表共享对齐线。
+- 内置 Inter 与 Noto Sans SC 字体；图标使用模组自绘矢量路径。
+- 保留白粉磨砂、较大圆角、半透明面板、软阴影与灵动岛扩散光。本版不包含深色模式。
+- 播放状态模型包括歌曲、播放/暂停、进度、队列、音量和灵动岛开关。
+- 首次使用显示网易云音乐免责声明；确认之前网易云 HTTP 和封面请求均不发送。
 - 已修复 Minecraft 1.21.11 的背景模糊崩溃：删除了 `MusicScreen.render()` 中不必要的 `renderBackground()` 调用。
 - 已验证客户端构建成功。
 - 0.1.4 已把 1.21.11 新鼠标事件（`MouseButtonEvent`）接回，自绘区域全部可点：
@@ -157,10 +149,10 @@
     （拖出面板也继续，只夹在两端之间），`mouseReleased` 收尾；拖拽时进度条加粗到 3px、滑块 5px。
     命中区从视觉 2px 放宽到 13px（y+95 ~ y+108），不会压到下面的时间文字。
 
-### 当前构建产物
+### 历史构建产物（0.4.4）
 
 ```text
-C:\Users\Lzasn\Desktop\CloudXMusic\cloudxmusic-client\build\libs\CloudXMusic-0.4.4.jar
+CloudXMusic-0.4.4.jar
 ```
 
 构建结果：
@@ -501,33 +493,27 @@ GET 直接 200 返回 ID3/mp3；JLayer 也能正常解（206、44.1kHz、10.45s 
   但如果是被裁剪过的 JRE，会在 `AudioSystem.getLine` 处报错。
 - 登录接口（weapi/eapi）的验证码链路已实测成功；密码/邮箱登录仍可能受网易风控影响，失败时看 `code`。
 
+### 0.4.5 CloudXmusic 界面和首次使用保护
+
+- 项目名称为 `CloudXmusic` / `云朵音乐盒`，开发者为 `Lzasn,xWtree,cloudfl4re,xiaota888`；mod ID 和 Java 包名保持不变。
+- `MusicScreen` 以固定网格画布渲染，绘制和点击使用同一套坐标布局。
+- 内置 Inter、Noto Sans SC 及 SIL OFL 1.1 许可文本；图标由代码绘制，不依赖原版字形。
+- 登录二维码、音乐界面和灵动岛使用统一字体及磨砂材质。
+- 首次确认记录在 `config/cloudxmusic/disclaimer.txt`。确认前网易云 HTTP 请求和封面下载都会阻止；启动账号恢复也会跳过。
+- 封面缓存限制条目、并发下载和响应字节；客户端退出时取消下载并释放 UI 纹理。
+- Java 21.0.7 下 `:cloudxmusic-client:build` 和离线布局测试通过，导出页面预览到 `outputs/`。
+- 尚未在 Minecraft 1.21.11 游戏实例中进行人工交互、性能或登录实测。
+- 构建产物：`cloudxmusic-client/build/libs/CloudXmusic-0.4.5.jar`。
+
 ## 3. 当前未完成和必须注意的地方
 
 这是交接时最重要的部分。
 
 ### 3.1 UI 交互已接回，但还没有经过人工验证
 
-1.21.11 里 `Screen` 不再声明三参数鼠标回调，点击统一走 `ContainerEventHandler` 的默认方法：
+0.4.5 的 `MusicLayout` 同时提供绘制坐标和鼠标命中区域。Java 21 下构建、布局边界测试和离线截图渲染都通过；仍未在 Minecraft 实例中实际打开各页面。因此输入焦点、拖动、不同 GUI 缩放和屏幕尺寸必须实机确认。
 
-```java
-public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean handled)
-```
-
-`MouseButtonEvent` 是 record，坐标用 `event.x()` / `event.y()`，键位用 `event.button()`（0 = 左键）。
-
-0.1.4 已按这个签名重写交互，并拆成三步：
-
-1. `layout(int slide)` —— 每帧算一份 hitbox，页面切换 / 动画位移都会跟着变。
-2. `render()` —— 只负责画，hover 直接查上一步的 hitbox。
-3. `dispatchClick(double mx, double my)` —— 命中派发，返回是否消费。
-
-因此当前状态是：
-
-- 绘制、点击、hover 三者的坐标是同一份，不会再出现错位。
-- 编译通过，`CloudXMusic-0.4.4.jar` 已产出。
-- 但**还没有真机跑过**：打开界面是否崩溃、点击手感、小分辨率下是否重叠，都还需要人工验证。
-
-不要把当前版本当成已经验证过的可用播放器。
+离线预览只能证明画布排版和字体资源可用，不能证明 Minecraft GPU 纹理上传、真实音频、登录或持续帧率。
 
 ### 3.2 真实音频播放已接入，但还需要实机验收
 
@@ -671,7 +657,7 @@ $env:JAVA_HOME="C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot"
 
 ## 6. 版本策略
 
-当前版本为 `0.1.6`，配置位置：
+当前版本为 `2.4.7`，配置位置：
 
 ```text
 gradle.properties
@@ -680,7 +666,7 @@ gradle.properties
 字段：
 
 ```properties
-mod_version=0.1.3
+mod_version=2.4.7
 ```
 
 每次产生可交付改动都要更新版本：
@@ -758,7 +744,7 @@ public interface AudioPlayer {
 后续再建立多模块结构：
 
 ```text
-CloudXMusic/
+CloudXmusic/
 ├── music-protocol/
 ├── cloudxmusic-client/
 └── music-server/
@@ -806,7 +792,7 @@ repeatMode
 
 ### 第一优先级（下一步）
 
-用 `CloudXMusic-0.4.4.jar` 做实机验收：
+用 `CloudXmusic-0.4.5.jar` 做实机验收：
 
 - 启动日志应出现“已迁移旧版网易云登录 Cookie”，且 `cookies.json` 含 `MUSIC_U`。
 - `/cxm status` 显示已登录；连续重启客户端后仍显示已登录。
@@ -824,6 +810,7 @@ repeatMode
 - 队列：每行 `×` 可单删，右上角“清空”可一键清空并持久化。
 - 关于：头像、Lzasn、模组简介和版本显示正常。
 - 队列、切页、灵动岛开关仍正常。
+- 首次免责声明在游戏实际 GUI 缩放下完整显示；未确认前不发出 API/封面请求，确认后继续进入播放器。
 
 ### 第二优先级
 
@@ -849,7 +836,7 @@ repeatMode
 官方映射：已切换并可构建
 H 快捷键：已完成
 HUD 灵动岛：原型已完成
-ClickGUI 外观：0.1.5 已重做为白色磨砂玻璃 + 微粉
+ClickGUI 外观：0.4.5 白粉磨砂独立画布，已完成离线截图检查
 ClickGUI 交互：已完成，待人工验证
 真实音频：MP3 流式播放已接入，待实机验收
 网易云：登录/搜索/收藏/歌词/封面/音质已接入，待实机验收

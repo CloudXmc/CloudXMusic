@@ -3,11 +3,17 @@ package dev.lzasn.cloudxmusic.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.lzasn.cloudxmusic.client.command.CloudXMusicCommand;
 import dev.lzasn.cloudxmusic.client.gui.MusicScreen;
+import dev.lzasn.cloudxmusic.client.gui.CoverCache;
+import dev.lzasn.cloudxmusic.client.gui.FirstRunNotice;
+import dev.lzasn.cloudxmusic.client.gui.design.FirstRunNoticeScreen;
+import dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas;
+import dev.lzasn.cloudxmusic.client.netease.QrLogin;
 import dev.lzasn.cloudxmusic.client.hud.DynamicIslandHud;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseSession;
 import dev.lzasn.cloudxmusic.client.state.MusicState;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.KeyMapping;
@@ -28,8 +34,9 @@ public final class CloudXMusicClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         NeteaseSession.INSTANCE.load();
+        FirstRunNotice.load();
         STATE.loadPersisted();
-        NeteaseSession.INSTANCE.refreshAccountAsync();
+        if(FirstRunNotice.accepted()) NeteaseSession.INSTANCE.refreshAccountAsync();
 
         openGuiKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.cloudxmusic.open_gui",
@@ -43,7 +50,8 @@ public final class CloudXMusicClient implements ClientModInitializer {
                 if (client.screen instanceof MusicScreen) {
                     client.setScreen(null);
                 } else if (client.screen == null) {
-                    client.setScreen(new MusicScreen());
+                    client.setScreen(FirstRunNotice.accepted() ? new MusicScreen()
+                            : new FirstRunNoticeScreen(null,new MusicScreen()));
                 }
             }
             STATE.tick(client);
@@ -51,7 +59,20 @@ public final class CloudXMusicClient implements ClientModInitializer {
 
         // 退出世界/回主菜单就停播，否则音乐会在菜单里继续放
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> STATE.refreshLibraryIfNeeded());
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> STATE.stopAll());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            STATE.stopAll();
+            QrLogin.cancel();
+            CoverCache.clear();
+            DynamicIslandHud.clear();
+            FrostCanvas.clearCaches();
+        });
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            STATE.stopAll();
+            QrLogin.cancel();
+            CoverCache.close();
+            DynamicIslandHud.clear();
+            FrostCanvas.clearCaches();
+        });
 
         CloudXMusicCommand.register();
         DynamicIslandHud.register();

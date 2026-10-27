@@ -23,24 +23,35 @@
 
 ## 界面资源
 
-产物里没有 `META-INF/jars/`，也没有第三方字体或图标图集。
+产物里没有 `META-INF/jars/`；界面随模组提供下列开源字体。
 
-`assets/cloudxmusic/textures/gui/author.png` 是项目作者 Lzasn 提供的个人头像，仅用于模组「关于」页面。
+### Inter
 
-界面里的图标用的是**原版字体自带的特殊符号字形**（`assets/minecraft/font/include/default.json`
-里的 `nonlatin_european.png`），只是普通文本字符，不需要额外资源，也不涉及第三方授权：
+- 文件：`assets/cloudxmusic/fonts/Inter.ttf`
+- 作者：Rasmus Andersson / Inter Project Authors
+- 许可：SIL Open Font License 1.1
+- 声明：`assets/cloudxmusic/fonts/Inter-OFL.txt`
+- 来源：https://github.com/google/fonts/tree/main/ofl/inter
 
-| 用途 | 符号 | 码点 |
-| --- | --- | --- |
-| 正在播放 | ♪ | U+266A |
-| 发现 | ★ | U+2605 |
-| 搜索 | ◎ | U+25CE |
-| 房间 | ⌂ | U+2302 |
-| 队列 | ☰ | U+2630 |
-| 关于 | ? | U+003F |
-| 上一首 / 播放 / 暂停 / 下一首 | ⏮ ▶ ⏸ ⏭ | U+23EE / U+25B6 / U+23F8 / U+23ED |
+### Noto Sans SC
 
-这些码点都逐个核对过在 1.21.11 的原版字体表里确实有字形，不会渲染成豆腐块。
+- 文件：`assets/cloudxmusic/fonts/NotoSansSC-Regular.otf`
+- 作者：Google / Noto CJK Project Authors
+- 许可：SIL Open Font License 1.1
+- 声明：`assets/cloudxmusic/fonts/NotoSansSC-OFL.txt`
+- 来源：https://github.com/notofonts/noto-cjk/tree/main/Sans/SubsetOTF/SC
+
+这两种字体只用于界面文字排版，图标由模组代码的矢量路径绘制。
+
+`assets/cloudxmusic/textures/gui/author.png` 是项目开发者 Lzasn 提供的个人头像，仅用于模组「关于」页面。
+
+当前界面图标由 `gui/design/UiIcons.java` 使用矢量路径绘制，不依赖 Minecraft 位图字形或第三方图标集。旧版本曾使用原版符号字形。
+
+## 品牌
+
+- 英文名：CloudXmusic
+- 中文名：云朵音乐盒
+- 开发者：Lzasn,xWtree,cloudfl4re,xiaota888
 
 ## 历史：已移除的内置组件
 

@@ -25,6 +25,9 @@ dependencies {
     implementation files(rootProject.file("libs/jlayer-1.0.1.jar"))
     // 二维码编码（Apache-2.0）：扫码登录要在游戏里画出真的二维码
     implementation files(rootProject.file("libs/zxing-core-3.5.3.jar"))
+
+    testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 processResources {
@@ -36,6 +39,19 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
     it.options.release = 21
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+tasks.register("renderUiPreview", JavaExec) {
+    group = "verification"
+    description = "Render offline PNG previews from the same painter used in-game."
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "dev.lzasn.cloudxmusic.client.gui.design.UiPreviewRenderer"
+    args rootProject.file("../../outputs").absolutePath
 }
 
 java {

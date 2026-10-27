@@ -3,7 +3,10 @@ package dev.lzasn.cloudxmusic.client.command;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
+import dev.lzasn.cloudxmusic.client.gui.MusicScreen;
 import dev.lzasn.cloudxmusic.client.gui.QrLoginScreen;
+import dev.lzasn.cloudxmusic.client.gui.FirstRunNotice;
+import dev.lzasn.cloudxmusic.client.gui.design.FirstRunNoticeScreen;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseApi;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseQuality;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseSession;
@@ -48,7 +51,12 @@ public final class CloudXMusicCommand {
                                     // 关键：命令是在聊天框里跑的，命令返回后 ChatScreen 会 setScreen(null)。
                                     // 直接在这里 setScreen 会被立刻覆盖，必须丢到下一 tick。
                                     if (minecraft != null) {
-                                        minecraft.execute(() -> minecraft.setScreen(new QrLoginScreen()));
+                                        minecraft.execute(() -> {
+                                            QrLoginScreen qrScreen = new QrLoginScreen(new MusicScreen());
+                                            minecraft.setScreen(FirstRunNotice.accepted()
+                                                    ? qrScreen
+                                                    : new FirstRunNoticeScreen(minecraft.screen, qrScreen));
+                                        });
                                     }
                                     return 1;
                                 }))
@@ -187,7 +195,7 @@ public final class CloudXMusicCommand {
                         }))
                         .then(ClientCommandManager.literal("test").executes(c -> {
                             // 自检曲目：免费、每天都能取到可用直链（2652820720）
-                            CloudXMusicClient.STATE.select(new Track("自检音轨", "CloudXMusic", 279,
+                            CloudXMusicClient.STATE.select(new Track("自检音轨", "CloudXmusic", 279,
                                     "2652820720", "", ""));
                             msg(c.getSource(), "正在播放自检曲目（免费曲，用来区分是播放器问题还是这首歌放不了）");
                             return 1;
@@ -315,6 +323,6 @@ public final class CloudXMusicCommand {
     }
 
     private static void msg(FabricClientCommandSource source, String text) {
-        source.sendFeedback(Component.literal("[CloudXMusic] " + text));
+        source.sendFeedback(Component.literal("[CloudXmusic] " + text));
     }
 }

@@ -33,13 +33,15 @@ public final class QrLogin {
     private static volatile boolean cancelled;
     private static volatile String lastUrl = "";
     private static Thread poller;
+    private static volatile long generation;
 
     private QrLogin() {}
 
     public static synchronized void start(Listener listener) {
         cancel();
         cancelled = false;
-        Thread thread = new Thread(() -> run(listener), "CloudXMusic-QrLogin");
+        long token = generation;
+        Thread thread = new Thread(() -> run(listener, token), "CloudXmusic-QrLogin");
         thread.setDaemon(true);
         poller = thread;
         thread.start();
@@ -52,19 +54,29 @@ public final class QrLogin {
 
     public static synchronized void cancel() {
         cancelled = true;
+        generation++;
+        if (poller != null) poller.interrupt();
         poller = null;
     }
 
-    private static void run(Listener listener) {
+    private static boolean active(long token) { return !cancelled && generation == token; }
+
+    /** 网络任务取消后，已经排入主线程的旧回调也必须失效。 */
+    private static void deliver(long token, Runnable callback) {
+        Async.main(() -> { if (active(token)) callback.run(); });
+    }
+
+    private static void run(Listener listener, long token) {
         try {
-            for (int refresh = 0; refresh <= MAX_REFRESH && !cancelled; refresh++) {
+            for (int refresh = 0; refresh <= MAX_REFRESH && active(token); refresh++) {
                 String key = NeteaseApi.qrKey();
+                if (!active(token)) return;
                 String url = NeteaseApi.qrLoginUrl(key);
                 lastUrl = url;
                 boolean[][] modules = QrCodes.encode(url);
                 CloudXMusicClient.LOGGER.info("扫码登录：key={} 二维码模块={}", key, modules == null ? "null" : modules.length);
 
-                Async.main(() -> {
+                deliver(token, () -> {
                     // 兜底：链接也放进剪贴板，扫不了还能自己粘到浏览器
                     net.minecraft.client.Minecraft minecraft = net.minecraft.client.Minecraft.getInstance();
                     if (minecraft != null) minecraft.keyboardHandler.setClipboard(url);
@@ -78,14 +90,15 @@ public final class QrLogin {
                 if (modules == null) return;
 
                 boolean scanned = false;
-                for (int i = 0; i < MAX_POLLS_PER_KEY && !cancelled; i++) {
+                for (int i = 0; i < MAX_POLLS_PER_KEY && active(token); i++) {
                     Thread.sleep(POLL_INTERVAL_MS);
                     NeteaseApi.QrStatus status = NeteaseApi.qrCheck(key);
+                    if (!active(token)) return;
                     CloudXMusicClient.LOGGER.debug("扫码状态：code={} msg={}", status.code(), status.message());
                     if (status.expired()) break;
                     if (status.code() == 802 && !scanned) {
                         scanned = true;
-                        Async.main(() -> listener.onStatus("已扫码，请在手机上点确认"));
+                        deliver(token, () -> listener.onStatus("已扫码，请在手机上点确认"));
                     }
                     if (status.success()) {
                         // 803 的登录 Cookie 可能只在 JSON body 里，先显式导入再落盘。
@@ -93,37 +106,32 @@ public final class QrLogin {
                         if (!NeteaseHttp.hasSession()) {
                             CloudXMusicClient.LOGGER.warn("扫码已确认，但响应中没有可用的 MUSIC_U（cookie 字段 {} 字符）",
                                     status.cookie() == null ? 0 : status.cookie().length());
-                            Async.main(() -> listener.onFailure("扫码已确认，但没有收到登录 Cookie，请重新扫码"));
+                            deliver(token, () -> listener.onFailure("扫码已确认，但没有收到登录 Cookie，请重新扫码"));
                             return;
                         }
-                        // 先把登录态落盘再问账号信息，免得 account() 因网络抖动把整个登录判死。
-                        NeteaseSession.INSTANCE.markLoggedIn(status.nickname());
-                        String nick = status.nickname();
-                        try {
-                            NeteaseApi.LoginResult account = NeteaseApi.account();
-                            if (account.ok()) {
-                                NeteaseSession.INSTANCE.applyLogin(account);
-                                nick = account.nickname();
-                            }
-                        } catch (Exception e) {
-                            CloudXMusicClient.LOGGER.warn("扫码成功但读账号信息失败：{}", e.getMessage());
-                        }
-                        String finalNick = nick;
+                        String nickname = status.nickname();
                         Async.main(() -> {
-                            listener.onSuccess(finalNick == null || finalNick.isBlank() ? "已登录" : finalNick);
+                            // 先确认登录成功并刷新界面；资料请求不能阻塞成功反馈。
+                            NeteaseSession.INSTANCE.markLoggedIn(status.nickname());
+                            if (active(token)) listener.onSuccess(nickname == null || nickname.isBlank() ? "已登录" : nickname);
                             CloudXMusicClient.STATE.refreshLibrary();
+                            NeteaseSession.INSTANCE.refreshAccountAsync();
                         });
                         return;
                     }
                 }
-                if (cancelled) return;
-                Async.main(() -> listener.onStatus("二维码过期，正在换新的…"));
+                if (!active(token)) return;
+                deliver(token, () -> listener.onStatus("二维码过期，正在换新的…"));
             }
-            Async.main(() -> listener.onFailure("没等到确认，重新执行 /cxm login qr"));
+            deliver(token, () -> listener.onFailure("没等到确认，重新执行 /cxm login qr"));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            Async.main(() -> listener.onFailure("扫码登录失败：" + e.getMessage()));
+            deliver(token, () -> listener.onFailure("扫码登录失败：" + e.getMessage()));
+        } finally {
+            synchronized (QrLogin.class) {
+                if (poller == Thread.currentThread()) poller = null;
+            }
         }
     }
 }

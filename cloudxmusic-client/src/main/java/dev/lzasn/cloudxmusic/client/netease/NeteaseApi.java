@@ -12,8 +12,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 网易云接口。
@@ -324,13 +326,27 @@ public final class NeteaseApi {
 
     /** 我喜欢的音乐：先拿 id 列表，再批量查详情。 */
     public static List<Track> likedTracks(String uid, int limit) throws Exception {
+        return likedTracksAndIds(uid, limit).tracks();
+    }
+
+    public record LikedTracks(Set<String> ids, List<Track> tracks) {
+        public LikedTracks {
+            ids = Set.copyOf(ids);
+            tracks = List.copyOf(tracks);
+        }
+    }
+
+    /** 同时返回完整收藏 id 集和用于展示的限量歌曲详情。 */
+    public static LikedTracks likedTracksAndIds(String uid, int limit) throws Exception {
         JsonObject json = getJson(WEB + "/api/likelist?uid=" + uid + "&type=0");
         JsonArray ids = json.getAsJsonArray("ids");
-        if (ids == null || ids.isEmpty()) return List.of();
+        if (ids == null || ids.isEmpty()) return new LikedTracks(Set.of(), List.of());
         List<String> all = new ArrayList<>();
+        Set<String> likedIds = new LinkedHashSet<>();
         for (JsonElement element : ids) {
-            all.add(element.getAsString());
-            if (all.size() >= limit) break;
+            String id = element.getAsString();
+            likedIds.add(id);
+            if (all.size() < limit) all.add(id);
         }
         List<Track> result = new ArrayList<>();
         for (int from = 0; from < all.size(); from += 100) {
@@ -347,7 +363,20 @@ public final class NeteaseApi {
             if (songs == null) continue;
             for (JsonElement song : songs) result.add(trackOf(song.getAsJsonObject()));
         }
-        return result;
+        return new LikedTracks(likedIds, result);
+    }
+
+    /** 收藏或取消收藏一首歌曲。 */
+    public static void setLiked(String id, boolean liked) throws Exception {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("id", id);
+        data.put("like", liked);
+        data.put("time", 25);
+        data.put("csrf_token", NeteaseHttp.csrfToken());
+        JsonObject json = postJson(WEB + "/weapi/song/like", NeteaseCrypto.weapiForm(data));
+        if (intOr(json, "code", -1) != 200) {
+            throw new NeteaseException("收藏操作失败：" + stringOr(json, "message", "网易云音乐未接受请求"));
+        }
     }
 
     /** 每日推荐。 */

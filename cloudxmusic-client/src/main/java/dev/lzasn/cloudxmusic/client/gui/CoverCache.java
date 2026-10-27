@@ -1,102 +1,76 @@
 package dev.lzasn.cloudxmusic.client.gui;
 
-import com.mojang.blaze3d.platform.NativeImage;
-import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseHttp;
 import dev.lzasn.cloudxmusic.client.util.Async;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.resources.Identifier;
-
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.*;
 
-/**
- * 专辑封面缓存：后台下载 → 主线程注册成动态纹理。
- *
- * <p>贴图只在整个区域上做 {@code (0,0,1,1)} 全图 blit——这一条对 UV 参数顺序不敏感，
- * 不会出现"只采样到一个角"的问题。</p>
- */
+/** 有界封面缓存；集合只在客户端线程访问，后台只传递已经解码的图像。 */
 public final class CoverCache {
-    private static final Map<String, Identifier> READY = new HashMap<>();
-    private static final Set<String> LOADING = new HashSet<>();
-    private static final Set<String> FAILED = new HashSet<>();
-    private static int counter;
-
+    private static final int LIMIT = 64, MAX_BYTES = 2 * 1024 * 1024;
+    private static final Map<String, BufferedImage> READY = new LinkedHashMap<>(LIMIT, .75f, true);
+    private static final Map<String, Long> FAILED = new LinkedHashMap<>();
+    private static final Map<String, Future<?>> LOADING = new HashMap<>();
+    private static final ThreadPoolExecutor DOWNLOADS = new ThreadPoolExecutor(2, 2, 0, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(32), r -> { Thread t = new Thread(r, "CloudXmusic-Cover"); t.setDaemon(true); return t; },
+            new ThreadPoolExecutor.AbortPolicy());
+    private static int generation, revision;
     private CoverCache() {}
+    public static int revision() { return revision; }
 
-    /** 列表加载后预取全部封面，避免滚动到某一行时才开始下载。 */
-    public static void prefetch(java.util.List<dev.lzasn.cloudxmusic.client.state.Track> tracks) {
-        for (dev.lzasn.cloudxmusic.client.state.Track track : tracks) get(track.coverUrl());
-    }
-
-    /** 已经加载好就返回纹理 id，否则触发下载并返回 null。 */
-    public static Identifier get(String url) {
-        if (url == null || url.isBlank()) return null;
-        Identifier id = READY.get(url);
-        if (id != null) return id;
-        if (FAILED.contains(url) || !LOADING.add(url)) return null;
-
-        Async.run(() -> {
-            try {
-                String thumbnail = url + (url.contains("?") ? "&" : "?") + "param=96y96";
-                HttpURLConnection connection = (HttpURLConnection) URI.create(thumbnail).toURL().openConnection();
-                connection.setConnectTimeout(8000);
-                connection.setReadTimeout(10000);
-                connection.setRequestProperty("User-Agent", NeteaseHttp.USER_AGENT);
-                connection.setRequestProperty("Referer", "https://music.163.com/");
-                byte[] bytes;
-                try (InputStream in = connection.getInputStream()) {
-                    bytes = in.readAllBytes();
-                }
-                NativeImage image = decode(bytes);
+    public static BufferedImage image(String url) {
+        if (url == null || url.isBlank() || !FirstRunNotice.accepted()) return null;
+        BufferedImage ready = READY.get(url);
+        if (ready != null) return ready;
+        Long failed = FAILED.get(url);
+        if (failed != null && System.currentTimeMillis() - failed < 60_000) return null;
+        if (LOADING.containsKey(url) || DOWNLOADS.isShutdown()) return null;
+        int token = generation;
+        try {
+            Future<?> future = DOWNLOADS.submit(() -> {
+                BufferedImage image = null;
+                try { image = download(url); } catch (Exception ignored) { /* 短暂退避，保持占位封面。 */ }
+                BufferedImage result = image;
                 Async.main(() -> {
-                    DynamicTexture dynamic = null;
-                    try {
-                        Identifier texture = Identifier.fromNamespaceAndPath("cloudxmusic",
-                                "covers/" + Integer.toHexString(url.hashCode()) + "_" + counter++);
-                        // DynamicTexture 会持有并在 close() 时释放这张 NativeImage。
-                        dynamic = new DynamicTexture(() -> "cloudxmusic cover", image);
-                        Minecraft.getInstance().getTextureManager().register(texture, dynamic);
-                        READY.put(url, texture);
-                        FAILED.remove(url);
-                    } catch (Exception e) {
-                        FAILED.add(url);
-                        if (dynamic != null) dynamic.close(); else image.close();
-                        CloudXMusicClient.LOGGER.warn("封面注册失败：{}", e.getMessage());
-                    } finally {
-                        LOADING.remove(url);
+                    if (token != generation) return;
+                    LOADING.remove(url);
+                    if (result == null) {
+                        if (FAILED.size() >= LIMIT) FAILED.remove(FAILED.keySet().iterator().next());
+                        FAILED.put(url, System.currentTimeMillis());
+                    } else {
+                        if (READY.size() >= LIMIT) READY.remove(READY.keySet().iterator().next());
+                        READY.put(url, result); FAILED.remove(url); revision++;
                     }
                 });
-            } catch (Exception e) {
-                FAILED.add(url);
-                CloudXMusicClient.LOGGER.warn("封面下载或解码失败：{}", e.getMessage());
-                LOADING.remove(url);
-            }
-        });
+            });
+            LOADING.put(url, future);
+        } catch (RejectedExecutionException ignored) { /* 下载队列已满，下一帧可重试。 */ }
         return null;
     }
 
-    /** 网易云缩略图多数是 JPEG；NativeImage.read 只认 PNG，因此先尝试 PNG，再转码 JPEG。 */
-    private static NativeImage decode(byte[] bytes) throws IOException {
-        try {
-            return NativeImage.read(new ByteArrayInputStream(bytes));
-        } catch (IOException pngError) {
-            BufferedImage source = ImageIO.read(new ByteArrayInputStream(bytes));
-            if (source == null) throw pngError;
-            ByteArrayOutputStream png = new ByteArrayOutputStream();
-            if (!ImageIO.write(source, "PNG", png)) throw pngError;
-            return NativeImage.read(new ByteArrayInputStream(png.toByteArray()));
-        }
+    private static BufferedImage download(String url) throws Exception {
+        URI uri = URI.create(url);
+        if (!"https".equalsIgnoreCase(uri.getScheme()) && !"http".equalsIgnoreCase(uri.getScheme())) return null;
+        HttpURLConnection connection = (HttpURLConnection) URI.create(url + (url.contains("?") ? "&" : "?") + "param=384y384").toURL().openConnection();
+        connection.setConnectTimeout(8000); connection.setReadTimeout(10000);
+        connection.setRequestProperty("User-Agent", NeteaseHttp.USER_AGENT);
+        connection.setRequestProperty("Referer", "https://music.163.com/");
+        try (InputStream in = connection.getInputStream()) {
+            byte[] bytes = in.readNBytes(MAX_BYTES + 1);
+            if (bytes.length > MAX_BYTES || Thread.currentThread().isInterrupted()) return null;
+            return ImageIO.read(new ByteArrayInputStream(bytes));
+        } finally { connection.disconnect(); }
     }
+
+    public static void clear() {
+        generation++; LOADING.values().forEach(f -> f.cancel(true)); LOADING.clear(); DOWNLOADS.purge();
+        READY.clear(); FAILED.clear(); revision++;
+    }
+    public static void close() { clear(); DOWNLOADS.shutdownNow(); }
 }
