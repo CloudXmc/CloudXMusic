@@ -1,4 +1,4 @@
-# 云朵音乐盒 · CloudXmusic
+# 云朵音乐盒 · CloudXMusic
 
 <p align="center">
   <img src="cloudxmusic-client/src/main/resources/assets/cloudxmusic/icon.png" width="120" alt="云朵音乐盒图标">
@@ -29,11 +29,11 @@
 
 ## 项目简介
 
-CloudXmusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客户端模组，提供游戏内音乐库、网易云音乐接入、歌词与独立 HUD 灵动岛。界面使用模组内置字体和抗锯齿画布绘制。
+CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客户端模组，提供游戏内音乐库、网易云音乐接入、歌词与独立 HUD 灵动岛。界面使用模组内置字体和抗锯齿画布绘制。
 
 开发者：Lzasn、xWtree、cloudfl4re、xiaota888。
 
-> **首次使用说明**：首次使用时须在游戏内阅读并确认免责声明。CloudXmusic 是非官方第三方客户端，与网易云音乐及其运营方无隶属、授权或背书关系。服务请求由客户端直接发送至网易云音乐相关服务及音频 CDN。登录 Cookie 以未加密文本保存在本机，请勿分享；使用时请遵守服务条款、所在地法律法规及作品版权要求。
+> **首次使用说明**：首次使用时须在游戏内阅读并确认免责声明。CloudXMusic 是非官方第三方客户端，与网易云音乐及其运营方无隶属、授权或背书关系。服务请求由客户端直接发送至网易云音乐相关服务及音频 CDN。登录 Cookie 以未加密文本保存在本机，请勿分享；使用时请遵守服务条款、所在地法律法规及作品版权要求。
 
 ## 功能
 
@@ -49,14 +49,14 @@ CloudXmusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 ## 安装
 
 1. 使用 Minecraft `1.21.11`，安装 Fabric Loader `0.18.1` 或更新版本及 Fabric API。
-2. 将 `CloudXmusic-2.4.8.jar` 放入游戏实例的 `mods/` 目录。
+2. 将 `CloudXMusic-<version>.jar` 放入游戏实例的 `mods/` 目录。
 3. 启动游戏，按 `H` 打开云朵音乐盒；首次打开时确认免责声明。
 
 播放使用 `javax.sound.sampled`，Java 运行时需包含 `java.desktop` 模块。官方启动器提供的 Microsoft/OpenJDK 通常满足要求。
 
 ## 使用
 
-按 `H` 打开或关闭音乐盒。界面内可切换正在播放、发现、搜索、收藏、队列、账号和设置页面，登录、搜索、收藏、音质切换等全部在界面内完成，无需命令。
+默认是按 `H` 打开或关闭音乐盒。界面内可切换正在播放、发现、搜索、收藏、队列、账号和设置页面，登录、搜索、收藏、音质切换等全部在界面内完成，无需命令。
 
 ## 构建
 
