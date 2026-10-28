@@ -1,8 +1,8 @@
 package dev.lzasn.cloudxmusic.client.hud;
 
 import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
+import dev.lzasn.cloudxmusic.client.gui.CoverCache;
 import dev.lzasn.cloudxmusic.client.gui.MusicScreen;
-import dev.lzasn.cloudxmusic.client.gui.QrLoginScreen;
 import dev.lzasn.cloudxmusic.client.gui.UiTexture;
 import dev.lzasn.cloudxmusic.client.gui.design.FirstRunNoticeScreen;
 import dev.lzasn.cloudxmusic.client.gui.design.IslandPainter;
@@ -38,7 +38,6 @@ public final class DynamicIslandHud {
         MusicState state = CloudXMusicClient.STATE;
         long now = System.nanoTime();
         boolean musicUi = client.screen instanceof MusicScreen
-                || client.screen instanceof QrLoginScreen
                 || client.screen instanceof FirstRunNoticeScreen;
 
         if (!eligible(client, state)) {
@@ -110,7 +109,7 @@ public final class DynamicIslandHud {
         long now = System.nanoTime();
         if ((!view.equals(previous) || raster != previousScale)
                 && (previous == null || now - lastPaint >= 100_000_000L)) {
-            SURFACE.update(IslandPainter.paint(view, raster));
+            SURFACE.update(IslandPainter.paint(view, raster, CoverCache.image(state.current().coverUrl())));
             previous = view;
             previousScale = raster;
             lastPaint = now;

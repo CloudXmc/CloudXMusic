@@ -25,6 +25,15 @@ public final class CoverCache {
     public static int revision() { return revision; }
 
     public static BufferedImage image(String url) {
+        return image(url, true);
+    }
+
+    /** 头像等非专辑图不加 param 缩略参数，否则网易云 CDN 会返回 404。 */
+    public static BufferedImage avatar(String url) {
+        return image(url, false);
+    }
+
+    private static BufferedImage image(String url, boolean thumb) {
         if (url == null || url.isBlank() || !FirstRunNotice.accepted()) return null;
         BufferedImage ready = READY.get(url);
         if (ready != null) return ready;
@@ -35,7 +44,7 @@ public final class CoverCache {
         try {
             Future<?> future = DOWNLOADS.submit(() -> {
                 BufferedImage image = null;
-                try { image = download(url); } catch (Exception ignored) { /* 短暂退避，保持占位封面。 */ }
+                try { image = download(url, thumb); } catch (Exception ignored) { /* 短暂退避，保持占位封面。 */ }
                 BufferedImage result = image;
                 Async.main(() -> {
                     if (token != generation) return;
@@ -54,10 +63,12 @@ public final class CoverCache {
         return null;
     }
 
-    private static BufferedImage download(String url) throws Exception {
+    private static BufferedImage download(String url, boolean thumb) throws Exception {
         URI uri = URI.create(url);
         if (!"https".equalsIgnoreCase(uri.getScheme()) && !"http".equalsIgnoreCase(uri.getScheme())) return null;
-        HttpURLConnection connection = (HttpURLConnection) URI.create(url + (url.contains("?") ? "&" : "?") + "param=384y384").toURL().openConnection();
+        String target = thumb && !url.contains("param=")
+                ? url + (url.contains("?") ? "&" : "?") + "param=384y384" : url;
+        HttpURLConnection connection = (HttpURLConnection) URI.create(target).toURL().openConnection();
         connection.setConnectTimeout(8000); connection.setReadTimeout(10000);
         connection.setRequestProperty("User-Agent", NeteaseHttp.USER_AGENT);
         connection.setRequestProperty("Referer", "https://music.163.com/");

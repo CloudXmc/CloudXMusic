@@ -15,7 +15,7 @@ public final class FirstRunNoticePainter {
             c.g.translate(PAD,PAD);c.glass(0,0,WIDTH,HEIGHT,34,false);
             c.round(32,28,42,42,21,new Color(248,222,233));UiIcons.draw(c,"note",53,49,23,FrostCanvas.DEEP);
             c.text("网易云音乐免责声明",90,48,23,true,FrostCanvas.INK,640);
-            c.text("CloudXmusic · 云朵音乐盒首次使用须知",90,70,12,false,FrostCanvas.MUTED,640);
+            c.text("CloudXMusic · 云朵音乐盒首次使用须知",90,70,12,false,FrostCanvas.MUTED,640);
             c.g.setColor(new Color(135,90,115,35));c.g.drawLine(32,91,748,91);
             int y=123;
             y=paragraph(c,"1. CloudXmusic（云朵音乐盒）是非官方第三方 Fabric 模组，不隶属、未获网易云音乐运营方授权或背书。",y);

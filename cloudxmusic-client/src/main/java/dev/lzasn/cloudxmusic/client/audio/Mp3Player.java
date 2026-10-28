@@ -50,6 +50,11 @@ public final class Mp3Player {
 
     private SourceDataLine line;
     private long streamBytes;
+    /** 当前正在读的连接，切歌/切音质时强制断开，避免旧线程卡在网络超时里。 */
+    private volatile HttpURLConnection activeConnection;
+    /** FLAC 解码器声明的输出格式，由 STREAMINFO 决定。 */
+    private volatile AudioFormat flacFormat =
+            new AudioFormat(44100, 16, 2, true, false);
 
     /**
      * 开始（或重启）播放。
@@ -62,6 +67,8 @@ public final class Mp3Player {
         shutdown();
         currentUrl = url;
         this.totalMs = Math.max(1, totalMs);
+        // 换歌/换音质时旧的字节长度会失效，必须先清零，否则第一次 Range 会越界（HTTP 416）。
+        streamBytes = 0;
         positionMs = Math.max(0, startMs);
         seekTargetMs = startMs > 0 ? startMs : -1;
         error = "";
@@ -155,17 +162,30 @@ public final class Mp3Player {
         return finished;
     }
 
+    /** 消费掉 finished 标记：切歌要等异步取地址，否则每个 tick 都会再触发一次 next()。 */
+    public void clearFinished() {
+        finished = false;
+    }
+
     public String error() {
         return error;
     }
 
     private synchronized void shutdown() {
         stopRequested = true;
+        // 强制断开正在读的连接，让卡在 readTimeout 里的旧线程立刻返回，而不是等 15 秒。
+        HttpURLConnection connection = activeConnection;
+        if (connection != null) {
+            try {
+                connection.disconnect();
+            } catch (RuntimeException ignored) {
+            }
+        }
         Thread thread = worker;
         worker = null;
-        if (thread != null) {
+        if (thread != null && thread != Thread.currentThread()) {
             try {
-                thread.join(400);
+                thread.join(1500);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -175,6 +195,11 @@ public final class Mp3Player {
 
     private void runLoop() {
         long startAt = positionMs;
+        // 无损音源是 FLAC，JLayer 解不了，走另一条解码路径。
+        if (isFlac(currentUrl)) {
+            runFlacLoop(startAt);
+            return;
+        }
         while (!stopRequested) {
             boolean ranged;
             try {
@@ -244,6 +269,141 @@ public final class Mp3Player {
         closeLine();
     }
 
+    /** 链接是不是 FLAC（无损档位）。 */
+    private static boolean isFlac(String url) {
+        if (url == null) return false;
+        String lower = url.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains(".flac") || lower.contains("type=flac");
+    }
+
+    /**
+     * FLAC 播放：jFLAC 推送式解码，解出来的 PCM 直接写声卡。
+     *
+     * <p>跳转和 mp3 一样按字节偏移重开 Range（FLAC 帧自带同步头，从任意帧起点都能接着解）；
+     * 暂停时阻塞解码线程，不重新建流。</p>
+     */
+    private void runFlacLoop(long startAtMs) {
+        long startAt = startAtMs;
+        while (!stopRequested) {
+            try {
+                // FLAC 必须从文件头读：STREAMINFO 在开头，缺了它采样率/声道全错，声音会是噪音。
+                Stream stream = open(currentUrl, 0);
+                streamBytes = stream.contentLength();
+                try (InputStream raw = stream.input()) {
+                    org.jflac.FLACDecoder decoder =
+                            new org.jflac.FLACDecoder(new BufferedInputStream(raw, 128 * 1024));
+                    decoder.addPCMProcessor(new FlacSink(startAt));
+                    decoder.decode();
+                }
+                finished = true;
+                active = false;
+                drainLine();
+                break;
+            } catch (RestartStream restart) {
+                closeLine();
+                startAt = positionMs;
+            } catch (Throwable t) {
+                error = String.valueOf(t.getMessage());
+                CloudXMusicClient.LOGGER.warn("FLAC 播放失败：{}", error, t);
+                active = false;
+                break;
+            }
+        }
+        closeLine();
+    }
+
+    /** jFLAC 的 PCM 回调：统一降到 16bit 小端输出（设备几乎都支持 24bit 很少支持）。 */
+    private final class FlacSink implements org.jflac.PCMProcessor {
+        private final long startAt;
+        private long decodedMs;
+        private AudioFormat source = new AudioFormat(44100, 16, 2, true, false);
+
+        FlacSink(long startAt) {
+            this.startAt = startAt;
+        }
+
+        @Override public void processStreamInfo(org.jflac.metadata.StreamInfo info) {
+            if (info == null) return;
+            AudioFormat declared = info.getAudioFormat();
+            source = declared != null && declared.getSampleRate() > 0 ? declared
+                    : new AudioFormat(info.getSampleRate() > 0 ? info.getSampleRate() : 44100,
+                    info.getBitsPerSample() > 0 ? info.getBitsPerSample() : 16,
+                    Math.max(1, info.getChannels()), true, false);
+            flacFormat = source;
+        }
+
+        @Override public void processPCM(org.jflac.util.ByteData pcm) {
+            if (stopRequested) throw new RestartStream();
+            while (paused && !stopRequested) sleep(40);
+            if (stopRequested) throw new RestartStream();
+
+            long pending = seekTargetMs;
+            if (pending >= 0 && Math.abs(pending - startAt) > 400) throw new RestartStream();
+            seekTargetMs = -1;
+
+            int len = pcm.getLen();
+            if (len <= 0) return;
+            int channels = Math.max(1, source.getChannels());
+            int frameSize = Math.max(1, source.getFrameSize());
+            long frameMs = (long) ((len / (double) frameSize) * 1000.0 / source.getSampleRate());
+            if (decodedMs + frameMs <= startAt) {
+                decodedMs += frameMs;
+                return;
+            }
+            try {
+                ensureLine(new AudioFormat(source.getSampleRate(), 16, channels, true, false));
+            } catch (Exception e) {
+                throw new IllegalStateException("打开声卡失败：" + e.getMessage(), e);
+            }
+            writeFlacPcm(pcm.getData(), len);
+            decodedMs += frameMs;
+            positionMs = decodedMs;
+        }
+    }
+
+    /** 把任意位深的解码结果压到 16bit 小端并写声卡；音量为 1 且本来就是 16bit 时直接透传。 */
+    private void writeFlacPcm(byte[] data, int len) {
+        if (line == null || len <= 0 || stopRequested) return;
+        AudioFormat source = flacFormat;
+        int bytesPerSample = Math.max(1, source.getSampleSizeInBits() / 8);
+        int samples = len / bytesPerSample;
+        if (samples <= 0) return;
+        if (bytesPerSample == 2 && !source.isBigEndian() && volume >= 0.999f) {
+            line.write(data, 0, len);
+            return;
+        }
+        boolean big = source.isBigEndian();
+        byte[] out = new byte[samples * 2];
+        float gain = volume;
+        int drop = Math.max(0, (bytesPerSample - 2) * 8);
+        for (int i = 0; i < samples; i++) {
+            int base = i * bytesPerSample;
+            int value = 0;
+            for (int b = 0; b < bytesPerSample; b++) {
+                int index = big ? base + b : base + bytesPerSample - 1 - b;
+                value = (value << 8) | (data[index] & 0xFF);
+            }
+            int shift = 32 - bytesPerSample * 8;
+            value = (value << shift) >> shift;
+            int scaled = Math.round(value * gain) >> drop;
+            if (scaled > 32767) scaled = 32767;
+            if (scaled < -32768) scaled = -32768;
+            out[i * 2] = (byte) scaled;
+            out[i * 2 + 1] = (byte) (scaled >> 8);
+        }
+        line.write(out, 0, out.length);
+    }
+
+    /** FLAC 用解码器给的格式开声卡。 */
+    private void ensureLine(AudioFormat format) throws Exception {
+        if (line != null && line.isOpen()) return;
+        DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+        line = (SourceDataLine) AudioSystem.getLine(info);
+        int buffer = (int) (format.getSampleRate() * 0.4) * Math.max(1, format.getFrameSize());
+        line.open(format, Math.max(8192, buffer));
+        line.start();
+    }
+
     /** 时间 → 字节偏移（CBR 近似）。 */
     private long byteOffset(long ms) {
         if (streamBytes <= 0 || totalMs <= 0) return 0;
@@ -253,7 +413,19 @@ public final class Mp3Player {
     }
 
     private Stream open(String url, long startByte) throws Exception {
+        Stream stream = openOnce(url, startByte);
+        if (stream == null) {
+            // 416：Range 起点超出实际长度（多为长度估算偏差），退回从头读，解码时再跳过。
+            stream = openOnce(url, 0);
+        }
+        if (stream == null) throw new java.io.IOException("音频服务器拒绝了请求（Range 越界）");
+        return stream;
+    }
+
+    /** @return null 表示服务端 416，需要调用方退回无 Range 重试。 */
+    private Stream openOnce(String url, long startByte) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
+        activeConnection = connection;
         connection.setConnectTimeout(10_000);
         connection.setReadTimeout(15_000);
         connection.setInstanceFollowRedirects(true);
@@ -265,6 +437,7 @@ public final class Mp3Player {
         if (startByte > 0) connection.setRequestProperty("Range", "bytes=" + startByte + "-");
 
         int code = connection.getResponseCode();
+        if (code == 416 && startByte > 0) return null;
         if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
             throw new java.io.IOException("音频服务器返回 HTTP " + code
                     + "（链接可能过期或该音质不可用）");

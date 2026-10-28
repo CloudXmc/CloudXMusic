@@ -25,6 +25,15 @@ CloudXmusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 - 来源：https://github.com/zxing/zxing
 - 说明：只用来把扫码登录链接编码成二维码矩阵，未做修改。
 
+## 内置代码：jFLAC (FLAC 解码)
+
+- 文件：`libs/jflac-codec-1.5.2.jar`，类被合并进产物 jar（`org.jflac.*`）
+- 版本：1.5.2
+- 作者：Preston Sandberg 及 jFLAC 项目贡献者
+- 许可：**LGPL-2.1**
+- 来源：https://repo1.maven.org/maven2/org/jflac/jflac-codec/
+- 说明：只用于把网易云「无损」档位的 FLAC 流实时解码成 PCM 交给 `SourceDataLine`，未做修改。
+
 ## 界面资源
 
 产物里没有 `META-INF/jars/`；界面随模组提供下列开源字体。

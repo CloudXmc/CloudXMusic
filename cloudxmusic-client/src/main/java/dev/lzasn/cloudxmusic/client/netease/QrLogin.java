@@ -123,7 +123,7 @@ public final class QrLogin {
                 if (!active(token)) return;
                 deliver(token, () -> listener.onStatus("二维码过期，正在换新的…"));
             }
-            deliver(token, () -> listener.onFailure("没等到确认，重新执行 /cxm login qr"));
+            deliver(token, () -> listener.onFailure("没等到确认，请重新扫码"));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {

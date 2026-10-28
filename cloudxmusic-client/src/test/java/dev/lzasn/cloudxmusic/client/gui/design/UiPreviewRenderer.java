@@ -22,7 +22,8 @@ public final class UiPreviewRenderer {
             new Track("晚风吹过花园", "橙子海", 205, "1005", "风的来信", ""),
             new Track("玻璃海岸", "时雨", 187, "1006", "夏日地图", ""),
             new Track("回家的路", "白日梦", 223, "1007", "北方的风", ""),
-            new Track("夜色慢慢降落", "木棉", 198, "1008", "灯火温柔", ""));
+            new Track("夜色慢慢降落", "木棉", 198, "1008", "灯火温柔", ""),
+            new Track("候鸟与信", "南屿", 236, "1009", "远行", ""));
 
     UiPreviewRenderer() {}
 
@@ -47,16 +48,18 @@ public final class UiPreviewRenderer {
                 if(b.w()<=0||b.h()<=0||b.x()<0||b.y()<0||b.x()+b.w()>WIDTH||b.y()+b.h()>HEIGHT)
                     throw new AssertionError(page+" hitbox out of bounds: "+h);
             }
-            if(page!=Page.NOW&&page!=Page.SETTINGS) {
+            if(page!=Page.NOW&&page!=Page.SETTINGS&&page!=Page.ACCOUNT) {
                 Box first=l.box("row0"),last=l.box("row5"),add=l.box("add0");
                 if(first.y()!=ROW_TOP||last.y()!=ROW_TOP+5*ROW_H||add.cy()!=first.cy())
                     throw new AssertionError(page+" list columns are not aligned");
             }
         }
-        if(new MusicLayout(Page.SEARCH,ROWS,3).hit(950,112)==null)
+        if(new MusicLayout(Page.SEARCH,ROWS,3).hit(990,134)==null)
             throw new AssertionError("search action does not have a hitbox");
-        if(new MusicLayout(Page.NOW,ROWS,3).hit(980,460)==null)
-            throw new AssertionError("queue action does not have a hitbox");
+        if(new MusicLayout(Page.NOW,ROWS,3).hit(500,652)==null)
+            throw new AssertionError("seek bar does not have a hitbox");
+        if(new MusicLayout(Page.NOW,ROWS,3).hit(671,619)==null)
+            throw new AssertionError("transport controls do not have a hitbox");
     }
 
     private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex) throws Exception {
@@ -77,13 +80,33 @@ public final class UiPreviewRenderer {
         MusicLayout layout=new MusicLayout(page,page==Page.NOW||page==Page.SETTINGS?0:ROWS,queue.size()-1);
         List<Track> rows=page==Page.NOW||page==Page.SETTINGS?List.of():TRACKS.subList(0,ROWS);
         List<Track> upcoming=page==Page.NOW?queue.subList(1,4):List.of();
-        var lyrics=List.of(new MusicView.LyricRow("雨滴轻轻落在叶片上","",false),
+        var lyrics=List.of(
+                new MusicView.LyricRow("夜色慢慢降落","",false),
+                new MusicView.LyricRow("灯火温柔地摇曳","",false),
+                new MusicView.LyricRow("雨滴轻轻落在叶片上","",false),
                 new MusicView.LyricRow("把黄昏染成柔粉色","染成温柔的颜色",true),
-                new MusicView.LyricRow("轻柔的旋律，陪伴方块世界","",false));
+                new MusicView.LyricRow("轻柔的旋律，陪伴方块世界","",false),
+                new MusicView.LyricRow("风穿过打开的窗","",false),
+                new MusicView.LyricRow("云图在远方缓缓展开","",false));
         MusicView view=new MusicView(page,CURRENT,rows,upcoming,lyrics,102,true,true,"CloudXmusic",
                 search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
-                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.4.7","",0,-1,.8f);
+                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.4.7","",0,-1,.8f,"");
         BufferedImage canvas=MusicPainter.paint(view,layout,1d,url->null);
+        Graphics2D oc=canvas.createGraphics();
+        if(page==Page.NOW){
+            // 封面与歌词是独立图层，预览按同一落点叠回去。
+            BufferedImage cover=MusicPainter.paintCover(view,1d,1f,url->null);
+            Box cr=coverRegion();
+            oc.drawImage(cover,cr.x()+PAD,cr.y()+PAD,null);
+            BufferedImage lyricLayer=MusicPainter.paintLyrics(view,1d);
+            Box lr=lyricRegion();
+            oc.drawImage(lyricLayer,lr.x()+PAD,lr.y()+PAD,null);
+        }
+        // 静态画布不再包含进度与时间，预览要把动态层按同一落点叠回去。
+        BufferedImage overlay=MusicPainter.paintDynamic(view,layout,1d);
+        Box band=dynamicRegion(page);
+        oc.drawImage(overlay,band.x()+PAD,band.y()+PAD,null);
+        oc.dispose();
         Graphics2D g=frame.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         g.drawImage(canvas,(width-canvas.getWidth())/2,52,null);

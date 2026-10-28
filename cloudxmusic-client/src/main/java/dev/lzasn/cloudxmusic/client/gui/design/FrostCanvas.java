@@ -41,9 +41,15 @@ public final class FrostCanvas implements AutoCloseable {
     }
 
     public void glass(int x, int y, int w, int h, int r, boolean island) {
-        shadow(x, y, w, h, r, island ? 17 : 28, 2, island ? 5 : 4,
-                new Color(48, 39, 49, island ? 42 : 24));
-        shadow(x, y, w, h, r, 10, 1, 2, new Color(177, 80, 117, 10));
+        if (island) {
+            // 灵动岛只有 60 高，尺寸小、离屏幕边缘远，不能用带 spread 的投影：
+            // spread 会把阴影轮廓整体撑大，形成一圈紧贴边缘的实心带（看起来像卷边）。
+            shadow(x, y, w, h, r, 18, 0, 3, new Color(48, 39, 49, 24));
+            shadow(x, y, w, h, r, 8, 0, 1, new Color(177, 80, 117, 10));
+        } else {
+            shadow(x, y, w, h, r, 28, 2, 4, new Color(48, 39, 49, 24));
+            shadow(x, y, w, h, r, 10, 1, 2, new Color(177, 80, 117, 10));
+        }
         // 以 alpha 合成保留真正半透明，不能先铺一层不透明白底。
         round(x, y, w, h, r, new GradientPaint(x, y, new Color(255, 253, 255, island ? 211 : 224),
                 x + w / 3f, y + h, new Color(255, 240, 246, island ? 197 : 210)));
@@ -93,7 +99,10 @@ public final class FrostCanvas implements AutoCloseable {
             if (SHADOWS.size() >= 32) SHADOWS.remove(SHADOWS.keySet().iterator().next());
             SHADOWS.put(key, shadow);
         }
+        // 阴影是半分辨率蒙版放大，本身已模糊；双线性足够，双三次会让每次拖尾多花一倍以上 CPU。
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.drawImage(shadow, x - margin, y - margin + dy, w + margin * 2, h + margin * 2, null);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
     }
 
     public float width(String text, float size, boolean bold) {

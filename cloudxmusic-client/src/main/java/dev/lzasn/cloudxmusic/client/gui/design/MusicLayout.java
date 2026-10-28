@@ -5,11 +5,16 @@ import java.util.List;
 
 /** 绘制和点击共享设计坐标；所有列宽、对齐和命中区域集中在这里。 */
 public final class MusicLayout {
-    public static final int WIDTH = 1100, HEIGHT = 674, PAD = 112;
+    /**
+     * 画布透明留白。外层窗口阴影的 margin 为 {@code blur(28)*3 + spread(2) = 86}，
+     * 再留出 10px 余量，低于此值阴影四边会被裁成硬线。
+     */
+    public static final int WIDTH = 1100, HEIGHT = 674, PAD = 96;
     public static final int MAIN_X = 292, MAIN_W = 758;
-    public static final int ROW_TOP = 212, ROW_H = 58, ROWS = 6;
+    public static final int ROW_TOP = 212, ROW_H = 50, ROWS = 8;
     public enum Action { PAGE, ACCOUNT, CLOSE, PREVIOUS, PLAY, NEXT, SEEK, SEARCH_FIELD, SEARCH,
-        ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, STOP }
+        ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, MODE_CYCLE,
+        STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH }
     public record Box(int x, int y, int w, int h) {
         public boolean contains(double px, double py) { return px >= x && py >= y && px < x + w && py < y + h; }
         public int cx() { return x + w / 2; }
@@ -24,37 +29,30 @@ public final class MusicLayout {
         add("account", Action.ACCOUNT, 0, 32, 400, 210, 64);
         add("close", Action.CLOSE, 0, 1012, 22, 36, 36);
         if (page == MusicView.Page.NOW) {
-            add("seek", Action.SEEK, 0, 568, 304, 482, 20);
-            add("prev", Action.PREVIOUS, 0, 731, 350, 38, 38);
-            add("play", Action.PLAY, 0, 778, 340, 58, 58);
-            add("next", Action.NEXT, 0, 845, 350, 38, 38);
-            add("allQueue", Action.PAGE, 4, 948, 445, 80, 30);
-            for (int i = 0; i < Math.min(3, queueCount); i++) add("queue" + i, Action.ROW, i, 685, 486 + i * 44, 350, 42);
+            // 播放页：上方歌词，底部一条控制栏。收藏与队列紧贴传输键两侧，控件整体居中。
+            add("favorite", Action.FAVORITE, 0, 532, 601, 36, 36);
+            add("queueBtn", Action.PAGE, 4, 570, 601, 36, 36);
+            add("prev", Action.PREVIOUS, 0, 608, 601, 36, 36);
+            add("play", Action.PLAY, 0, 645, 593, 52, 52);
+            add("next", Action.NEXT, 0, 698, 601, 36, 36);
+            add("mode", Action.MODE_CYCLE, 0, 736, 601, 36, 36);
+            add("quality", Action.QUALITY, 0, 886, 605, 64, 28);
+            add("volume", Action.VOLUME, 0, 982, 610, 62, 18);
+            add("seek", Action.SEEK, 0, 328, 646, 672, 12);
         } else {
-            add("prev", Action.PREVIOUS, 0, 736, 590, 34, 34);
-            add("play", Action.PLAY, 0, 777, 583, 48, 48);
-            add("next", Action.NEXT, 0, 832, 590, 34, 34);
-            add("seek", Action.SEEK, 0, 380, 636, 325, 16);
-            add("favorite", Action.FAVORITE, 0, 518, 590, 28, 28);
-            add("mode0", Action.PLAYBACK_MODE, 0, 564, 592, 28, 28);
-            add("mode1", Action.PLAYBACK_MODE, 1, 596, 592, 28, 28);
-            add("mode2", Action.PLAYBACK_MODE, 2, 628, 592, 28, 28);
-            add("volume", Action.VOLUME, 0, 940, 596, 84, 22);
             if (page == MusicView.Page.SETTINGS) {
-                add("quality", Action.QUALITY, 0, 318, 132, 704, 48);
-                add("lyric", Action.LYRIC, 0, 318, 188, 704, 48);
-                add("island", Action.ISLAND, 0, 318, 244, 704, 48);
-                add("stop", Action.STOP, 0, 920, 500, 96, 36);
+                add("lyric", Action.LYRIC, 0, 318, 132, 704, 48);
+                add("island", Action.ISLAND, 0, 318, 188, 704, 48);
             } else {
                 if (page == MusicView.Page.SEARCH) {
-                    add("field", Action.SEARCH_FIELD, 0, 292, 112, 642, 48);
-                    add("search", Action.SEARCH, 0, 950, 112, 100, 48);
+                    add("field", Action.SEARCH_FIELD, 0, 292, 116, 634, 36);
+                    add("search", Action.SEARCH, 0, 950, 116, 100, 36);
                 } else {
                     add("refresh", page == MusicView.Page.QUEUE ? Action.CLEAR : Action.REFRESH, 0, 946, 116, 104, 36);
                 }
                 for (int i = 0; i < Math.min(ROWS, rowCount); i++) {
-                    add("row" + i, Action.ROW, i, MAIN_X, ROW_TOP + i * ROW_H, 696, 52);
-                    add("add" + i, Action.ADD, i, 1002, ROW_TOP + i * ROW_H + 6, 40, 40);
+                    add("row" + i, Action.ROW, i, MAIN_X, ROW_TOP + i * ROW_H, 696, 46);
+                    add("add" + i, Action.ADD, i, 1002, ROW_TOP + i * ROW_H + 3, 40, 40);
                 }
             }
         }
@@ -72,5 +70,52 @@ public final class MusicLayout {
     public Box box(String id) {
         for (Hit hit : hits) if (hit.id.equals(id)) return hit.box;
         throw new IllegalArgumentException("Unknown layout box: " + id);
+    }
+
+    /**
+     * 播放页的歌词栏：在整窗高度上垂直居中，左缘取到 632 换取更宽的排版，
+     * 避免长句被省略号截断。七行槽位按 48 间距排布。
+     */
+    public static Box lyricRegion() {
+        return new Box(632, 166, 416, 342);
+    }
+
+    /** 播放页封面区域，含封面投影所需留白；播放时封面 240、暂停时 0.9 倍。 */
+    public static Box coverRegion() {
+        return new Box(312, 169, 336, 336);
+    }
+
+    /** 账号页整块内容区域（菜单或表单），由 MusicPainter.paintAccount 独占绘制。 */
+    public static Box accountRegion() {
+        return new Box(292, 98, 758, 420);
+    }
+
+    /**
+     * 随播放时钟高频变化的区域。只有这些条带需要按进度重绘，
+     * 静态画布（磨砂玻璃、导航、卡片、文字）不再跟随播放时间刷新。
+     */
+    public static Box[] dynamicBands(MusicView.Page page) {
+        if (page == MusicView.Page.NOW) {
+            return new Box[]{
+                    new Box(292, 640, 758, 22),   // 进度条与两端时间
+                    new Box(958, 604, 92, 28)     // 音量滑条
+            };
+        }
+        // 其他页面已经没有播放控件，不需要动态层。
+        return new Box[0];
+    }
+
+    /** 动态条带的并集，用作叠加画布的尺寸与落点。 */
+    public static Box dynamicRegion(MusicView.Page page) {
+        Box[] bands = dynamicBands(page);
+        if (bands.length == 0) return new Box(0, 0, 1, 1);
+        int x0 = Integer.MAX_VALUE, y0 = Integer.MAX_VALUE, x1 = 0, y1 = 0;
+        for (Box b : bands) {
+            x0 = Math.min(x0, b.x());
+            y0 = Math.min(y0, b.y());
+            x1 = Math.max(x1, b.x() + b.w());
+            y1 = Math.max(y1, b.y() + b.h());
+        }
+        return new Box(x0, y0, x1 - x0, y1 - y0);
     }
 }

@@ -22,8 +22,12 @@ logs/
 
 # Local development notes and generated previews
 .workbuddy/
+outputs/
 $null
 *.tmp
+
+# 参考实现项目（DangoMusic），非本仓库代码
+DangoMusic-main/
 
 # Obsolete bundled Modern UI / config-port jars
 libs/nested/

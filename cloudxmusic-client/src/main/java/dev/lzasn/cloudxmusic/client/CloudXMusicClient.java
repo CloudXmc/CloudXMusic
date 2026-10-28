@@ -1,7 +1,6 @@
 package dev.lzasn.cloudxmusic.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import dev.lzasn.cloudxmusic.client.command.CloudXMusicCommand;
 import dev.lzasn.cloudxmusic.client.gui.MusicScreen;
 import dev.lzasn.cloudxmusic.client.gui.CoverCache;
 import dev.lzasn.cloudxmusic.client.gui.FirstRunNotice;
@@ -63,8 +62,12 @@ public final class CloudXMusicClient implements ClientModInitializer {
             STATE.stopAll();
             QrLogin.cancel();
             CoverCache.clear();
-            DynamicIslandHud.clear();
-            FrostCanvas.clearCaches();
+            // 断开回调跑在网络线程，纹理释放必须回到客户端线程，否则会抛
+            // "Rendersystem called from wrong thread" 并漏掉这张纹理。
+            dev.lzasn.cloudxmusic.client.util.Async.main(() -> {
+                DynamicIslandHud.clear();
+                FrostCanvas.clearCaches();
+            });
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             STATE.stopAll();
@@ -74,7 +77,6 @@ public final class CloudXMusicClient implements ClientModInitializer {
             FrostCanvas.clearCaches();
         });
 
-        CloudXMusicCommand.register();
         DynamicIslandHud.register();
     }
 

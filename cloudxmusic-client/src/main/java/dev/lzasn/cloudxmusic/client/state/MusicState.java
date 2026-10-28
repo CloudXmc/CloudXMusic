@@ -25,7 +25,9 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 全局播放状态。
@@ -37,7 +39,7 @@ import java.util.Set;
  */
 public final class MusicState {
     /** 还没有歌时占位，保证 GUI 拿到的 current 永远非空。 */
-    private static final Track NOTHING = new Track("未播放", "等待网易云登录", 0);
+    private static final Track NOTHING = new Track("未在播放", "去「发现音乐」或「搜索」挑一首", 0);
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private final Mp3Player player = new Mp3Player();
@@ -68,6 +70,8 @@ public final class MusicState {
     private Lyric lyric = Lyric.EMPTY;
     private String statusLine = "";
     private int consecutiveFailures;
+    /** 每首歌是否有无损源，探测一次后缓存。 */
+    private final Map<String, Boolean> losslessSupport = new ConcurrentHashMap<>();
 
     // ------------------------------------------------------------ tick
 
@@ -75,6 +79,8 @@ public final class MusicState {
         lastTickNanos = System.nanoTime();
         if (!current.netease()) return;
         if (player.finished() && playing) {
+            // 先吃掉 finished：取播放地址是异步的，否则同一首放完会被连续触发好几次 next()。
+            player.clearFinished();
             if (playbackMode == PlaybackMode.REPEAT_ONE) select(current);
             else next();
             return;
@@ -440,14 +446,36 @@ public final class MusicState {
                         statusLine += "（自动跳过）";
                         next();
                     } else if (consecutiveFailures > 3) {
-                        statusLine = "连续 " + consecutiveFailures + " 首都播不了，检查登录态：/cxm status";
+                        statusLine = "连续 " + consecutiveFailures + " 首都播不了，请检查登录状态";
                     }
                     return;
                 }
                 consecutiveFailures = 0;
                 statusLine = "";
                 player.play(finalUrl, startMs, track.durationSeconds() * 1000L);
+                probeLossless(track.id());
             });
+        });
+    }
+
+    /** 歌曲是否支持无损；null 表示还没探测过。 */
+    public Boolean losslessSupport(String id) {
+        return id == null ? null : losslessSupport.get(id);
+    }
+
+    /** 后台探测一次无损源，音质菜单据此决定「无损」是否可点。 */
+    private void probeLossless(String id) {
+        if (id == null || id.isBlank() || losslessSupport.containsKey(id)) return;
+        Async.run(() -> {
+            Boolean support = null;
+            try {
+                support = NeteaseApi.playableUrl(id, NeteaseQuality.LOSSLESS) != null;
+            } catch (Exception ignored) {
+                // 探测失败就当作未知，不置灰
+            }
+            if (support == null) return;
+            Boolean value = support;
+            Async.main(() -> losslessSupport.put(id, value));
         });
     }
 

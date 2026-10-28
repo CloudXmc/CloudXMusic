@@ -338,16 +338,17 @@ public final class NeteaseApi {
 
     /** 同时返回完整收藏 id 集和用于展示的限量歌曲详情。 */
     public static LikedTracks likedTracksAndIds(String uid, int limit) throws Exception {
-        JsonObject json = getJson(WEB + "/api/likelist?uid=" + uid + "&type=0");
-        JsonArray ids = json.getAsJsonArray("ids");
-        if (ids == null || ids.isEmpty()) return new LikedTracks(Set.of(), List.of());
-        List<String> all = new ArrayList<>();
-        Set<String> likedIds = new LinkedHashSet<>();
-        for (JsonElement element : ids) {
-            String id = element.getAsString();
-            likedIds.add(id);
-            if (all.size() < limit) all.add(id);
+        List<String> ids;
+        try {
+            ids = likedIds(uid);
+        } catch (Exception primary) {
+            // /api/likelist 对部分账号会返回「参数异常」，退到「我喜欢的音乐」歌单取 id。
+            CloudXMusicClient.LOGGER.warn("likelist 不可用，改用收藏歌单兜底：{}", primary.getMessage());
+            ids = likedIdsFromPlaylist(uid);
         }
+        if (ids.isEmpty()) return new LikedTracks(Set.of(), List.of());
+        Set<String> likedIds = new LinkedHashSet<>(ids);
+        List<String> all = ids.subList(0, Math.min(limit, ids.size()));
         List<Track> result = new ArrayList<>();
         for (int from = 0; from < all.size(); from += 100) {
             List<String> chunk = all.subList(from, Math.min(all.size(), from + 100));
@@ -366,16 +367,73 @@ public final class NeteaseApi {
         return new LikedTracks(likedIds, result);
     }
 
+    /** {@code /api/likelist}：只返回收藏的歌曲 id。 */
+    private static List<String> likedIds(String uid) throws Exception {
+        JsonObject json = getJson(WEB + "/api/likelist?uid=" + uid + "&type=0");
+        JsonArray ids = json.getAsJsonArray("ids");
+        if (ids == null) {
+            int code = intOr(json, "code", -1);
+            String message = stringOr(json, "message", "网易云返回 code " + code);
+            CloudXMusicClient.LOGGER.warn("likelist 返回异常：code={} message={}", code, message);
+            throw new NeteaseException(message);
+        }
+        List<String> result = new ArrayList<>();
+        for (JsonElement element : ids) result.add(element.getAsString());
+        return result;
+    }
+
+    /** 兜底：从「我喜欢的音乐」歌单里取全部 trackId（specialType == 5）。 */
+    private static List<String> likedIdsFromPlaylist(String uid) throws Exception {
+        JsonObject list = getJson(WEB + "/api/user/playlist?uid=" + uid + "&limit=1000&offset=0");
+        JsonArray playlists = list.getAsJsonArray("playlist");
+        if (playlists == null) throw new NeteaseException("拿不到歌单列表");
+        String id = null;
+        for (JsonElement element : playlists) {
+            JsonObject playlist = element.getAsJsonObject();
+            if (intOr(playlist, "specialType", 0) == 5) {
+                id = stringOr(playlist, "id", "");
+                break;
+            }
+        }
+        if (id == null || id.isBlank()) throw new NeteaseException("没有找到「我喜欢的音乐」歌单");
+        JsonObject detail = getJson(WEB + "/api/v6/playlist/detail?id=" + id + "&n=1000&s=0");
+        JsonObject playlist = detail.getAsJsonObject("playlist");
+        if (playlist == null) throw new NeteaseException("收藏歌单详情为空");
+        JsonArray trackIds = playlist.getAsJsonArray("trackIds");
+        List<String> result = new ArrayList<>();
+        if (trackIds != null)
+            for (JsonElement element : trackIds) result.add(stringOr(element.getAsJsonObject(), "id", ""));
+        result.removeIf(String::isBlank);
+        return result;
+    }
+
     /** 收藏或取消收藏一首歌曲。 */
     public static void setLiked(String id, boolean liked) throws Exception {
+        // 网易云 weapi 的参数名是 trackId/time/alg，不是 id；缺 alg 或 csrf 会直接返回「参数异常」。
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("id", id);
+        data.put("alg", "itembased");
+        data.put("trackId", id);
+        data.put("time", 3);
         data.put("like", liked);
-        data.put("time", 25);
-        data.put("csrf_token", NeteaseHttp.csrfToken());
+        data.put("csrf_token", csrf());
         JsonObject json = postJson(WEB + "/weapi/song/like", NeteaseCrypto.weapiForm(data));
-        if (intOr(json, "code", -1) != 200) {
-            throw new NeteaseException("收藏操作失败：" + stringOr(json, "message", "网易云音乐未接受请求"));
+        int code = intOr(json, "code", -1);
+        if (code != 200) {
+            String message = stringOr(json, "message", "网易云未接受请求（code " + code + "）");
+            CloudXMusicClient.LOGGER.warn("收藏接口失败：id={} like={} code={} message={}", id, liked, code, message);
+            throw new NeteaseException(message);
+        }
+    }
+
+    /** 取 csrf；Cookie 里没有就先访问一次主站让服务端下发。 */
+    private static String csrf() {
+        String token = NeteaseHttp.csrfToken();
+        if (!token.isBlank()) return token;
+        try {
+            NeteaseHttp.get(WEB + "/");
+            return NeteaseHttp.csrfToken();
+        } catch (Exception e) {
+            return "";
         }
     }
 

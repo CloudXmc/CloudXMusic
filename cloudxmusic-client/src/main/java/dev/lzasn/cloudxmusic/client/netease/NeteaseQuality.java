@@ -1,10 +1,11 @@
 package dev.lzasn.cloudxmusic.client.netease;
 
-/** 音质档位。只走 mp3：无损是 flac，当前播放器解不了。 */
+/** 音质档位。无损是 FLAC，由 jFLAC 解码。 */
 public enum NeteaseQuality {
-    STANDARD("standard", "标准 128K"),
-    HIGHER("higher", "较高 192K"),
-    EXHIGH("exhigh", "极高 320K");
+    STANDARD("standard", "标准"),
+    HIGHER("higher", "较高"),
+    EXHIGH("exhigh", "极高"),
+    LOSSLESS("lossless", "无损");
 
     public final String apiName;
     public final String label;
