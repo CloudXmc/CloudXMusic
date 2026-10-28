@@ -1,6 +1,6 @@
 # 0.4.5 界面重构记录
 
-品牌：CloudXmusic / 云朵音乐盒；开发者：Lzasn,xWtree,cloudfl4re,xiaota888。
+品牌：CloudXmusic / 云朵音乐盒；开发者：Lzasn,xWtree,xiaota888。
 
 ## 修改前边界检查
 

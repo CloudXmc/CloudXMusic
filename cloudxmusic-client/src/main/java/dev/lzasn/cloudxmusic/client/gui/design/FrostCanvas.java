@@ -12,11 +12,38 @@ import java.util.Map;
 public final class FrostCanvas implements AutoCloseable {
     private static final Map<String, BufferedImage> SHADOWS = new LinkedHashMap<>(32, .75f, true);
     private final Map<String, Float> widths = new LinkedHashMap<>();
-    public static final Color INK = new Color(0x40323C);
-    public static final Color MUTED = new Color(0x8A7884);
-    public static final Color PINK = new Color(0xDF7399);
-    public static final Color DEEP = new Color(0xB94F79);
+    // 核心文字/强调色：暗黑模式下切换到深青灰配色，绘制处无需改动（引用同一批静态字段）。
+    public static Color INK = new Color(0x40323C);
+    public static Color MUTED = new Color(0x8A7884);
+    public static Color PINK = new Color(0xDF7399);
+    public static Color DEEP = new Color(0xB94F79);
+    /** 当前是否暗黑模式，玻璃/卡片/阴影按此分支。 */
+    public static boolean dark = false;
+    /** 高频可切换色：分隔线 / 浅粉底 / 白色卡片底 / 悬停高亮。 */
+    public static Color LINE = new Color(135, 90, 115, 30);
+    public static Color SOFT = new Color(248, 218, 231, 220);
+    public static Color CARD_BG = new Color(255, 255, 255, 160);
+    public static Color HOVER = new Color(247, 215, 229, 90);
+    public static Color HOVER_STRONG = new Color(223, 115, 153, 110);
+    public static Color TRACK = new Color(220, 200, 211, 150);
     public final Graphics2D g;
+
+    /** 切换亮色 / 暗黑（深青灰）配色。 */
+    public static void setDark(boolean enabled) {
+        dark = enabled;
+        INK = enabled ? new Color(0xE2E8EA) : new Color(0x40323C);
+        MUTED = enabled ? new Color(0xA8B4B8) : new Color(0x8A7884);
+        PINK = enabled ? new Color(0xF28AA8) : new Color(0xDF7399);
+        DEEP = enabled ? new Color(0xE57BA2) : new Color(0xB94F79);
+        LINE = enabled ? new Color(120, 135, 140, 40) : new Color(135, 90, 115, 30);
+        SOFT = enabled ? new Color(60, 72, 78, 220) : new Color(248, 218, 231, 220);
+        CARD_BG = enabled ? new Color(60, 72, 78, 190) : new Color(255, 255, 255, 160);
+        HOVER = enabled ? new Color(90, 105, 112, 110) : new Color(247, 215, 229, 90);
+        HOVER_STRONG = enabled ? new Color(150, 130, 140, 120) : new Color(223, 115, 153, 110);
+        TRACK = enabled ? new Color(90, 105, 112, 150) : new Color(220, 200, 211, 150);
+        // 换主题后旧的软阴影缓存是亮色系的，直接清掉避免串色。
+        SHADOWS.clear();
+    }
 
     public FrostCanvas(BufferedImage image, double scale) {
         g = image.createGraphics();
@@ -44,25 +71,38 @@ public final class FrostCanvas implements AutoCloseable {
         if (island) {
             // 灵动岛只有 60 高，尺寸小、离屏幕边缘远，不能用带 spread 的投影：
             // spread 会把阴影轮廓整体撑大，形成一圈紧贴边缘的实心带（看起来像卷边）。
-            shadow(x, y, w, h, r, 18, 0, 3, new Color(48, 39, 49, 24));
-            shadow(x, y, w, h, r, 8, 0, 1, new Color(177, 80, 117, 10));
+            shadow(x, y, w, h, r, 18, 0, 3, dark ? new Color(0, 0, 0, 60) : new Color(48, 39, 49, 24));
+            shadow(x, y, w, h, r, 8, 0, 1, dark ? new Color(0, 0, 0, 30) : new Color(177, 80, 117, 10));
         } else {
-            shadow(x, y, w, h, r, 28, 2, 4, new Color(48, 39, 49, 24));
-            shadow(x, y, w, h, r, 10, 1, 2, new Color(177, 80, 117, 10));
+            shadow(x, y, w, h, r, 28, 2, 4, dark ? new Color(0, 0, 0, 70) : new Color(48, 39, 49, 24));
+            shadow(x, y, w, h, r, 10, 1, 2, dark ? new Color(0, 0, 0, 36) : new Color(177, 80, 117, 10));
         }
         // 以 alpha 合成保留真正半透明，不能先铺一层不透明白底。
-        round(x, y, w, h, r, new GradientPaint(x, y, new Color(255, 253, 255, island ? 211 : 224),
-                x + w / 3f, y + h, new Color(255, 240, 246, island ? 197 : 210)));
-        g.setColor(new Color(255, 255, 255, 218));
-        g.draw(shape(x + .5, y + .5, w - 1, h - 1, r));
+        if (dark) {
+            round(x, y, w, h, r, new GradientPaint(x, y, new Color(42, 50, 54, island ? 216 : 232),
+                    x + w / 3f, y + h, new Color(34, 41, 45, island ? 204 : 222)));
+            g.setColor(new Color(70, 80, 85, 120));
+            g.draw(shape(x + .5, y + .5, w - 1, h - 1, r));
+        } else {
+            round(x, y, w, h, r, new GradientPaint(x, y, new Color(255, 253, 255, island ? 211 : 224),
+                    x + w / 3f, y + h, new Color(255, 240, 246, island ? 197 : 210)));
+            g.setColor(new Color(255, 255, 255, 218));
+            g.draw(shape(x + .5, y + .5, w - 1, h - 1, r));
+        }
     }
 
     public void card(int x, int y, int w, int h, int r) {
-        shadow(x, y, w, h, r, 12, 2, 5, new Color(80, 48, 65, 24));
-        shadow(x, y, w, h, r, 5, 1, 2, new Color(184, 100, 132, 14));
-        round(x, y, w, h, r, new Color(255, 255, 255, 158));
-        g.setColor(new Color(255, 255, 255, 220));
-        g.draw(shape(x + .5, y + .5, w - 1, h - 1, r));
+        shadow(x, y, w, h, r, 12, 2, 5, dark ? new Color(0, 0, 0, 60) : new Color(80, 48, 65, 24));
+        shadow(x, y, w, h, r, 5, 1, 2, dark ? new Color(0, 0, 0, 32) : new Color(184, 100, 132, 14));
+        if (dark) {
+            round(x, y, w, h, r, new Color(52, 61, 66, 190));
+            g.setColor(new Color(80, 92, 97, 130));
+            g.draw(shape(x + .5, y + .5, w - 1, h - 1, r));
+        } else {
+            round(x, y, w, h, r, new Color(255, 255, 255, 158));
+            g.setColor(new Color(255, 255, 255, 220));
+            g.draw(shape(x + .5, y + .5, w - 1, h - 1, r));
+        }
     }
 
     public void shadow(int x, int y, int w, int h, int r, int blur, int dy, Color color) {

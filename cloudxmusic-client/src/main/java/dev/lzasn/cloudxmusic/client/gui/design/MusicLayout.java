@@ -14,7 +14,8 @@ public final class MusicLayout {
     public static final int ROW_TOP = 212, ROW_H = 50, ROWS = 8;
     public enum Action { PAGE, ACCOUNT, CLOSE, PREVIOUS, PLAY, NEXT, SEEK, SEARCH_FIELD, SEARCH,
         ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, MODE_CYCLE,
-        STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH }
+        STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH,
+        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS }
     public record Box(int x, int y, int w, int h) {
         public boolean contains(double px, double py) { return px >= x && py >= y && px < x + w && py < y + h; }
         public int cx() { return x + w / 2; }
@@ -24,6 +25,10 @@ public final class MusicLayout {
     private final List<Hit> hits = new ArrayList<>();
 
     public MusicLayout(MusicView.Page page, int rowCount, int queueCount) {
+        this(page, rowCount, queueCount, 0);
+    }
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll) {
         for (int i = 0; i < 5; i++) add("nav" + i, Action.PAGE, i, 32, 137 + i * 44, 210, 38);
         add("settings", Action.PAGE, 5, 32, 602, 210, 42);
         add("account", Action.ACCOUNT, 0, 32, 400, 210, 64);
@@ -41,8 +46,12 @@ public final class MusicLayout {
             add("seek", Action.SEEK, 0, 328, 646, 672, 12);
         } else {
             if (page == MusicView.Page.SETTINGS) {
-                add("lyric", Action.LYRIC, 0, 318, 132, 704, 48);
-                add("island", Action.ISLAND, 0, 318, 188, 704, 48);
+                add("lyric", Action.LYRIC, 0, 318, 132 - settingsScroll, 704, 48);
+                add("island", Action.ISLAND, 0, 318, 184 - settingsScroll, 704, 48);
+                add("islandScale", Action.ISLAND_SCALE, 0, 318, 236 - settingsScroll, 704, 48);
+                add("islandPos", Action.ISLAND_POS, 0, 318, 288 - settingsScroll, 704, 48);
+                add("darkMode", Action.DARK_MODE, 0, 318, 364 - settingsScroll, 704, 48);
+                add("panelScale", Action.PANEL_SCALE, 0, 318, 416 - settingsScroll, 704, 48);
             } else {
                 if (page == MusicView.Page.SEARCH) {
                     add("field", Action.SEARCH_FIELD, 0, 292, 116, 634, 36);

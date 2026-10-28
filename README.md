@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.4.8-D96A91?style=flat-square" alt="版本 2.4.8">
+  <img src="https://img.shields.io/badge/Version-2.4.9-D96A91?style=flat-square" alt="版本 2.4.9">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/cloudxmusic-settings-preview.png" width="920" alt="CloudXmusic 设置页与底部播放器预览">
+  <img src="docs/images/cloudxmusic-showcase.png" width="920" alt="CloudXmusic 播放页面与游戏内灵动岛预览">
 </p>
 
-<p align="center"><sub>白粉磨砂界面 · 自定义字体 · 游戏内灵动岛</sub></p>
+<p align="center"><sub>白粉磨砂界面 · 滚动歌词 · 游戏内灵动岛</sub></p>
 
 ## 目录
 
@@ -31,7 +31,7 @@
 
 CloudXmusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客户端模组，提供游戏内音乐库、网易云音乐接入、歌词与独立 HUD 灵动岛。界面使用模组内置字体和抗锯齿画布绘制。
 
-开发者：Lzasn、xWtree、cloudfl4re、xiaota888。
+开发者：Lzasn、xWtree、xiaota888。
 
 > **首次使用说明**：首次使用时须在游戏内阅读并确认免责声明。CloudXmusic 是非官方第三方客户端，与网易云音乐及其运营方无隶属、授权或背书关系。服务请求由客户端直接发送至网易云音乐相关服务及音频 CDN。登录 Cookie 以未加密文本保存在本机，请勿分享；使用时请遵守服务条款、所在地法律法规及作品版权要求。
 
@@ -49,7 +49,7 @@ CloudXmusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 ## 安装
 
 1. 使用 Minecraft `1.21.11`，安装 Fabric Loader `0.18.1` 或更新版本及 Fabric API。
-2. 将 `CloudXmusic-2.4.8.jar` 放入游戏实例的 `mods/` 目录。
+2. 将 `CloudXmusic-2.4.9.jar` 放入游戏实例的 `mods/` 目录。
 3. 启动游戏，按 `H` 打开云朵音乐盒；首次打开时确认免责声明。
 
 播放使用 `javax.sound.sampled`，Java 运行时需包含 `java.desktop` 模块。官方启动器提供的 Microsoft/OpenJDK 通常满足要求。
@@ -95,10 +95,11 @@ Linux/macOS：
 - 支持标准、较高、极高（MP3）与无损（FLAC）四档音质；Hi-Res 尚未接入，无损需账号具备相应权限。
 - 网易云接口为非官方接口，可能随服务端变化而失效。
 - 部分受版权、地区或账号权限限制的曲目可能无法播放。
-- 当前仓库实现客户端功能；Folia 多人音乐房间及客户端/服务端协议尚未实现。
+- 当前仓库实现客户端功能；Folia 多人音乐房间及客户端/服务端协议计划在 2.5.0 开始开发。
 
 ## 开发资料
 
+- [更新日志](CHANGELOG.md)
 - [UI 知识点与维护约定](UI_KNOWLEDGE.md)
 - [UI 重构记录](UI_REFACTOR.md)
 - [开发状态与交接记录](DEVELOPMENT_STATUS.md)
@@ -113,4 +114,4 @@ Linux/macOS：
 - [jFLAC](https://repo1.maven.org/maven2/org/jflac/jflac-codec/)：FLAC 无损解码，LGPL-2.1。
 - Inter 与 Noto Sans SC 字体的许可证随资源一并提供。
 
-完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目原创代码采用 [GNU GPL-3.0-only](LICENSE)；版权归 Lzasn、xWtree、cloudfl4re、xiaota888 所有。
+完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目原创代码采用 [GNU GPL-3.0-only](LICENSE)；版权归 Lzasn、xWtree、xiaota888 所有。

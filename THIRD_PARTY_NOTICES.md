@@ -64,7 +64,7 @@ CloudXmusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 
 - 英文名：CloudXmusic
 - 中文名：云朵音乐盒
-- 开发者：Lzasn,xWtree,cloudfl4re,xiaota888
+- 开发者：Lzasn,xWtree,xiaota888
 
 ## 历史：已移除的内置组件
 

@@ -37,6 +37,13 @@ public final class DynamicIslandHud {
         var client = CloudXMusicClient.client();
         MusicState state = CloudXMusicClient.STATE;
         long now = System.nanoTime();
+
+        // 调整灵动岛位置模式：始终显示灵动岛，可拖动，底部提示，Esc/点中央退出。
+        if (state.adjustingIslandPos()) {
+            renderAdjustMode(graphics);
+            return;
+        }
+
         boolean musicUi = client.screen instanceof MusicScreen
                 || client.screen instanceof FirstRunNoticeScreen;
 
@@ -69,6 +76,18 @@ public final class DynamicIslandHud {
         }
         visible = true;
         renderIsland(graphics, animationScale(now));
+    }
+
+    /** 调整模式：只绘制遮罩、灵动岛与提示，鼠标事件由 IslandPositionScreen 接管。 */
+    private static void renderAdjustMode(GuiGraphics graphics) {
+        var client = CloudXMusicClient.client();
+        MusicState state = CloudXMusicClient.STATE;
+        int gw = graphics.guiWidth(), gh = graphics.guiHeight();
+
+        graphics.fill(0, 0, gw, gh, 0x99000000);
+        renderIslandAt(graphics, state, 1.0);
+        graphics.drawCenteredString(client.font, "拖动灵动岛调整位置，Esc 或点击空白处保存",
+                gw / 2, gh / 2 - 7, 0xFFFFFFFF);
     }
 
     private static boolean eligible(net.minecraft.client.Minecraft client, MusicState state) {
@@ -104,7 +123,7 @@ public final class DynamicIslandHud {
 
         double display = Math.min(.58, Math.min(
                 (graphics.guiWidth() - 16.0) / IslandPainter.WIDTH,
-                (graphics.guiHeight() - 8.0) / IslandPainter.HEIGHT));
+                (graphics.guiHeight() - 8.0) / IslandPainter.HEIGHT)) * state.islandScale();
         double raster = Math.max(.75, Math.min(2, display * client.getWindow().getGuiScale()));
         long now = System.nanoTime();
         if ((!view.equals(previous) || raster != previousScale)
@@ -118,8 +137,34 @@ public final class DynamicIslandHud {
         double shown = display * animation;
         int w = (int) Math.round((IslandPainter.WIDTH + 2 * IslandPainter.PAD) * shown);
         int h = (int) Math.round((IslandPainter.HEIGHT + 2 * IslandPainter.PAD) * shown);
-        SURFACE.draw(graphics, (graphics.guiWidth() - w) / 2,
-                (int) Math.round(8 - IslandPainter.PAD * shown), w, h);
+        double x = state.islandX() * (graphics.guiWidth() - w);
+        double y = state.islandY() * (graphics.guiHeight() - h);
+        SURFACE.draw(graphics, (int) Math.round(x), (int) Math.round(y), w, h);
+    }
+
+    /** 调整模式专用：用占位内容渲染灵动岛（即使没放歌也显示），返回其屏幕区域 [x, y, w, h]。 */
+    private static double[] renderIslandAt(GuiGraphics graphics, MusicState state, double animation) {
+        var client = CloudXMusicClient.client();
+        var view = new IslandPainter.View("拖动调整位置", "Esc 或点击屏幕中央保存", "", 0, false);
+        double display = Math.min(.58, Math.min(
+                (graphics.guiWidth() - 16.0) / IslandPainter.WIDTH,
+                (graphics.guiHeight() - 8.0) / IslandPainter.HEIGHT)) * state.islandScale();
+        double raster = Math.max(.75, Math.min(2, display * client.getWindow().getGuiScale()));
+        long now = System.nanoTime();
+        if ((!view.equals(previous) || raster != previousScale)
+                && (previous == null || now - lastPaint >= 100_000_000L)) {
+            SURFACE.update(IslandPainter.paint(view, raster, CoverCache.image(state.current().coverUrl())));
+            previous = view;
+            previousScale = raster;
+            lastPaint = now;
+        }
+        double shown = display * animation;
+        int w = (int) Math.round((IslandPainter.WIDTH + 2 * IslandPainter.PAD) * shown);
+        int h = (int) Math.round((IslandPainter.HEIGHT + 2 * IslandPainter.PAD) * shown);
+        double x = state.islandX() * (graphics.guiWidth() - w);
+        double y = state.islandY() * (graphics.guiHeight() - h);
+        SURFACE.draw(graphics, (int) Math.round(x), (int) Math.round(y), w, h);
+        return new double[]{x, y, w, h};
     }
 
     public static void clear() {

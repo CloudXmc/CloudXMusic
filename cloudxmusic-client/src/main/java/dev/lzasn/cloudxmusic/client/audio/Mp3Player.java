@@ -123,8 +123,10 @@ public final class Mp3Player {
 
     public void seek(long ms) {
         if (!active) return;
+        // 只登记目标位置，交给解码线程重开流后更新 positionMs。
+        // 之前这里立即改 positionMs，会在解码线程还没跳过去时被下一帧的
+        // decodedMs 覆盖回旧位置，进度条因此「回弹」。
         seekTargetMs = Math.max(0, Math.min(totalMs, ms));
-        positionMs = seekTargetMs;
     }
 
     public synchronized void stop() {
@@ -234,7 +236,7 @@ public final class Mp3Player {
                         long frameMs = (long) ((samples / (double) channels) * 1000.0 / rate);
 
                         long pendingSeek = seekTargetMs;
-                        if (pendingSeek >= 0 && Math.abs(pendingSeek - startAt) > 400) {
+                        if (pendingSeek >= 0 && Math.abs(pendingSeek - positionMs) > 400) {
                             startAt = pendingSeek;
                             seekTargetMs = -1;
                             throw new RestartStream();
@@ -338,7 +340,12 @@ public final class Mp3Player {
             if (stopRequested) throw new RestartStream();
 
             long pending = seekTargetMs;
-            if (pending >= 0 && Math.abs(pending - startAt) > 400) throw new RestartStream();
+            if (pending >= 0 && Math.abs(pending - positionMs) > 400) {
+                // 先把目标写回 positionMs，catch 里 startAt = positionMs 才能拿到正确的
+                // 跳转起点，否则无损档 seek 会回弹到旧位置。
+                positionMs = pending;
+                throw new RestartStream();
+            }
             seekTargetMs = -1;
 
             int len = pcm.getLen();

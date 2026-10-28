@@ -29,6 +29,23 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Validate changelog entry
+        shell: bash
+        run: |
+          VERSION="$(sed -n 's/^mod_version=//p' gradle.properties | tr -d '\r')"
+          if [ -z "$VERSION" ]; then
+            echo "mod_version is missing from gradle.properties" >&2
+            exit 1
+          fi
+          if ! grep -Eq "^## ${VERSION}([[:space:]]|$)" CHANGELOG.md; then
+            echo "CHANGELOG.md is missing an entry for version ${VERSION}" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match mod_version ${VERSION}" >&2
+            exit 1
+          fi
+
       - name: Build with Gradle
         run: ./gradlew :cloudxmusic-client:build --no-daemon
 
@@ -39,9 +56,21 @@ jobs:
           path: cloudxmusic-client/build/libs/*.jar
           if-no-files-found: error
 
+      - name: Extract release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v version="$VERSION" '
+            $0 ~ "^## " version "([[:space:]]|$)" { capture=1 }
+            capture && /^## / && $0 !~ "^## " version "([[:space:]]|$)" { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
+
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: cloudxmusic-client/build/libs/*.jar
-          generate_release_notes: true
+          body_path: release-notes.md

@@ -27,8 +27,6 @@ import dev.lzasn.cloudxmusic.client.gui.design.MusicView.Page;
 
 /** 游戏输入/业务适配器；排版与绘制完全交给独立画布。 */
 public final class MusicScreen extends Screen {
-    /** 整窗占可用屏幕的比例；调小一点界面整体更紧凑。 */
-    private static final double PANEL_FILL = 0.8;
     /** Cookie 登录方式里的教程地址。 */
     private static final String COOKIE_HELP_URL = "https://www.xunjinlu.fun/index.php/archives/10/";
     private static final String VERSION = FabricLoader.getInstance().getModContainer("cloudxmusic")
@@ -57,7 +55,7 @@ public final class MusicScreen extends Screen {
     private String paintedQualityKey;
     private String paintedAccountKey;
     private Page page = Page.NOW;
-    private int scroll, originX, originY;
+    private int scroll, settingsScroll, originX, originY;
     private double scale, rasterScale;
     private String input = "";
     private boolean focused, selectAll, blurUnavailable;
@@ -65,6 +63,7 @@ public final class MusicScreen extends Screen {
     private Action drag;
     private long lastPaint, lastOverlayPaint;
     private int lastCoverRevision;
+    private int lastSettingsScroll;
     private long pageTransitionAt;
     private MusicView painted, paintedDynamic;
     private List<MusicView.LyricRow> paintedLyrics;
@@ -83,8 +82,14 @@ public final class MusicScreen extends Screen {
 
     @Override protected void init() {
         // 同一个设计坐标变换用于绘制和命中，GUI 缩放不改变相对布局。
-        // PANEL_FILL 控制整窗占可用屏幕的比例，1.0 为铺满，调小即整体缩小。
-        scale = Math.max(.05, Math.min((width - 28.0) / WIDTH, (height - 48.0) / HEIGHT) * PANEL_FILL);
+        // 面板缩放由设置页滑块控制（0.6~1.0），始终屏幕居中。
+        FrostCanvas.setDark(state.darkMode());
+        rebuildScale();
+    }
+
+    /** 重算面板缩放与居中位置（面板缩放滑块变化时调用）。 */
+    private void rebuildScale() {
+        scale = Math.max(.05, Math.min((width - 28.0) / WIDTH, (height - 48.0) / HEIGHT) * state.panelScale());
         originX = (int) Math.round((width - WIDTH * scale) / 2);
         originY = (int) Math.round((height - HEIGHT * scale) / 2 + 8);
         // 画布像素数按倍率平方增长，而 Java2D 路径填充是纯 CPU 光栅化。
@@ -113,7 +118,7 @@ public final class MusicScreen extends Screen {
             if (!track.equals(state.current())) next.add(track);
         }
         upcoming = List.copyOf(next);
-        layout = new MusicLayout(page, rows.size(), upcoming.size());
+        layout = new MusicLayout(page, rows.size(), upcoming.size(), settingsScroll);
     }
 
     private MusicView snapshot(String hover) {
@@ -140,7 +145,9 @@ public final class MusicScreen extends Screen {
                 input, focused, focused && System.currentTimeMillis() / 500 % 2 == 0, status, session.quality().label,
                 session.lyricMode().label, state.islandEnabled(), state.playbackMode(),
                 state.isFavorite(state.current()), VERSION, hover,
-                CoverCache.revision(), seekPreview, state.volume(), session.avatar());
+                CoverCache.revision(), seekPreview, state.volume(), session.avatar(),
+                state.darkMode(), state.panelScale(), state.islandScale(),
+                state.islandX(), state.islandY());
     }
 
     @Override public void render(GuiGraphics graphics, int mx, int my, float partialTick) {
@@ -159,13 +166,16 @@ public final class MusicScreen extends Screen {
         // 静态层只在页面、列表、封面等真正变化时重画；播放进度不再驱动整幅重绘。
         MusicView still = view.staticView();
         long now = System.nanoTime();
-        if (!still.equals(painted) && (painted == null || now - lastPaint >= 33_333_333L)) {
+        boolean scrollChanged = lastSettingsScroll != settingsScroll;
+        if ((!still.equals(painted) || scrollChanged) && (painted == null || now - lastPaint >= 33_333_333L)) {
             surface.update(MusicPainter.paint(still, layout, rasterScale, CoverCache::image));
             painted = still; lastPaint = now; lastCoverRevision = CoverCache.revision();
+            lastSettingsScroll = settingsScroll;
         } else if (CoverCache.revision() != lastCoverRevision && now - lastPaint >= 33_333_333L) {
             // 头像/封面异步加载完成后 revision 变化，重画一次让头像现身。
             surface.update(MusicPainter.paint(still, layout, rasterScale, CoverCache::image));
             painted = still; lastPaint = now; lastCoverRevision = CoverCache.revision();
+            lastSettingsScroll = settingsScroll;
         }
         // 动态层只有播放页的进度条与音量，尺寸很小，按进度以 10Hz 刷新。
         boolean nowPage = page == Page.NOW;
@@ -176,7 +186,7 @@ public final class MusicScreen extends Screen {
             String key = accountMode + "|" + String.join("\u0001", accountValues) + "|" + accountFocus + "|"
                     + accountStatus + "|" + accountCountdown + "|" + blink + "|" + view.loggedIn()
                     + "|" + view.nickname() + "|" + NeteaseSession.INSTANCE.uid()
-                    + "|" + NeteaseSession.INSTANCE.avatar() + "|" + CoverCache.revision();
+                    + "|" + NeteaseSession.INSTANCE.avatar() + "|" + CoverCache.revision() + "|dark=" + view.darkMode();
             if (!key.equals(paintedAccountKey)) {
                 accountSurface.update(MusicPainter.paintAccount(new MusicPainter.AccountView(
                         view.loggedIn(), view.nickname(), NeteaseSession.INSTANCE.uid(),
@@ -279,19 +289,16 @@ public final class MusicScreen extends Screen {
     }
 
     private void renderHover(GuiGraphics graphics, Hit hit) {
-        if (hit == null || (hit.action() == Action.PAGE
-                && hit.index() == (page == Page.SETTINGS ? 5 : page.ordinal()))) return;
+        if (hit == null) return;
+        // 只保留歌曲列表行的悬停高亮；导航和底栏页签不铺遮罩。
+        if (hit.action() != Action.ROW) return;
         Box box = hit.box();
-        boolean settingRow = page == Page.SETTINGS
-                && (hit.action() == Action.LYRIC || hit.action() == Action.ISLAND);
         int left = (int) Math.round(originX + box.x() * scale);
         int top = (int) Math.round(originY + box.y() * scale);
         int right = (int) Math.round(originX + (box.x() + box.w()) * scale);
         int bottom = (int) Math.round(originY + (box.y() + box.h()) * scale);
-        // 设置项和歌曲行一样用浅粉整行高亮。
-        int color = (hit.action() == Action.ROW || settingRow) ? 0x36F5D7E5 : 0x32FFFFFF;
         GuiPrimitives.roundedRect(graphics, left, top, right, bottom,
-                settingRow ? 10 : Math.min(18, (bottom - top) / 2), color);
+                Math.min(18, (bottom - top) / 2), 0x36F5D7E5);
     }
 
     private double localX(double x) {
@@ -350,6 +357,10 @@ public final class MusicScreen extends Screen {
             case QUALITY -> qualityMenuOpen = !qualityMenuOpen;
             case LYRIC -> session.lyricMode(session.lyricMode().next());
             case ISLAND -> state.toggleIsland(); case STOP -> state.stopAll();
+            case DARK_MODE -> { state.toggleDarkMode(); FrostCanvas.setDark(state.darkMode()); }
+            case PANEL_SCALE -> { state.panelScale(cyclePanelScale(state.panelScale())); rebuildScale(); }
+            case ISLAND_SCALE -> state.islandScale(cycleIslandScale(state.islandScale()));
+            case ISLAND_POS -> startIslandPosAdjust();
             case FAVORITE -> state.toggleFavoriteCurrent();
             case MODE_CYCLE -> state.playbackMode(nextMode());
             case PLAYBACK_MODE -> state.playbackMode(PlaybackMode.values()[hit.index()]);
@@ -364,9 +375,31 @@ public final class MusicScreen extends Screen {
         return all[(CloudXMusicClient.STATE.playbackMode().ordinal() + 1) % all.length];
     }
 
+    /** 主面板缩放在 0.6 / 0.7 / 0.8 / 0.9 / 1.0 之间循环。 */
+    private static float cyclePanelScale(float current) {
+        float[] steps = {0.6f, 0.7f, 0.8f, 0.9f, 1.0f};
+        int idx = 0;
+        for (int i = 0; i < steps.length; i++) if (current >= steps[i] - 0.01f) idx = i + 1;
+        return steps[idx % steps.length];
+    }
+
+    /** 灵动岛缩放在 0.6 / 0.8 / 1.0 / 1.2 / 1.4 / 1.6 之间循环。 */
+    private static float cycleIslandScale(float current) {
+        float[] steps = {0.6f, 0.8f, 1.0f, 1.2f, 1.4f, 1.6f};
+        int idx = 0;
+        for (int i = 0; i < steps.length; i++) if (current >= steps[i] - 0.01f) idx = i + 1;
+        return steps[idx % steps.length];
+    }
+
+    /** 点击「更改位置」：打开透明调整界面，由它接管鼠标并处理拖拽。 */
+    private void startIslandPosAdjust() {
+        state.setAdjustingIslandPos(true);
+        minecraft.setScreen(new IslandPositionScreen());
+    }
+
     private void setPage(Page next) {
         if (next != page) pageTransitionAt = System.nanoTime();
-        page = next; scroll = 0; seekPreview = -1; drag = null; focused = page == Page.SEARCH;
+        page = next; scroll = 0; settingsScroll = 0; seekPreview = -1; drag = null; focused = page == Page.SEARCH;
         if (focused && input.isBlank()) input = state.searchKeyword();
         if (next == Page.FAVORITES) state.ensureFavoritesLoaded();
         if (next == Page.DISCOVER) state.refreshLibraryIfNeeded();
@@ -398,6 +431,10 @@ public final class MusicScreen extends Screen {
         return super.mouseReleased(event);
     }
     @Override public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+        if (page == Page.SETTINGS && localX(mx) >= MAIN_X && sy != 0) {
+            settingsScroll = Math.max(0, Math.min(200, settingsScroll + (sy > 0 ? -1 : 1) * 28));
+            rebuildLayout(); painted = null; return true;
+        }
         if (page != Page.NOW && page != Page.SETTINGS && localX(mx) >= MAIN_X && localX(mx) <= 1050
                 && localY(my) >= ROW_TOP && localY(my) < 620 && sy != 0) {
             scroll += sy > 0 ? -1 : 1; rebuildLayout(); painted = null; return true;

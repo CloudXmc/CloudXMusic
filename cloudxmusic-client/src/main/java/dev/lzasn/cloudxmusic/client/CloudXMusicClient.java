@@ -49,6 +49,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
                 if (client.screen instanceof MusicScreen) {
                     client.setScreen(null);
                 } else if (client.screen == null) {
+                    STATE.setAdjustingIslandPos(false);
                     client.setScreen(FirstRunNotice.accepted() ? new MusicScreen()
                             : new FirstRunNoticeScreen(null,new MusicScreen()));
                 }

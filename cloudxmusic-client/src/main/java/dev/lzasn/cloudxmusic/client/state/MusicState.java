@@ -73,6 +73,13 @@ public final class MusicState {
     /** 每首歌是否有无损源，探测一次后缓存。 */
     private final Map<String, Boolean> losslessSupport = new ConcurrentHashMap<>();
 
+    // ------------------------------------------------------------ 外观配置
+    private boolean darkMode;
+    private float panelScale = .8f;
+    private float islandScale = 1f;
+    private float islandX = .5f;
+    private float islandY = .06f;
+
     // ------------------------------------------------------------ tick
 
     public void tick(Minecraft client) {
@@ -162,6 +169,31 @@ public final class MusicState {
     public void toggleIsland() {
         islandEnabled = !islandEnabled;
     }
+
+    // ------------------------------------------------------------ 外观配置存取
+
+    public boolean darkMode() { return darkMode; }
+    public void toggleDarkMode() { darkMode = !darkMode; savePersisted(); }
+    public float panelScale() { return panelScale; }
+    public void panelScale(float v) { panelScale = Math.max(.6f, Math.min(1f, v)); savePersisted(); }
+    public float islandScale() { return islandScale; }
+    public void islandScale(float v) { islandScale = Math.max(.6f, Math.min(1.6f, v)); savePersisted(); }
+    public float islandX() { return islandX; }
+    public void islandX(float v) { islandX = Math.max(0f, Math.min(1f, v)); savePersisted(); }
+    public float islandY() { return islandY; }
+    public void islandY(float v) { islandY = Math.max(0f, Math.min(1f, v)); savePersisted(); }
+    /** 拖动灵动岛时只改内存不写盘，松开后由 {@link #persistAppearance()} 统一落盘。 */
+    public void islandPosSilent(float x, float y) {
+        islandX = Math.max(0f, Math.min(1f, x));
+        islandY = Math.max(0f, Math.min(1f, y));
+    }
+    public void persistAppearance() { savePersisted(); }
+
+    /** 是否处于「调整灵动岛位置」模式（运行时状态，不持久化）。 */
+    private boolean adjustingIslandPos;
+    public boolean adjustingIslandPos() { return adjustingIslandPos; }
+    public void setAdjustingIslandPos(boolean v) { adjustingIslandPos = v; }
+
 
     public PlaybackMode playbackMode() {
         return playbackMode;
@@ -295,6 +327,11 @@ public final class MusicState {
                     playbackMode = PlaybackMode.REPEAT_LIST;
                 }
             }
+            darkMode = getBool(root, "darkMode", false);
+            panelScale = getNum(root, "panelScale", .8f);
+            islandScale = getNum(root, "islandScale", 1f);
+            islandX = getNum(root, "islandX", .5f);
+            islandY = getNum(root, "islandY", .06f);
             playing = false;
             lyric = Lyric.EMPTY;
             if (current != NOTHING) {
@@ -314,6 +351,11 @@ public final class MusicState {
         for (Track track : queue) array.add(trackToJson(track));
         root.add("queue", array);
         root.addProperty("playbackMode", playbackMode.name());
+        root.addProperty("darkMode", darkMode);
+        root.addProperty("panelScale", panelScale);
+        root.addProperty("islandScale", islandScale);
+        root.addProperty("islandX", islandX);
+        root.addProperty("islandY", islandY);
         Path path = stateFile();
         Path temp = path.resolveSibling(path.getFileName() + ".tmp");
         try {
@@ -349,6 +391,16 @@ public final class MusicState {
         String album = json.has("album") ? json.get("album").getAsString() : "";
         String cover = json.has("coverUrl") ? json.get("coverUrl").getAsString() : "";
         return new Track(title, artist, Math.max(0, duration), id, album, cover);
+    }
+
+    private static boolean getBool(JsonObject json, String key, boolean fallback) {
+        if (!json.has(key)) return fallback;
+        try { return json.get(key).getAsBoolean(); } catch (Exception ignored) { return fallback; }
+    }
+
+    private static float getNum(JsonObject json, String key, float fallback) {
+        if (!json.has(key)) return fallback;
+        try { return json.get(key).getAsFloat(); } catch (Exception ignored) { return fallback; }
     }
 
     // ------------------------------------------------------------ 控制

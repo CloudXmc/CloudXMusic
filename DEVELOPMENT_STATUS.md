@@ -1,8 +1,8 @@
 # CloudXmusic（云朵音乐盒）开发交接文档
 
-更新时间：2026-10-27
-开发者：Lzasn,xWtree,cloudfl4re,xiaota888
-当前版本：2.4.7
+更新时间：2026-10-28
+开发者：Lzasn,xWtree,xiaota888
+当前版本：2.4.9
 目标环境：Minecraft 1.21.11、Fabric 客户端、Java 21
 
 ## 1. 项目定位
@@ -30,7 +30,7 @@
 - 使用 Fabric Loom `1.17.21`。
 - 使用 Fabric Loader `0.20.1`。
 - 使用 Fabric API `0.141.6+1.21.11`。
-- 开发者信息：`Lzasn,xWtree,cloudfl4re,xiaota888`。
+- 开发者信息：`Lzasn,xWtree,xiaota888`。
 - 注册默认快捷键 `H`。
 - `H` 的职责是打开/关闭整个音乐界面，不负责播放/暂停。
 - 实现了 Minecraft 内 HUD 灵动岛原型。
@@ -495,7 +495,7 @@ GET 直接 200 返回 ID3/mp3；JLayer 也能正常解（206、44.1kHz、10.45s 
 
 ### 0.4.5 CloudXmusic 界面和首次使用保护
 
-- 项目名称为 `CloudXmusic` / `云朵音乐盒`，开发者为 `Lzasn,xWtree,cloudfl4re,xiaota888`；mod ID 和 Java 包名保持不变。
+- 项目名称为 `CloudXmusic` / `云朵音乐盒`，开发者为 `Lzasn,xWtree,xiaota888`；mod ID 和 Java 包名保持不变。
 - `MusicScreen` 以固定网格画布渲染，绘制和点击使用同一套坐标布局。
 - 内置 Inter、Noto Sans SC 及 SIL OFL 1.1 许可文本；图标由代码绘制，不依赖原版字形。
 - 登录二维码、音乐界面和灵动岛使用统一字体及磨砂材质。
@@ -666,7 +666,7 @@ gradle.properties
 字段：
 
 ```properties
-mod_version=2.4.7
+mod_version=2.4.9
 ```
 
 每次产生可交付改动都要更新版本：

@@ -4,7 +4,7 @@
   "version": "${version}",
   "name": "CloudXmusic · 云朵音乐盒",
   "description": "云朵音乐盒：Minecraft Fabric 客户端音乐播放器，提供自绘磨砂界面、网易云音乐与灵动岛歌词。",
-  "authors": ["Lzasn", "xWtree", "cloudfl4re", "xiaota888"],
+  "authors": ["Lzasn", "xWtree", "xiaota888"],
   "contact": {"sources": "https://github.com/CloudXmc/CloudXMusic"},
   "license": "GPL-3.0-only",
   "icon": "assets/cloudxmusic/icon.png",

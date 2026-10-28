@@ -32,10 +32,11 @@ public final class UiPreviewRenderer {
         Path out=Path.of(args.length==0?"../../outputs":args[0]).toAbsolutePath().normalize();
         Files.createDirectories(out);
         validateLayout();
-        render(out,"cloudxmusic-now-playing.png",Page.NOW,"",false,0);
-        render(out,"cloudxmusic-library.png",Page.DISCOVER,"",false,0);
-        render(out,"cloudxmusic-search.png",Page.SEARCH,"微光",true,1);
-        render(out,"cloudxmusic-settings.png",Page.SETTINGS,"",false,0);
+        render(out,"cloudxmusic-now-playing.png",Page.NOW,"",false,0,false);
+        render(out,"cloudxmusic-library.png",Page.DISCOVER,"",false,0,false);
+        render(out,"cloudxmusic-search.png",Page.SEARCH,"微光",true,1,false);
+        render(out,"cloudxmusic-settings.png",Page.SETTINGS,"",false,0,false);
+        render(out,"cloudxmusic-settings-dark.png",Page.SETTINGS,"",false,0,true);
         renderNotice(out);
         System.out.println("Java "+Runtime.version()+"; layout smoke check passed; previews: "+out);
     }
@@ -62,19 +63,28 @@ public final class UiPreviewRenderer {
             throw new AssertionError("transport controls do not have a hitbox");
     }
 
-    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex) throws Exception {
+    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,boolean darkMode) throws Exception {
         int width=1600,height=900;
         BufferedImage frame=new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);
         Graphics2D bg=frame.createGraphics();
-        bg.setPaint(new GradientPaint(0,0,new Color(213,231,228),0,420,new Color(241,227,232)));
-        bg.fillRect(0,0,width,height);
-        bg.setColor(new Color(117,159,137,170));
-        for(int x=0;x<width;x+=160)bg.fillRect(x,470+(x%3)*17,160,430);
-        bg.setColor(new Color(81,128,101,170));
-        for(int x=0;x<width;x+=240){bg.fillRect(x+40,420,110,280);bg.fillRect(x,475,190,425);}
-        bg.setColor(new Color(37,51,45,38));bg.fillRect(0,0,width,height);
-        bg.setColor(new Color(242,238,239,130));bg.fillRect(0,0,width,height);
+        if(darkMode){
+            bg.setPaint(new GradientPaint(0,0,new Color(22,31,34),0,520,new Color(37,30,35)));
+            bg.fillRect(0,0,width,height);
+            bg.setColor(new Color(42,82,72,115));
+            for(int x=0;x<width;x+=190)bg.fillRect(x,470+(x%3)*17,150,430);
+            bg.setColor(new Color(73,45,62,95));bg.fillRect(0,0,width,height);
+        } else {
+            bg.setPaint(new GradientPaint(0,0,new Color(213,231,228),0,420,new Color(241,227,232)));
+            bg.fillRect(0,0,width,height);
+            bg.setColor(new Color(117,159,137,170));
+            for(int x=0;x<width;x+=160)bg.fillRect(x,470+(x%3)*17,160,430);
+            bg.setColor(new Color(81,128,101,170));
+            for(int x=0;x<width;x+=240){bg.fillRect(x+40,420,110,280);bg.fillRect(x,475,190,425);}
+            bg.setColor(new Color(37,51,45,38));bg.fillRect(0,0,width,height);
+            bg.setColor(new Color(242,238,239,130));bg.fillRect(0,0,width,height);
+        }
         bg.dispose();
+        FrostCanvas.setDark(darkMode);
 
         List<Track> queue=List.of(CURRENT,TRACKS.get(0),TRACKS.get(1),TRACKS.get(2));
         MusicLayout layout=new MusicLayout(page,page==Page.NOW||page==Page.SETTINGS?0:ROWS,queue.size()-1);
@@ -90,7 +100,8 @@ public final class UiPreviewRenderer {
                 new MusicView.LyricRow("云图在远方缓缓展开","",false));
         MusicView view=new MusicView(page,CURRENT,rows,upcoming,lyrics,102,true,true,"CloudXmusic",
                 search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
-                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.4.7","",0,-1,.8f,"");
+                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.4.9","",0,-1,.8f,"",
+                darkMode,.8f,1f,.5f,.06f);
         BufferedImage canvas=MusicPainter.paint(view,layout,1d,url->null);
         Graphics2D oc=canvas.createGraphics();
         if(page==Page.NOW){
