@@ -31,7 +31,7 @@
 
 CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客户端模组，提供游戏内音乐库、网易云音乐接入、歌词与独立 HUD 灵动岛。界面使用模组内置字体和抗锯齿画布绘制。
 
-开发者：Lzasn、xWtree、cloudfl4re、xiaota888。
+开发者：Lzasn、xWtree、xiaota888。
 
 > **首次使用说明**：首次使用时须在游戏内阅读并确认免责声明。CloudXMusic 是非官方第三方客户端，与网易云音乐及其运营方无隶属、授权或背书关系。服务请求由客户端直接发送至网易云音乐相关服务及音频 CDN。登录 Cookie 以未加密文本保存在本机，请勿分享；使用时请遵守服务条款、所在地法律法规及作品版权要求。
 
@@ -113,4 +113,4 @@ Linux/macOS：
 - [jFLAC](https://repo1.maven.org/maven2/org/jflac/jflac-codec/)：FLAC 无损解码，LGPL-2.1。
 - Inter 与 Noto Sans SC 字体的许可证随资源一并提供。
 
-完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目原创代码采用 [GNU GPL-3.0-only](LICENSE)；版权归 Lzasn、xWtree、cloudfl4re、xiaota888 所有。
+完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目原创代码采用 [GNU GPL-3.0-only](LICENSE)；版权归 Lzasn、xWtree、xiaota888 所有。
