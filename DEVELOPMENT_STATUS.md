@@ -1,8 +1,8 @@
-# CloudXmusic（云朵音乐盒）开发交接文档
+# CloudXMusic（云朵音乐盒）开发交接文档
 
-更新时间：2026-10-28
+更新时间：2026-10-29
 开发者：Lzasn,xWtree,xiaota888
-当前版本：2.4.9
+当前版本：2.4.10
 目标环境：Minecraft 1.21.11、Fabric 客户端、Java 21
 
 ## 1. 项目定位
@@ -20,6 +20,40 @@
 当前仓库只完成了客户端原型，Folia 服务端和客户端网络协议尚未实现。
 
 ## 2. 当前实际完成情况
+
+### 2.4.10 当前版本（2026-10-29）
+
+- 明暗主题统一由 `FrostCanvas.setDark(boolean)` 管理，账号页独立纹理缓存键包含 `darkMode`，切换主题会立即重绘。
+- 设置页按「灵动岛 / 界面 / 关于」分组并支持滚动；关于页使用本地打包的 GitHub 公开头像生成开发者列表。
+- 开发者卡片使用左侧直角、右侧圆角的轮廓，粉色强调线从顶到底拉直，未添加额外阴影。
+- 灵动岛位置调整改由透明 `IslandPositionScreen` 接管鼠标，HUD 只负责绘制遮罩和提示。
+- `IslandPositionScreen.renderBackground(...)` 为空实现，避免原版菜单模糊把 HUD 整帧糊住；拖动位置在 `removed()` 时持久化。
+- 退出登录顺序为 `NeteaseSession.logout()` → `MusicState.clearAccountData()`。
+- `clearAccountData()` 会停止播放器，清空每日推荐、收藏列表、收藏 ID 缓存、收藏变更和播放队列，将当前歌曲恢复为 `NOTHING` 后写入 `state.json`。
+- `startNetease()` 在异步回调中检查当前歌曲，退出登录或切歌后旧请求不会启动播放。
+- `refreshLibrary()`、`loadPlaylist()`、`loadFavorites()` 的异步回调会检查登录态，避免退出后旧响应重新填充列表。
+- 暗黑模式下账号登录方式卡片使用主题色底、边框和文字，禁用项单独降低对比度。
+- `:cloudxmusic-client:build`、`:cloudxmusic-client:test` 和 `:cloudxmusic-client:renderUiPreview` 已通过；离线预览包含设置页和账号页的日间/暗黑版本。
+
+#### 2.4.10 追加（品牌、导航与动效）
+
+- 品牌统一为 `CloudXMusic`（大写 M）：`fabric.mod.json`、语言文件、免责声明、README/文档全部同步；`archives_base_name` 与 `rootProject.name` 一并改为大写，产物名变为 `CloudXMusic-<version>.jar`。mod id `cloudxmusic`、包名 `dev.lzasn.cloudxmusic`、资源路径 `assets/cloudxmusic/` 保持不动。
+- `MusicView.Page` 在 `QUEUE` 之后新增 `ROOM`（音乐房间），导航 index 5，settings 的命中 index 顺延为 6。该页当前是占位页，`MusicLayout` 对它不注册任何行命中区，避免点击空白取到空 `rows` 越界。
+- 导航区抽出 `NAV_TOP/NAV_BOTTOM/NAV_H/NAV_STEP/NAV_COUNT` 常量并支持 `navScroll`；账号组整体下移 42px（分隔线 412、标签 437、卡片 442）。当前 6 项刚好放下，`navMaxScroll()` 为 0，加项后才会真正滚动。
+- 主面板升降：`MusicScreen` 用 `openAt/closeAt/closing/closeDone` + `slideProgress()`，420ms、四次方缓出，开与关共用同一条曲线（关闭取反）。切页不再缩放整块面板——之前那版会让点导航时整窗跳一下。
+- 灵动岛过渡独立于面板：`TRANSITION_NANOS = 450ms`、二次方缓出。中部（`|x-0.5|≤0.22 && |y-0.5|≤0.22`）走缩放，其余朝最近边缘飞入飞出，位移距离按岛到该边缘的实际距离算。
+- 关闭键改为 `KeyMapping.matches(KeyEvent)` 判断，左下角提示通过 `openKeyLabel()` 读取 `getTranslatedKeyMessage()`；`MusicView` 末尾新增 `openKey` 字段承载该文案。
+- `MusicScreen.renderBackground(...)` 覆写为空实现：原版默认实现会额外铺一层固定透明度的模糊+暗色，导致面板关闭时遮罩「慢半拍」。
+
+### 发布流程
+
+发版分两次推送，避免 main 与 tag 两条流水线并行：
+
+1. 更新 `gradle.properties` 的 `mod_version` 与 `CHANGELOG.md` 中 `## <version>` 条目（CI 会校验两者必须一致）。
+2. `git push origin main` —— 不触发构建（`build.yml` 只监听 tag 与 PR）。
+3. `git tag v<version> && git push origin v<version>` —— 触发构建并发布 Release，正文由 CHANGELOG 中该版本的段落自动抽取。
+
+注意：tag 名必须与 `mod_version` 完全对应，否则 `Validate changelog entry` 步骤会失败。
 
 ### 已完成
 
@@ -487,15 +521,15 @@ GET 直接 200 返回 ID3/mp3；JLayer 也能正常解（206、44.1kHz、10.45s 
 
 ### 已知限制
 
-- 只支持 mp3 三档音质；**无损/Hi-Res 是 flac，当前解码器不支持**（要做得再加 jFLAC）。
+- 只支持 mp3 三档音质；无损（FLAC）已于 2.4.10 下线且不再计划支持——FLAC 是 VBR、没有帧索引，seek 只能从文件头逐帧解码。
 - 扫码登录已在游戏内绘制二维码；`0.3.6` 已补齐 803 body Cookie 导入，但仍需实机确认扫码确认后的状态更新。
 - 播放依赖 `javax.sound.sampled`（java.desktop 模块）；官方启动器自带完整 JDK 没问题，
   但如果是被裁剪过的 JRE，会在 `AudioSystem.getLine` 处报错。
 - 登录接口（weapi/eapi）的验证码链路已实测成功；密码/邮箱登录仍可能受网易风控影响，失败时看 `code`。
 
-### 0.4.5 CloudXmusic 界面和首次使用保护
+### 0.4.5 CloudXMusic 界面和首次使用保护
 
-- 项目名称为 `CloudXmusic` / `云朵音乐盒`，开发者为 `Lzasn,xWtree,xiaota888`；mod ID 和 Java 包名保持不变。
+- 项目名称为 `CloudXMusic` / `云朵音乐盒`，开发者为 `Lzasn,xWtree,xiaota888`；mod ID 和 Java 包名保持不变。
 - `MusicScreen` 以固定网格画布渲染，绘制和点击使用同一套坐标布局。
 - 内置 Inter、Noto Sans SC 及 SIL OFL 1.1 许可文本；图标由代码绘制，不依赖原版字形。
 - 登录二维码、音乐界面和灵动岛使用统一字体及磨砂材质。
@@ -503,7 +537,7 @@ GET 直接 200 返回 ID3/mp3；JLayer 也能正常解（206、44.1kHz、10.45s 
 - 封面缓存限制条目、并发下载和响应字节；客户端退出时取消下载并释放 UI 纹理。
 - Java 21.0.7 下 `:cloudxmusic-client:build` 和离线布局测试通过，导出页面预览到 `outputs/`。
 - 尚未在 Minecraft 1.21.11 游戏实例中进行人工交互、性能或登录实测。
-- 构建产物：`cloudxmusic-client/build/libs/CloudXmusic-0.4.5.jar`。
+- 构建产物：`cloudxmusic-client/build/libs/CloudXMusic-0.4.5.jar`。
 
 ## 3. 当前未完成和必须注意的地方
 
@@ -666,7 +700,7 @@ gradle.properties
 字段：
 
 ```properties
-mod_version=2.4.9
+mod_version=2.4.10
 ```
 
 每次产生可交付改动都要更新版本：
@@ -744,7 +778,7 @@ public interface AudioPlayer {
 后续再建立多模块结构：
 
 ```text
-CloudXmusic/
+CloudXMusic/
 ├── music-protocol/
 ├── cloudxmusic-client/
 └── music-server/
@@ -792,7 +826,7 @@ repeatMode
 
 ### 第一优先级（下一步）
 
-用 `CloudXmusic-0.4.5.jar` 做实机验收：
+用 `CloudXMusic-0.4.5.jar` 做实机验收：
 
 - 启动日志应出现“已迁移旧版网易云登录 Cookie”，且 `cookies.json` 含 `MUSIC_U`。
 - `/cxm status` 显示已登录；连续重启客户端后仍显示已登录。
@@ -819,7 +853,11 @@ repeatMode
 
 ### 第三优先级
 
-补 FLAC/Hi-Res 解码（jFLAC）、歌词滚动动画和更完整的播放器错误提示。
+补歌词滚动动画和更完整的播放器错误提示。
+
+> 无损（FLAC）已于 2.4.10 下线：FLAC 是 VBR，没有帧索引，seek 只能从文件头逐帧解码，
+> 跳一首 4 分钟歌的第 3 分钟要重下 3/4 的文件，实测表现为「点进度条后卡住」。
+> jFLAC 依赖与音质菜单里的「无损」档一并移除；旧配置里的 `lossless` 会自动回落到「极高」。
 
 ### 第四优先级
 

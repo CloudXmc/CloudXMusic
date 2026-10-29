@@ -26,10 +26,29 @@ public final class IslandPainter {
             artwork(c, cover);
             c.text(view.title(),57,26,13,true,INK,231);
             c.text(view.subtitle(),57,44,11,false,MUTED,231);
-            c.right(view.time(),338,35,11,MUTED);
+            // 倒计时加粗并用主文字色：11px 常规字重 + 次级灰在半透明药丸上几乎看不清。
+            c.right(view.time(),338,35,11,true,INK);
             // 轨道与文字栏对齐（标题左缘 57、时间右缘 338），不再横贯整条药丸。
             c.round(57,52,281,2,1,new Color(230,204,217,170));
             c.round(57,52,281*Math.max(0,Math.min(1000,view.progress()))/1000.0,2,1,PINK);
+        }
+        return image;
+    }
+
+    /**
+     * 调整位置模式专用：与播放态共用同一块药丸材质，但只保留一行居中的大字提示。
+     * 不画封面、时间和进度轨道，避免空轨道在纯文字药丸里被看成一条多余的横线。
+     */
+    public static BufferedImage paintAdjustment(double scale) {
+        BufferedImage image = new BufferedImage((int)Math.ceil((WIDTH+2*PAD)*scale),
+                (int)Math.ceil((HEIGHT+2*PAD)*scale),BufferedImage.TYPE_INT_ARGB);
+        try(FrostCanvas c=new FrostCanvas(image,scale)) {
+            c.g.translate(PAD,PAD);
+            c.shadow(0,0,WIDTH,HEIGHT,30,20,0,0,new Color(241,136,178,24));
+            c.glass(0,0,WIDTH,HEIGHT,30,true);
+            // 单行居中：字号明显大于播放态标题，基线按视觉重心对齐药丸中轴。
+            float size = 22;
+            c.center("拖动调整位置", WIDTH/2f, HEIGHT/2f + size*.36f, size, true, INK, WIDTH - 24);
         }
         return image;
     }

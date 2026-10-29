@@ -12,8 +12,9 @@ public record MusicView(Page page, Track current, List<Track> tracks, List<Track
                         boolean islandEnabled, PlaybackMode playbackMode, boolean favorite,
                         String version, String hover,
                         int coverRevision, float seekPreview, float volume, String avatarUrl,
-                        boolean darkMode, float panelScale, float islandScale, float islandX, float islandY) {
-    public enum Page { NOW, DISCOVER, SEARCH, FAVORITES, QUEUE, SETTINGS, ACCOUNT }
+                        boolean darkMode, float panelScale, float islandScale, float islandX, float islandY,
+                        String openKey) {
+    public enum Page { NOW, DISCOVER, SEARCH, FAVORITES, QUEUE, ROOM, SETTINGS, ACCOUNT }
     public record LyricRow(String text, String translation, boolean active) {}
     public float position() { return seekPreview >= 0 ? seekPreview : positionTenths / 10f; }
     public float progress() { return Math.max(0, Math.min(1, position() / Math.max(1, current.durationSeconds()))); }
@@ -27,6 +28,6 @@ public record MusicView(Page page, Track current, List<Track> tracks, List<Track
         return new MusicView(page, current, tracks, queue, List.of(), 0, playing, loggedIn, nickname,
                 search, focused, cursor, status, quality, lyricMode, islandEnabled, playbackMode,
                 favorite, version, hover, coverRevision, -1f, 0f, avatarUrl, darkMode, panelScale, islandScale,
-                islandX, islandY);
+                islandX, islandY, openKey);
     }
 }

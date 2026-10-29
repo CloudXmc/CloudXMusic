@@ -48,6 +48,23 @@ public final class UiIcons {
             case "list" -> { for (int y = -6; y <= 6; y += 6) { g.fill(new Ellipse2D.Double(-9,y-1,2,2)); g.drawLine(-3,y,9,y); } }
             case "settings" -> { g.drawLine(-9,-5,9,-5); g.drawLine(-9,5,9,5); g.setColor(new Color(255,250,253)); g.fill(new Ellipse2D.Double(-7,-8,6,6)); g.fill(new Ellipse2D.Double(2,2,6,6)); g.setColor(color); g.draw(new Ellipse2D.Double(-7,-8,6,6)); g.draw(new Ellipse2D.Double(2,2,6,6)); }
             case "user" -> { g.draw(new Ellipse2D.Double(-4,-9,8,8)); g.draw(new Arc2D.Double(-9,2,18,14,0,180,Arc2D.OPEN)); }
+            // 音乐房间：热咖啡，梯形杯身 + 右把手 + 两缕热气。
+            // 坐标必须收在 ±12 内（画布按 size/24 缩放，越界会被裁成半个杯子）。
+            case "coffee" -> {
+                Path2D cup = new Path2D.Double();
+                cup.moveTo(-7,-3); cup.lineTo(7,-3); cup.lineTo(5,7); cup.lineTo(-5,7); cup.closePath();
+                g.draw(cup);
+                g.draw(new Arc2D.Double(5,-2,6,8,-90,180,Arc2D.OPEN));
+                g.draw(new QuadCurve2D.Double(-3,-6,-1.5,-8.5,-3,-11));
+                g.draw(new QuadCurve2D.Double(1.5,-6,3,-8.5,1.5,-11));
+            }
+            // 一起听：两个人形，前置一个后置一个，靠尺寸差区分前后。坐标收在 ±12 内。
+            case "group" -> {
+                g.draw(new Ellipse2D.Double(-9,-9,7,7));
+                g.draw(new Arc2D.Double(-12,1,14,13,0,180,Arc2D.OPEN));
+                g.draw(new Ellipse2D.Double(2,-6,6,6));
+                g.draw(new Arc2D.Double(-1,3,11,11,0,180,Arc2D.OPEN));
+            }
             case "close", "remove" -> { g.drawLine(-5,-5,5,5); g.drawLine(5,-5,-5,5); }
             case "plus" -> { g.drawLine(-6,0,6,0); g.drawLine(0,-6,0,6); }
             case "note" -> {

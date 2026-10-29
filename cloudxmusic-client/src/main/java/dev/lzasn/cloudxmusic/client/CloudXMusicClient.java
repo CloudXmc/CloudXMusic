@@ -81,6 +81,29 @@ public final class CloudXMusicClient implements ClientModInitializer {
         DynamicIslandHud.register();
     }
 
+    /**
+     * 这次按下的键是不是「打开/关闭音乐盒」的绑定键。
+     *
+     * <p>面板打开期间，原版不会再给 KeyMapping 记账（键盘事件优先交给 Screen），
+     * 所以 consumeClick() 收不到，必须在 Screen.keyPressed 里自己比对绑定值，
+     * 否则改了快捷键也永远只有默认的 H 能关。</p>
+     */
+    public static boolean matchesOpenKey(net.minecraft.client.input.KeyEvent event) {
+        KeyMapping mapping = openGuiKey;
+        return mapping != null && mapping.matches(event);
+    }
+
+    /** 绑定键的显示名（H / M / …）；离线预览或未初始化时回落默认值。 */
+    public static String openKeyLabel() {
+        KeyMapping mapping = openGuiKey;
+        if (mapping == null) return "H";
+        try {
+            return mapping.getTranslatedKeyMessage().getString();
+        } catch (RuntimeException e) {
+            return "H";
+        }
+    }
+
     public static Minecraft client() {
         return Minecraft.getInstance();
     }

@@ -55,7 +55,7 @@ public final class MusicScreen extends Screen {
     private String paintedQualityKey;
     private String paintedAccountKey;
     private Page page = Page.NOW;
-    private int scroll, settingsScroll, originX, originY;
+    private int scroll, settingsScroll, navScroll, originX, originY;
     private double scale, rasterScale;
     private String input = "";
     private boolean focused, selectAll, blurUnavailable;
@@ -65,6 +65,26 @@ public final class MusicScreen extends Screen {
     private int lastCoverRevision;
     private int lastSettingsScroll;
     private long pageTransitionAt;
+    /**
+     * 切页不再缩放/位移整块面板——整窗一缩一弹看着像「跳一下」。
+     * 面板本身保持不动，只有右侧内容随纹理更新，这是当前单纹理结构下最不打扰的做法。
+     */
+    private static final double PAGE_SCALE_FROM = 1.0, PAGE_SCALE_DELTA = 0.0;
+    private static final long PAGE_TRANSITION_NANOS = 200_000_000L;
+    private static final float PAGE_SHIFT_X = 0, PAGE_SHIFT_Y = 0;
+
+    /** 打开/关闭：面板从屏幕底部滑入，接近居中位置时减速停住；关闭时加速滑出。 */
+    private static final long SLIDE_NANOS = 420_000_000L;
+    private long openAt;
+    private long closeAt;
+    private boolean closing;
+    private boolean closeDone;
+    /** 关闭动画进行中：HUD 据此提前展开，不用等界面彻底消失。 */
+    private static volatile boolean panelClosing;
+
+    public static boolean panelClosing() {
+        return panelClosing;
+    }
     private MusicView painted, paintedDynamic;
     private List<MusicView.LyricRow> paintedLyrics;
     private long lyricAnimStart;
@@ -85,6 +105,31 @@ public final class MusicScreen extends Screen {
         // 面板缩放由设置页滑块控制（0.6~1.0），始终屏幕居中。
         FrostCanvas.setDark(state.darkMode());
         rebuildScale();
+        openAt = System.nanoTime();
+    }
+
+    /** 关闭：先播下滑动画，动画结束再真正退出界面。 */
+    @Override public void onClose() {
+        if (closing) return;
+        closing = true;
+        panelClosing = true;
+        closeAt = System.nanoTime();
+    }
+
+    /** 0 表示面板在居中位置；打开过程中从 1 递减到 0，关闭时从 0 递增到 1。 */
+    private double slideProgress(long now) {
+        // 开/关共用同一条缓出曲线，只是方向相反：都是先快后慢。
+        if (closing) {
+            double t = Math.min(1, (now - closeAt) / (double) SLIDE_NANOS);
+            return 1 - Math.pow(1 - t, 4);
+        }
+        if (openAt == 0) return 0;
+        double t = Math.min(1, (now - openAt) / (double) SLIDE_NANOS);
+        return Math.pow(1 - t, 4);
+    }
+
+    private float slideOffset(long now) {
+        return (float) (slideProgress(now) * height * 1.15);
     }
 
     /** 重算面板缩放与居中位置（面板缩放滑块变化时调用）。 */
@@ -118,7 +163,7 @@ public final class MusicScreen extends Screen {
             if (!track.equals(state.current())) next.add(track);
         }
         upcoming = List.copyOf(next);
-        layout = new MusicLayout(page, rows.size(), upcoming.size(), settingsScroll);
+        layout = new MusicLayout(page, rows.size(), upcoming.size(), settingsScroll, navScroll);
     }
 
     private MusicView snapshot(String hover) {
@@ -147,15 +192,28 @@ public final class MusicScreen extends Screen {
                 state.isFavorite(state.current()), VERSION, hover,
                 CoverCache.revision(), seekPreview, state.volume(), session.avatar(),
                 state.darkMode(), state.panelScale(), state.islandScale(),
-                state.islandX(), state.islandY());
+                state.islandX(), state.islandY(), CloudXMusicClient.openKeyLabel());
     }
 
     @Override public void render(GuiGraphics graphics, int mx, int my, float partialTick) {
+        long now = System.nanoTime();
+        // 动画结束后交回主线程切界面：在 render 里直接 setScreen 会让鼠标捕获与 HUD
+        // 的恢复推迟到下一个渲染阶段，看起来就是「关掉后光标和灵动岛慢半拍」。
+        // 遮罩此时 alpha 已经归零，多留一 tick 不会露出任何东西。
+        if (closing && !closeDone && now - closeAt >= SLIDE_NANOS) {
+            closeDone = true;
+            if (minecraft != null) minecraft.execute(() -> minecraft.setScreen(null));
+        }
         rebuildLayout();
-        if (!blurUnavailable && minecraft.level != null) {
+        // 关闭时不再铺原版模糊：renderBlurredBackground 内部带一层固定不透明度的暗色，
+        // 无法随动画渐隐，只要还在调用，遮罩就一定比面板晚走。改为只用可调 alpha 的纯色遮罩，
+        // 让它和面板共用同一条 slideProgress 曲线退场。
+        double slide = closing ? slideProgress(now) : 0;
+        if (!blurUnavailable && minecraft.level != null && !closing) {
             try { renderBlurredBackground(graphics); } catch (RuntimeException e) { blurUnavailable = true; }
         }
-        graphics.fill(0, 0, width, height, 0x192C2430);
+        int dim = (int) Math.round(0x19 * (1 - slide));
+        graphics.fill(0, 0, width, height, (dim << 24) | 0x2C2430);
         Hit hover = layout.hit(localX(mx), localY(my));
         MusicView view = snapshot("");
         // 老版本持久化的账号可能没有头像地址，静默补一次。
@@ -165,7 +223,6 @@ public final class MusicScreen extends Screen {
         }
         // 静态层只在页面、列表、封面等真正变化时重画；播放进度不再驱动整幅重绘。
         MusicView still = view.staticView();
-        long now = System.nanoTime();
         boolean scrollChanged = lastSettingsScroll != settingsScroll;
         if ((!still.equals(painted) || scrollChanged) && (painted == null || now - lastPaint >= 33_333_333L)) {
             surface.update(MusicPainter.paint(still, layout, rasterScale, CoverCache::image));
@@ -223,22 +280,30 @@ public final class MusicScreen extends Screen {
         if (nowPage && qualityMenuOpen) {
             int hoverRow = qualityHover(mx, my);
             int selected = NeteaseSession.INSTANCE.quality().ordinal();
-            Boolean support = state.losslessSupport(view.current().id());
-            boolean losslessOk = support == null || support;
-            String key = selected + "|" + hoverRow + "|" + losslessOk;
+            String key = selected + "|" + hoverRow;
             if (!key.equals(paintedQualityKey)) {
-                qualitySurface.update(MusicPainter.paintQualityMenu(selected, hoverRow, losslessOk, rasterScale));
+                qualitySurface.update(MusicPainter.paintQualityMenu(selected, hoverRow, rasterScale));
                 paintedQualityKey = key;
             }
         }
         int x = (int) Math.round(originX - PAD * scale), y = (int) Math.round(originY - PAD * scale);
+        int drawW = (int) Math.round((WIDTH + 2 * PAD) * scale);
+        int drawH = (int) Math.round((HEIGHT + 2 * PAD) * scale);
         double eased = transitionEased(now);
-        float transitionScale = (float) (0.985 + eased * 0.015);
-        float shiftX = (float) (10 * scale * (1 - eased)), shiftY = (float) (5 * scale * (1 - eased));
+        float transitionScale = (float) (PAGE_SCALE_FROM + eased * PAGE_SCALE_DELTA);
+        float shiftX = (float) (PAGE_SHIFT_X * scale * (1 - eased));
+        float shiftY = (float) (PAGE_SHIFT_Y * scale * (1 - eased));
+        // 围绕面板中心缩放：若以左上角为原点，缩小再放大时会朝右下「甩」，回弹方向是歪的。
+        float ccx = (float) (originX + WIDTH * scale / 2.0);
+        float ccy = (float) (originY + HEIGHT * scale / 2.0);
+        // 滑入/滑出统一加在矩阵最外层，不影响面板内部任何布局。
+        float slideY = slideOffset(now);
         graphics.pose().pushMatrix();
-        graphics.pose().translate(shiftX, shiftY);
+        graphics.pose().translate(0, slideY);
+        graphics.pose().translate(ccx + shiftX, ccy + shiftY);
         graphics.pose().scale(transitionScale, transitionScale);
-        surface.draw(graphics, x, y, (int) Math.round((WIDTH + 2 * PAD) * scale), (int) Math.round((HEIGHT + 2 * PAD) * scale));
+        graphics.pose().translate(-ccx, -ccy);
+        surface.draw(graphics, x, y, drawW, drawH);
         if (nowPage) {
             Box cover = coverRegion();
             coverSurface.draw(graphics, (int) Math.round(originX + cover.x() * scale),
@@ -247,10 +312,12 @@ public final class MusicScreen extends Screen {
             // 歌词整体在行切换时向上滑入一行，靠裁剪把滑动过程限制在歌词区内。
             Box lyric = lyricRegion();
             double lt = lyricAnimStart == 0 ? 1 : Math.min(1, (now - lyricAnimStart) / (double) LYRIC_ANIM_NANOS);
-            double ease = 1 - Math.pow(1 - lt, 3);
+            // 行切换时带一点回弹，滑到位后轻微下沉再停住。
+            double lc1 = 1.1, lc3 = lc1 + 1, lu = lt - 1;
+            double ease = 1 + lc3 * lu * lu * lu + lc1 * lu * lu;
             double lyricOffset = (1 - ease) * 48 * scale;
-            int lx = (int) Math.round((originX + lyric.x() * scale) * transitionScale + shiftX);
-            int ly = (int) Math.round((originY + lyric.y() * scale) * transitionScale + shiftY);
+            int lx = (int) Math.round(ccx + (originX + lyric.x() * scale - ccx) * transitionScale + shiftX);
+            int ly = (int) Math.round(ccy + (originY + lyric.y() * scale - ccy) * transitionScale + shiftY);
             int lw = (int) Math.round(lyric.w() * scale * transitionScale);
             int lh = (int) Math.round(lyric.h() * scale * transitionScale);
             graphics.enableScissor(lx, ly, lx + lw, ly + lh);
@@ -282,10 +349,22 @@ public final class MusicScreen extends Screen {
         super.render(graphics, mx, my, partialTick);
     }
 
+    /**
+     * 遮罩统一由 render() 按动画进度自绘，这里必须是空实现。
+     *
+     * <p>原版 Screen.render() 会自动调 renderBackground()，默认实现又铺一次模糊 + 暗色，
+     * 那层的透明度写死在 MC 里、也不认 {@code closing}。只要它还在，面板滑走后画面依然
+     * 被压着发糊——这正是「模糊层慢半拍」的来源。</p>
+     */
+    @Override public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    }
+
     private double transitionEased(long now) {
         if (pageTransitionAt == 0) return 1;
-        double t = Math.min(1, Math.max(0, (now - pageTransitionAt) / 220_000_000.0));
-        return 1 - Math.pow(1 - t, 3);
+        double t = Math.min(1, Math.max(0, (now - pageTransitionAt) / (double) PAGE_TRANSITION_NANOS));
+        // Q 弹：末段冲过 1 再回落，缩放与位移都会反向弹一下（ease-out-back）。
+        double c1 = 2.4, c3 = c1 + 1, u = t - 1;
+        return 1 + c3 * u * u * u + c1 * u * u;
     }
 
     private void renderHover(GuiGraphics graphics, Hit hit) {
@@ -303,14 +382,21 @@ public final class MusicScreen extends Screen {
 
     private double localX(double x) {
         double eased = transitionEased(System.nanoTime());
-        return ((x - 10 * scale * (1 - eased)) / (0.985 + eased * 0.015) - originX) / scale;
+        double s = PAGE_SCALE_FROM + eased * PAGE_SCALE_DELTA;
+        double shift = PAGE_SHIFT_X * scale * (1 - eased);
+        double ccx = originX + WIDTH * scale / 2.0;
+        return ((x - shift - ccx) / s + ccx - originX) / scale;
     }
     private double localY(double y) {
         double eased = transitionEased(System.nanoTime());
-        return ((y - 5 * scale * (1 - eased)) / (0.985 + eased * 0.015) - originY) / scale;
+        double s = PAGE_SCALE_FROM + eased * PAGE_SCALE_DELTA;
+        double shift = PAGE_SHIFT_Y * scale * (1 - eased);
+        double ccy = originY + HEIGHT * scale / 2.0;
+        return ((y - slideOffset(System.nanoTime()) - shift - ccy) / s + ccy - originY) / scale;
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean handled) {
+        if (closing) return true;
         if (event.button() != 0) return super.mouseClicked(event, handled);
         rebuildLayout();
         // 只有点在账号内容区才拦下，否则导航和关闭按钮还要能点。
@@ -320,11 +406,8 @@ public final class MusicScreen extends Screen {
         }
         if (page == Page.NOW && qualityMenuOpen) {
             double lx = localX(event.x()), ly = localY(event.y());
-            Boolean support = state.losslessSupport(state.current().id());
-            boolean losslessOk = support == null || support;
             for (int i = 0; i < NeteaseQuality.values().length; i++) {
                 if (!MusicPainter.qualityRow(i).contains(lx, ly)) continue;
-                if (i == 3 && !losslessOk) return true;   // 没有无损源，点了没反应
                 NeteaseSession.INSTANCE.quality(NeteaseQuality.values()[i]);
                 state.applyQuality();
                 qualityMenuOpen = false;
@@ -431,6 +514,14 @@ public final class MusicScreen extends Screen {
         return super.mouseReleased(event);
     }
     @Override public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+        if (closing) return true;
+        // 导航区滚动：项目多于可视高度时才生效，避免压到下面的账号组。
+        int navMax = MusicLayout.navMaxScroll();
+        if (navMax > 0 && localX(mx) < 252 && sy != 0
+                && localY(my) >= MusicLayout.NAV_TOP - 8 && localY(my) <= MusicLayout.NAV_BOTTOM + 8) {
+            navScroll = Math.max(0, Math.min(navMax, navScroll + (sy > 0 ? -1 : 1) * 22));
+            rebuildLayout(); painted = null; return true;
+        }
         if (page == Page.SETTINGS && localX(mx) >= MAIN_X && sy != 0) {
             settingsScroll = Math.max(0, Math.min(200, settingsScroll + (sy > 0 ? -1 : 1) * 28));
             rebuildLayout(); painted = null; return true;
@@ -442,6 +533,7 @@ public final class MusicScreen extends Screen {
         return super.mouseScrolled(mx, my, sx, sy);
     }
     @Override public boolean keyPressed(KeyEvent event) {
+        if (closing) return true;
         if (page == Page.ACCOUNT && accountFocus >= 0) {
             if (event.isEscape()) { accountFocus = -1; accountSelectAll = false; return true; }
             if (event.key() == GLFW.GLFW_KEY_TAB) {
@@ -475,7 +567,8 @@ public final class MusicScreen extends Screen {
                 selectAll = false; return true;
             }
         } else {
-            if (event.key() == GLFW.GLFW_KEY_H) { onClose(); return true; }
+            // 跟随按键绑定：改成 M 就只认 M，不再写死 H。
+            if (CloudXMusicClient.matchesOpenKey(event)) { onClose(); return true; }
             if (event.key() == GLFW.GLFW_KEY_SPACE) { state.togglePlaying(); return true; }
         }
         return super.keyPressed(event);
@@ -666,6 +759,7 @@ public final class MusicScreen extends Screen {
 
     private void logoutAccount() {
         NeteaseSession.INSTANCE.logout();
+        state.clearAccountData();
         accountStatus = "已退出登录";
         accountMode = 0;
         accountFocus = -1;
@@ -694,6 +788,7 @@ public final class MusicScreen extends Screen {
         state.search(input.trim()); scroll = 0; focused = false; selectAll = false; painted = null;
     }
     @Override public void removed() {
+        panelClosing = false;
         surface.close(); overlay.close(); lyricSurface.close(); coverSurface.close();
         accountSurface.close(); qualitySurface.close();
         painted = null; paintedDynamic = null; paintedLyrics = null; paintedCoverKey = null; paintedAccountKey = null;

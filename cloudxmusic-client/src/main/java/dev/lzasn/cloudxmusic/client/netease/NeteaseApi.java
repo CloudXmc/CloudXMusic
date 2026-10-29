@@ -336,16 +336,12 @@ public final class NeteaseApi {
         }
     }
 
+    /** {@code /api/likelist} 返回 404「接口未找到」后置位，之后直接走歌单，不再每次白撞一次。 */
+    private static volatile boolean likeListUnavailable;
+
     /** 同时返回完整收藏 id 集和用于展示的限量歌曲详情。 */
     public static LikedTracks likedTracksAndIds(String uid, int limit) throws Exception {
-        List<String> ids;
-        try {
-            ids = likedIds(uid);
-        } catch (Exception primary) {
-            // /api/likelist 对部分账号会返回「参数异常」，退到「我喜欢的音乐」歌单取 id。
-            CloudXMusicClient.LOGGER.warn("likelist 不可用，改用收藏歌单兜底：{}", primary.getMessage());
-            ids = likedIdsFromPlaylist(uid);
-        }
+        List<String> ids = fetchLikedIds(uid);
         if (ids.isEmpty()) return new LikedTracks(Set.of(), List.of());
         Set<String> likedIds = new LinkedHashSet<>(ids);
         List<String> all = ids.subList(0, Math.min(limit, ids.size()));
@@ -365,6 +361,24 @@ public final class NeteaseApi {
             for (JsonElement song : songs) result.add(trackOf(song.getAsJsonObject()));
         }
         return new LikedTracks(likedIds, result);
+    }
+
+    /**
+     * 取收藏 id：优先 {@code /api/likelist}，失败后改用「我喜欢的音乐」歌单。
+     *
+     * <p>该接口 2026-10 起对普通账号返回 404「接口未找到」，所以第一次失败后就记下来，
+     * 之后直接走歌单，避免每次刷新收藏都先白撞一次 404。</p>
+     */
+    private static List<String> fetchLikedIds(String uid) throws Exception {
+        if (!likeListUnavailable) {
+            try {
+                return likedIds(uid);
+            } catch (Exception primary) {
+                likeListUnavailable = true;
+                CloudXMusicClient.LOGGER.warn("likelist 不可用，改用收藏歌单：{}", primary.getMessage());
+            }
+        }
+        return likedIdsFromPlaylist(uid);
     }
 
     /** {@code /api/likelist}：只返回收藏的歌曲 id。 */

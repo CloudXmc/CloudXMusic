@@ -2,7 +2,7 @@
 
 ## 项目自身代码许可
 
-CloudXmusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [LICENSE](LICENSE)。该许可不改变下列第三方组件各自的许可证；字体资源也继续遵循随文件提供的 SIL Open Font License 1.1。
+CloudXMusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [LICENSE](LICENSE)。该许可不改变下列第三方组件各自的许可证；字体资源也继续遵循随文件提供的 SIL Open Font License 1.1。
 
 ## 当前状态：不内置任何第三方**模组**（但内置 MP3 解码与二维码库）
 
@@ -24,15 +24,6 @@ CloudXmusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 - 许可：**Apache-2.0**
 - 来源：https://github.com/zxing/zxing
 - 说明：只用来把扫码登录链接编码成二维码矩阵，未做修改。
-
-## 内置代码：jFLAC (FLAC 解码)
-
-- 文件：`libs/jflac-codec-1.5.2.jar`，类被合并进产物 jar（`org.jflac.*`）
-- 版本：1.5.2
-- 作者：Preston Sandberg 及 jFLAC 项目贡献者
-- 许可：**LGPL-2.1**
-- 来源：https://repo1.maven.org/maven2/org/jflac/jflac-codec/
-- 说明：只用于把网易云「无损」档位的 FLAC 流实时解码成 PCM 交给 `SourceDataLine`，未做修改。
 
 ## 界面资源
 
@@ -62,7 +53,7 @@ CloudXmusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 
 ## 品牌
 
-- 英文名：CloudXmusic
+- 英文名：CloudXMusic
 - 中文名：云朵音乐盒
 - 开发者：Lzasn,xWtree,xiaota888
 
@@ -72,3 +63,4 @@ CloudXmusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 | --- | --- | --- |
 | 0.1.8 ~ 0.2.3 | Modern UI (mVUS fork, LGPL-3.0) + Forge Config API Port (LGPL-3.0)，jar-in-jar | 0.2.4 起移除，`libs/nested/` 下残留的 jar 不参与构建，可删 |
 | 0.2.5 ~ 0.2.8 | Microsoft Fluent Emoji 3D PNG（MIT），烘焙成 20px emoji 图集 | 0.2.9 起移除。生成工具保留在 `tools/EmojiAtlas.java`，需要时可重新生成 |
+| 2.4.10 | jFLAC（LGPL-2.1），FLAC 无损解码 | 已移除。无损档位随之下线：FLAC 是 VBR，seek 只能从头逐帧解码，跳转代价过高。`libs/jflac-codec-1.5.2.jar` 已删除 |

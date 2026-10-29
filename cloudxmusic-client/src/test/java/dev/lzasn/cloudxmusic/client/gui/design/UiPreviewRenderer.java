@@ -35,8 +35,17 @@ public final class UiPreviewRenderer {
         render(out,"cloudxmusic-now-playing.png",Page.NOW,"",false,0,false);
         render(out,"cloudxmusic-library.png",Page.DISCOVER,"",false,0,false);
         render(out,"cloudxmusic-search.png",Page.SEARCH,"微光",true,1,false);
+        render(out,"cloudxmusic-room.png",Page.ROOM,"",false,0,false);
+        render(out,"cloudxmusic-room-dark.png",Page.ROOM,"",false,0,true);
         render(out,"cloudxmusic-settings.png",Page.SETTINGS,"",false,0,false);
         render(out,"cloudxmusic-settings-dark.png",Page.SETTINGS,"",false,0,true);
+        render(out,"cloudxmusic-account.png",Page.ACCOUNT,"",false,0,false);
+        render(out,"cloudxmusic-account-dark.png",Page.ACCOUNT,"",false,0,true);
+        String[] phoneValues={"","","15016649252","3638",""};
+        MusicPainter.AccountView phoneForm=new MusicPainter.AccountView(
+                false,"","","",2,phoneValues,3,true,"",45);
+        render(out,"cloudxmusic-account-phone.png",Page.ACCOUNT,"",false,0,false,phoneForm);
+        render(out,"cloudxmusic-account-phone-dark.png",Page.ACCOUNT,"",false,0,true,phoneForm);
         renderNotice(out);
         System.out.println("Java "+Runtime.version()+"; layout smoke check passed; previews: "+out);
     }
@@ -49,7 +58,7 @@ public final class UiPreviewRenderer {
                 if(b.w()<=0||b.h()<=0||b.x()<0||b.y()<0||b.x()+b.w()>WIDTH||b.y()+b.h()>HEIGHT)
                     throw new AssertionError(page+" hitbox out of bounds: "+h);
             }
-            if(page!=Page.NOW&&page!=Page.SETTINGS&&page!=Page.ACCOUNT) {
+            if(page!=Page.NOW&&page!=Page.SETTINGS&&page!=Page.ACCOUNT&&page!=Page.ROOM) {
                 Box first=l.box("row0"),last=l.box("row5"),add=l.box("add0");
                 if(first.y()!=ROW_TOP||last.y()!=ROW_TOP+5*ROW_H||add.cy()!=first.cy())
                     throw new AssertionError(page+" list columns are not aligned");
@@ -61,9 +70,20 @@ public final class UiPreviewRenderer {
             throw new AssertionError("seek bar does not have a hitbox");
         if(new MusicLayout(Page.NOW,ROWS,3).hit(671,619)==null)
             throw new AssertionError("transport controls do not have a hitbox");
+        Box field=MusicPainter.accFieldBox(0),code=MusicPainter.accPhoneCodeBox();
+        Box send=MusicPainter.accSendBox(),submit=MusicPainter.accSubmitBox();
+        if(code.y()!=send.y()||code.h()!=send.h()||send.x()-code.x()-code.w()!=10)
+            throw new AssertionError("verification code row is not aligned");
+        if(submit.x()!=field.x()||submit.w()!=field.w())
+            throw new AssertionError("account submit button does not match the form width");
     }
 
     private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,boolean darkMode) throws Exception {
+        render(out,file,page,search,focused,focusIndex,darkMode,null);
+    }
+
+    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,
+                               boolean darkMode,MusicPainter.AccountView accountViewOverride) throws Exception {
         int width=1600,height=900;
         BufferedImage frame=new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);
         Graphics2D bg=frame.createGraphics();
@@ -98,10 +118,10 @@ public final class UiPreviewRenderer {
                 new MusicView.LyricRow("轻柔的旋律，陪伴方块世界","",false),
                 new MusicView.LyricRow("风穿过打开的窗","",false),
                 new MusicView.LyricRow("云图在远方缓缓展开","",false));
-        MusicView view=new MusicView(page,CURRENT,rows,upcoming,lyrics,102,true,true,"CloudXmusic",
+        MusicView view=new MusicView(page,CURRENT,rows,upcoming,lyrics,102,true,true,"CloudXMusic",
                 search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
-                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.4.9","",0,-1,.8f,"",
-                darkMode,.8f,1f,.5f,.06f);
+                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.4.10","",0,-1,.8f,"",
+                darkMode,.8f,1f,.5f,.06f,"H");
         BufferedImage canvas=MusicPainter.paint(view,layout,1d,url->null);
         Graphics2D oc=canvas.createGraphics();
         if(page==Page.NOW){
@@ -112,6 +132,13 @@ public final class UiPreviewRenderer {
             BufferedImage lyricLayer=MusicPainter.paintLyrics(view,1d);
             Box lr=lyricRegion();
             oc.drawImage(lyricLayer,lr.x()+PAD,lr.y()+PAD,null);
+        }
+        if(page==Page.ACCOUNT){
+            var accountView=accountViewOverride!=null?accountViewOverride
+                    :new MusicPainter.AccountView(false,"","","",0,new String[5],-1,false,"",0);
+            BufferedImage accountLayer=MusicPainter.paintAccount(accountView,1d);
+            Box ar=accountRegion();
+            oc.drawImage(accountLayer,ar.x()+PAD,ar.y()+PAD,null);
         }
         // 静态画布不再包含进度与时间，预览要把动态层按同一落点叠回去。
         BufferedImage overlay=MusicPainter.paintDynamic(view,layout,1d);

@@ -17,8 +17,11 @@ import static dev.lzasn.cloudxmusic.client.gui.design.MusicLayout.*;
 
 /** 纯画布视图；业务操作由 Screen 适配器处理，可以离线生成同一份真实 UI。 */
 public final class MusicPainter {
-    private static final String[] TITLES = {"正在播放", "发现音乐", "搜索", "我的收藏", "播放队列", "设置与关于", "账号"};
-    private static final String[] ICONS = {"play", "discover", "search", "heart", "list", "settings"};
+    private static final String[] TITLES = {"正在播放", "发现音乐", "搜索", "我的收藏", "播放队列",
+            "音乐房间", "设置与关于", "账号"};
+    private static final String[] ICONS = {"play", "discover", "search", "heart", "list", "group"};
+    /** 音乐房间在导航里的序号；BETA 胶囊只贴在这一项和页面大标题后面。 */
+    private static final int ROOM_INDEX = MusicView.Page.ROOM.ordinal();
     private static final Dev[] DEVELOPERS = {
             new Dev("Lzasn", "@Lzasn", "代码架构开发 · 主要开发者", "lzasn.png"),
             new Dev("xWtree", "@xWtree", "UI 美化 · 后期维护者", "xwtree.png"),
@@ -39,8 +42,11 @@ public final class MusicPainter {
             blitBackdrop(c, image.getWidth(), image.getHeight(), scale);
             c.g.translate(PAD, PAD);
             navigation(c, v, layout, covers);
-            c.text(TITLES[v.page().ordinal()], 292, 46, 21, true, INK, 600);
-            c.text("为你的世界配一段旋律", 292, 69, 12, false, MUTED, 600);
+            // 标题独占标题带（0~92），基线按视觉重心对齐带中轴，不再挂副标题。
+            c.text(TITLES[v.page().ordinal()], 292, 54, 21, true, INK, 600);
+            if (v.page() == MusicView.Page.ROOM) {
+                betaTag(c, 292 + c.width(TITLES[ROOM_INDEX], 21, true) + 6, 47, 21, 10);
+            }
             c.g.setColor(LINE);
             c.g.drawLine(272, 92, 1070, 92);
             button(c, v, layout, "close", "close", false);
@@ -54,6 +60,7 @@ public final class MusicPainter {
                     c.g.setClip(savedClip);
                 }
                 case ACCOUNT -> { /* 内容由 paintAccount 单独绘制 */ }
+                case ROOM -> room(c, v, layout);
                 default -> list(c, v, layout, covers);
             }
         }
@@ -110,7 +117,11 @@ public final class MusicPainter {
         c.g.setColor(LINE);
         c.g.drawLine(24, 92, 252, 92);
         c.text("音乐库", 36, 124, 12, false, MUTED, 190);
-        for (int i = 0; i < 5; i++) {
+        // 导航项多于可视高度时靠滚动查看，超出部分裁掉，避免压到下面的分隔线和账号组。
+        Shape navClip = c.g.getClip();
+        c.g.clip(new Rectangle2D.Double(24, MusicLayout.NAV_TOP - 10, 228,
+                MusicLayout.NAV_BOTTOM - MusicLayout.NAV_TOP + 10));
+        for (int i = 0; i < MusicLayout.NAV_COUNT; i++) {
             Box b = l.box("nav" + i);
             boolean on = i == v.page().ordinal();
             boolean hover = v.hover().equals("nav" + i);
@@ -121,28 +132,33 @@ public final class MusicPainter {
             Color color = on ? DEEP : hover ? INK : MUTED;
             UiIcons.draw(c, ICONS[i], b.x()+20, b.cy(), 18, color);
             c.text(TITLES[i], b.x()+44, b.cy()+5, 14, on, color, 150);
+            if (i == ROOM_INDEX) {
+                betaTag(c, b.x() + 44 + c.width(TITLES[i], 14, on) + 4, b.cy(), 16, 9);
+            }
         }
-        c.g.setColor(LINE); c.g.drawLine(24,370,252,370);
-        c.text("账号", 36, 395, 12, false, MUTED, 190);
+        c.g.setClip(navClip);
+        c.g.setColor(LINE); c.g.drawLine(24,412,252,412);
+        c.text("账号", 36, 437, 12, false, MUTED, 190);
         Box account = l.box("account");
         if (v.hover().equals("account")) c.round(account.x(),account.y(),account.w(),account.h(),20,CARD_BG);
         BufferedImage avatar = v.loggedIn() && !v.avatarUrl().isBlank()
                 ? dev.lzasn.cloudxmusic.client.gui.CoverCache.avatar(v.avatarUrl()) : null;
         if (avatar != null) {
             Shape previous = c.g.getClip();
-            c.g.clip(shape(34, 419, 36, 36, 18));
+            c.g.clip(shape(34, 461, 36, 36, 18));
             double zoom = 36.0 / Math.min(avatar.getWidth(), avatar.getHeight());
             int aw = (int) Math.ceil(avatar.getWidth() * zoom), ah = (int) Math.ceil(avatar.getHeight() * zoom);
-            c.g.drawImage(avatar, 34 + (36 - aw) / 2, 419 + (36 - ah) / 2, aw, ah, null);
+            c.g.drawImage(avatar, 34 + (36 - aw) / 2, 461 + (36 - ah) / 2, aw, ah, null);
             c.g.setClip(previous);
         } else {
-            c.round(34, 419, 36, 36, 18, SOFT);
-            UiIcons.draw(c,"user",52,437,21,DEEP);
+            c.round(34, 461, 36, 36, 18, SOFT);
+            UiIcons.draw(c,"user",52,479,21,DEEP);
         }
-        c.text(v.loggedIn() ? v.nickname() : "访客模式", 82, 432, 14, true, INK, 151);
-        c.text(v.loggedIn() ? "管理账号" : "登录网易云音乐",82,453,11,false,MUTED,151);
+        c.text(v.loggedIn() ? v.nickname() : "访客模式", 82, 474, 14, true, INK, 151);
+        c.text(v.loggedIn() ? "管理账号" : "登录网易云音乐",82,495,11,false,MUTED,151);
         c.text("让音乐陪你探索世界",36,552,12,false,MUTED,202);
-        c.text("H 开关界面 · Esc 返回",36,575,11,false,MUTED,202);
+        // 键位跟随游戏里的按键绑定，不再写死 H。
+        c.text(v.openKey() + " 开关界面 · Esc 返回",36,575,11,false,MUTED,202);
         Box b=l.box("settings");
         UiIcons.draw(c,"settings",b.x()+20,b.cy(),19, v.page()==MusicView.Page.SETTINGS ? DEEP : MUTED);
         c.text("设置与关于", b.x()+44,b.cy()+5,13,false,INK,150);
@@ -151,6 +167,23 @@ public final class MusicPainter {
     /** 播放页：封面与歌词各自独立成层（便于动效），这里只画底部控制栏。 */
     private static void now(FrostCanvas c, MusicView v, MusicLayout l, Function<String,BufferedImage> covers) {
         playerBar(c, v, l);
+    }
+
+    /** 小号 BETA 胶囊：浅粉底 + 粉字，贴在导航项或页面大标题右侧。 */
+    private static void betaTag(FrostCanvas c, double x, double centerY, double h, float fontSize) {
+        double w = c.width("BETA", fontSize, true) + fontSize;
+        c.round(x, centerY - h / 2, w, h, h / 2, SOFT);
+        c.text("BETA", (float) (x + fontSize / 2.0), (float) (centerY + fontSize * .36), fontSize, true, PINK, (float) w);
+    }
+
+    /** 音乐房间：功能尚未上线，先放一个占位页说明后续计划。 */
+    private static void room(FrostCanvas c, MusicView v, MusicLayout l) {
+        int cx = MusicLayout.MAIN_X + MusicLayout.MAIN_W / 2;
+        // 内容块 308~456，中心 382，对齐标题带下方到面板底部的视觉中轴。
+        UiIcons.draw(c, "coffee", cx, 326, 54, PINK);
+        c.center("音乐房间", cx, 400, 26, true, INK, 500);
+        c.center("和朋友同步听同一首歌的房间功能还在开发中", cx, 434, 12, false, MUTED, 560);
+        c.center("2.5.0 先落地客户端与服务端协议，再开放房间", cx, 456, 12, false, MUTED, 560);
     }
 
     /**
@@ -257,11 +290,15 @@ public final class MusicPainter {
         UiIcons.draw(c, "volume", volume.x() - 14, volume.cy(), 14, MUTED);
     }
 
-    public static Box qualityMenuRegion() { return new Box(818, 446, 132, 148); }
-    public static Box qualityRow(int index) { return new Box(818, 446 + index * 37, 132, 37); }
+    /** 菜单底边紧贴音质按钮（按钮顶部 605，留 11px 缝），减少一档后要整体下移，否则会浮在半空。 */
+    private static final int QUALITY_MENU_TOP = 483;
+
+    public static Box qualityMenuRegion() { return new Box(818, QUALITY_MENU_TOP, 132, 111); }
+    public static Box qualityRow(int index) { return new Box(818, QUALITY_MENU_TOP + index * 37, 132, 37); }
+
 
     /** 音质选择浮层：圆角面板 + 纯列表（文字、分隔线、勾选），不套卡片阴影。 */
-    public static BufferedImage paintQualityMenu(int selected, int hovered, boolean losslessAvailable, double scale) {
+    public static BufferedImage paintQualityMenu(int selected, int hovered, double scale) {
         Box region = qualityMenuRegion();
         BufferedImage image = new BufferedImage((int) Math.ceil(region.w() * scale),
                 (int) Math.ceil(region.h() * scale), BufferedImage.TYPE_INT_ARGB);
@@ -270,22 +307,21 @@ public final class MusicPainter {
             // 圆角面板，但不用卡片阴影，保持轻量列表感。
             c.round(region.x(), region.y(), region.w(), region.h(), 14,
                     dark ? new Color(42, 50, 54, 250) : new Color(255, 253, 255, 250));
-            String[] names = {"标准", "较高", "极高", "无损"};
+            String[] names = {"标准", "较高", "极高"};
             for (int i = 0; i < names.length; i++) {
                 Box b = qualityRow(i);
-                boolean disabled = i == 3 && !losslessAvailable;
                 // 分隔线画在每行顶部（第一行除外），先画线再画 hover，避免被高亮盖掉。
                 if (i > 0) {
                     c.g.setColor(LINE);
                     c.g.drawLine(b.x() + 10, b.y(), b.x() + b.w() - 10, b.y());
                 }
-                if (i == hovered && !disabled) {
+                if (i == hovered) {
                     c.g.setColor(HOVER);
                     c.g.fillRect(b.x(), b.y() + 1, b.w(), b.h() - 1);
                 }
-                Color ink = disabled ? new Color(0xB6, 0xA8, 0xB0) : i == selected ? DEEP : INK;
-                c.text(names[i], b.x() + 14, b.cy() + 4, 12, i == selected && !disabled, ink, b.w() - 40);
-                if (i == selected && !disabled) {
+                Color ink = i == selected ? DEEP : INK;
+                c.text(names[i], b.x() + 14, b.cy() + 4, 12, i == selected, ink, b.w() - 40);
+                if (i == selected) {
                     int cx = b.x() + b.w() - 18, cy = b.cy() - 1;
                     c.g.setColor(PINK);
                     c.g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
@@ -482,10 +518,10 @@ public final class MusicPainter {
 
     public static Box accMenuBox(int i) { return new Box(ACC_X, ACC_TOP + i * (ACC_H + ACC_GAP), ACC_W, ACC_H); }
     public static Box accBackBox() { return new Box(292, 104, 130, 28); }
-    public static Box accFieldBox(int i) { return new Box(ACC_X, 210 + i * 64, 460, 52); }
+    public static Box accFieldBox(int i) { return new Box(ACC_X, 210 + i * 64, ACC_W, 52); }
     public static Box accPhoneCodeBox() { return new Box(ACC_X, 274, 300, 52); }
     public static Box accSendBox() { return new Box(751, 274, 150, 52); }
-    public static Box accSubmitBox() { return new Box(ACC_X, 350, 180, 52); }
+    public static Box accSubmitBox() { return new Box(ACC_X, 350, ACC_W, 52); }
     public static Box accCookieHelpBox() { return new Box(ACC_X, 286, 300, 26); }
     public static Box accLogoutBox() { return new Box(ACC_X, 292, 180, 52); }
     public static Box accRefreshBox() { return new Box(ACC_X + 200, 292, 180, 52); }
@@ -522,14 +558,21 @@ public final class MusicPainter {
                 for (int i = 0; i < 4; i++) {
                     Box b = accMenuBox(i);
                     boolean disabled = i == 2;
-                    c.shadow(b.x(), b.y(), b.w(), b.h(), 28, 8, 0, 4, new Color(150, 65, 99, disabled ? 8 : 20));
-                    c.round(b.x(), b.y(), b.w(), b.h(), 28,
-                            disabled ? new Color(255, 255, 255, 110) : new Color(255, 255, 255, 190));
-                    c.g.setColor(disabled ? LINE : new Color(223, 115, 153, 120));
+                    Color cardFill = disabled
+                            ? (dark ? new Color(48, 58, 63, 150) : new Color(255, 255, 255, 110))
+                            : (dark ? CARD_BG : new Color(255, 255, 255, 190));
+                    Color cardBorder = disabled ? LINE
+                            : (dark ? new Color(226, 130, 162, 90) : new Color(223, 115, 153, 120));
+                    Color cardText = disabled ? MUTED : INK;
+                    c.shadow(b.x(), b.y(), b.w(), b.h(), 28, 8, 0, 4,
+                            dark ? new Color(0, 0, 0, disabled ? 8 : 30)
+                                 : new Color(150, 65, 99, disabled ? 8 : 20));
+                    c.round(b.x(), b.y(), b.w(), b.h(), 28, cardFill);
+                    c.g.setColor(cardBorder);
                     c.g.setStroke(new BasicStroke(1.4f));
                     c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, 28));
                     c.center(ACC_MENU[i], b.cx(), b.cy() + 6, 16, !disabled,
-                            disabled ? new Color(0x9C, 0x8C, 0x96) : INK, b.w() - 40);
+                            cardText, b.w() - 40);
                 }
                 return image;
             }
@@ -543,6 +586,9 @@ public final class MusicPainter {
         String title = v.mode() == 1 ? "用户名 + 密码登录" : v.mode() == 2 ? "验证码登录" : "Cookie 登录";
         c.text("< 返回", 292, 124, 13, false, MUTED, 130);
         c.text(title, ACC_X, 176, 18, true, INK, ACC_W);
+        Color fieldFill = dark ? new Color(31, 39, 43, 210) : new Color(255, 255, 255, 175);
+        Color fieldBorder = dark ? new Color(96, 111, 117, 120) : LINE;
+        Color hintInk = dark ? new Color(146, 158, 163) : new Color(0x9C, 0x8C, 0x96);
         boolean phone = v.mode() == 2;
         int count = v.mode() == 3 ? 1 : 2;
         for (int i = 0; i < count; i++) {
@@ -552,12 +598,12 @@ public final class MusicPainter {
             boolean masked = index == 1;
             String shown = masked && !value.isEmpty()
                     ? "●".repeat(Math.min(20, value.codePointCount(0, value.length()))) : value;
-            c.round(b.x(), b.y(), b.w(), b.h(), 22, new Color(255, 255, 255, 175));
-            c.g.setColor(LINE);
+            c.round(b.x(), b.y(), b.w(), b.h(), 22, fieldFill);
+            c.g.setColor(fieldBorder);
             c.g.setStroke(new BasicStroke(1f));
             c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, 22));
             c.text(shown.isEmpty() ? ACC_HINTS[index] : shown, b.x() + 20, b.cy() + 5, 13, false,
-                    shown.isEmpty() ? new Color(0x9C, 0x8C, 0x96) : INK, b.w() - 40);
+                    shown.isEmpty() ? hintInk : INK, b.w() - 40);
             if (v.focus() == index) {
                 c.g.setColor(PINK);
                 c.g.setStroke(new BasicStroke(1.6f));
@@ -572,8 +618,14 @@ public final class MusicPainter {
         }
         if (phone) {
             Box s = accSendBox();
-            pill(c, s, v.countdown() > 0 ? "重发 " + v.countdown() + "s" : "发送验证码",
-                    new Color(255, 255, 255, 155), v.countdown() > 0 ? MUTED : DEEP);
+            boolean coolingDown = v.countdown() > 0;
+            Color sendFill = coolingDown
+                    ? (dark ? new Color(46, 55, 60, 210) : new Color(255, 255, 255, 105))
+                    : SOFT;
+            Color sendInk = coolingDown
+                    ? (dark ? new Color(132, 145, 150) : MUTED)
+                    : DEEP;
+            pill(c, s, coolingDown ? "重发 " + v.countdown() + "s" : "发送验证码", sendFill, sendInk);
         }
         if (v.mode() == 3) {
             Box help = accCookieHelpBox();

@@ -26,8 +26,6 @@ dependencies {
     implementation files(rootProject.file("libs/jlayer-1.0.1.jar"))
     // 二维码编码（Apache-2.0）：扫码登录要在游戏里画出真的二维码
     implementation files(rootProject.file("libs/zxing-core-3.5.3.jar"))
-    // FLAC 解码（LGPL-2.1）：无损音源要自己解，JDK 不带 FLAC
-    implementation files(rootProject.file("libs/jflac-codec-1.5.2.jar"))
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
@@ -73,9 +71,6 @@ jar {
         exclude "META-INF/**"
     }
     from({ zipTree(rootProject.file("libs/zxing-core-3.5.3.jar")) }) {
-        exclude "META-INF/**"
-    }
-    from({ zipTree(rootProject.file("libs/jflac-codec-1.5.2.jar")) }) {
         exclude "META-INF/**"
     }
 }

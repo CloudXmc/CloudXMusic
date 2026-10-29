@@ -197,7 +197,11 @@ public final class FrostCanvas implements AutoCloseable {
     }
 
     public void right(String text, float right, float baseline, float size, Color color) {
-        text(text, right - width(text, size, false), baseline, size, false, color, 500);
+        right(text, right, baseline, size, false, color);
+    }
+
+    public void right(String text, float right, float baseline, float size, boolean bold, Color color) {
+        text(text, right - width(text, size, bold), baseline, size, bold, color, 500);
     }
 
     public void center(String text, float cx, float baseline, float size, boolean bold, Color color, float max) {

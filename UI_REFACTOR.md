@@ -1,6 +1,10 @@
 # 0.4.5 界面重构记录
 
-品牌：CloudXmusic / 云朵音乐盒；开发者：Lzasn,xWtree,xiaota888。
+> **历史文档**：本文记录 0.4.5 时期的界面重构决策，仅作背景参考，不代表当前状态。
+> 已被后续版本推翻的条目：「深色方案已取消」在 2.4.9 推翻（已实现完整暗黑模式）；
+> 面板与灵动岛比例、刷新率、导航结构等细节，以 `UI_KNOWLEDGE.md` 和 `DEVELOPMENT_STATUS.md` 为准。
+
+品牌：CloudXMusic / 云朵音乐盒；开发者：Lzasn,xWtree,xiaota888。
 
 ## 修改前边界检查
 

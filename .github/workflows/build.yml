@@ -1,11 +1,14 @@
 name: Build
 
 on:
+  # 只在打 tag（发版）和 PR 时构建。
+  # 推送 main 不触发——否则「推 main」和「推 tag」会在同一次发版里并行跑两条流水线，
+  # 白跑一遍构建，还会让 release 步骤的产物来源变得不确定。
   push:
-    branches: [ main ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: write

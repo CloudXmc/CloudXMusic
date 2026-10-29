@@ -25,9 +25,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 全局播放状态。
@@ -70,8 +68,6 @@ public final class MusicState {
     private Lyric lyric = Lyric.EMPTY;
     private String statusLine = "";
     private int consecutiveFailures;
-    /** 每首歌是否有无损源，探测一次后缓存。 */
-    private final Map<String, Boolean> losslessSupport = new ConcurrentHashMap<>();
 
     // ------------------------------------------------------------ 外观配置
     private boolean darkMode;
@@ -407,7 +403,9 @@ public final class MusicState {
 
     public void togglePlaying() {
         if (current.netease()) {
-            if (!player.isActive()) {
+            // needsRestart()：没在播、线程僵死、或位置几秒没推进（重开流卡在 CDN 上），
+            // 这时走 resume 只会空转，必须重新取地址从当前进度重启，否则表现为「点播放没反应」。
+            if (player.needsRestart()) {
                 startNetease(current, (long) (position() * 1000));
                 playing = true;
                 return;
@@ -489,6 +487,8 @@ public final class MusicState {
             String finalFailure = failure;
             Lyric finalLyric = parsed;
             Async.main(() -> {
+                // 退出登录或切歌后，旧请求不能再启动播放。
+                if (!current.equals(track)) return;
                 lyric = finalLyric;
                 if (finalUrl == null) {
                     consecutiveFailures++;
@@ -505,29 +505,7 @@ public final class MusicState {
                 consecutiveFailures = 0;
                 statusLine = "";
                 player.play(finalUrl, startMs, track.durationSeconds() * 1000L);
-                probeLossless(track.id());
             });
-        });
-    }
-
-    /** 歌曲是否支持无损；null 表示还没探测过。 */
-    public Boolean losslessSupport(String id) {
-        return id == null ? null : losslessSupport.get(id);
-    }
-
-    /** 后台探测一次无损源，音质菜单据此决定「无损」是否可点。 */
-    private void probeLossless(String id) {
-        if (id == null || id.isBlank() || losslessSupport.containsKey(id)) return;
-        Async.run(() -> {
-            Boolean support = null;
-            try {
-                support = NeteaseApi.playableUrl(id, NeteaseQuality.LOSSLESS) != null;
-            } catch (Exception ignored) {
-                // 探测失败就当作未知，不置灰
-            }
-            if (support == null) return;
-            Boolean value = support;
-            Async.main(() -> losslessSupport.put(id, value));
         });
     }
 
@@ -538,6 +516,24 @@ public final class MusicState {
         player.stop();
         lyric = Lyric.EMPTY;
         statusLine = "";
+    }
+
+    /** 退出登录：停止播放，并清空账号相关的推荐、收藏和播放队列。 */
+    public void clearAccountData() {
+        stopAll();
+        discovery.clear();
+        favorites.clear();
+        likedIds.clear();
+        favoriteChanges.clear();
+        pendingFavoriteTrack = null;
+        queue.clear();
+        current = NOTHING;
+        favoritesLoaded = false;
+        favoritesLoading = false;
+        discoveryLoading = false;
+        lyric = Lyric.EMPTY;
+        statusLine = "";
+        savePersisted();
     }
 
     /** 刷新网易云"每日推荐"作为列表来源。 */
@@ -553,6 +549,7 @@ public final class MusicState {
             try {
                 List<Track> tracks = NeteaseApi.dailyRecommendation();
                 Async.main(() -> {
+                    if (!NeteaseSession.INSTANCE.loggedIn()) { discoveryLoading = false; return; }
                     discovery.clear();
                     discovery.addAll(tracks);
                     discoveryLoading = false;
@@ -563,6 +560,7 @@ public final class MusicState {
             } catch (Exception e) {
                 Async.main(() -> {
                     discoveryLoading = false;
+                    if (!NeteaseSession.INSTANCE.loggedIn()) return;
                     statusLine = "拉取每日推荐失败：" + e.getMessage();
                 });
             }
@@ -582,6 +580,7 @@ public final class MusicState {
             try {
                 List<Track> tracks = NeteaseApi.playlistTracks(playlistId);
                 Async.main(() -> {
+                    if (!NeteaseSession.INSTANCE.loggedIn()) return;
                     discovery.clear();
                     discovery.addAll(tracks);
                     statusLine = "歌单已加载：" + tracks.size() + " 首（点歌才播放）";
@@ -668,6 +667,7 @@ public final class MusicState {
                 NeteaseApi.LikedTracks liked = NeteaseApi.likedTracksAndIds(uid, 200);
                 List<Track> tracks = liked.tracks();
                 Async.main(() -> {
+                    if (!NeteaseSession.INSTANCE.loggedIn()) { favoritesLoading = false; return; }
                     favorites.clear();
                     favorites.addAll(tracks);
                     likedIds.clear();
@@ -683,7 +683,8 @@ public final class MusicState {
                 Async.main(() -> {
                     favoritesLoading = false;
                     favoritesLoaded = false;
-                pendingFavoriteTrack = null;
+                    pendingFavoriteTrack = null;
+                    if (!NeteaseSession.INSTANCE.loggedIn()) return;
                     statusLine = "拉取收藏失败：" + e.getMessage();
                 });
             }

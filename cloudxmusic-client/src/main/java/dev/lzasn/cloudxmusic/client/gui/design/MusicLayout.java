@@ -24,14 +24,37 @@ public final class MusicLayout {
     public record Hit(String id, Action action, int index, Box box) {}
     private final List<Hit> hits = new ArrayList<>();
 
+    /** 导航区可视范围：从「音乐库」标签下方到分隔线之前，超出部分靠滚动查看。 */
+    public static final int NAV_TOP = 137, NAV_BOTTOM = 405;
+    /** 单个导航项高度与步进：保持原尺寸，项目变多时改由滚动承载。 */
+    public static final int NAV_H = 38, NAV_STEP = 44;
+    public static final int NAV_COUNT = 6;
+
+    public static int navContentHeight() {
+        return NAV_COUNT * NAV_STEP - (NAV_STEP - NAV_H);
+    }
+
+    public static int navMaxScroll() {
+        return Math.max(0, navContentHeight() - (NAV_BOTTOM - NAV_TOP));
+    }
+
     public MusicLayout(MusicView.Page page, int rowCount, int queueCount) {
-        this(page, rowCount, queueCount, 0);
+        this(page, rowCount, queueCount, 0, 0);
     }
 
     public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll) {
-        for (int i = 0; i < 5; i++) add("nav" + i, Action.PAGE, i, 32, 137 + i * 44, 210, 38);
-        add("settings", Action.PAGE, 5, 32, 602, 210, 42);
-        add("account", Action.ACCOUNT, 0, 32, 400, 210, 64);
+        this(page, rowCount, queueCount, settingsScroll, 0);
+    }
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll, int navScroll) {
+        for (int i = 0; i < NAV_COUNT; i++) {
+            int y = NAV_TOP + i * NAV_STEP - navScroll;
+            // 完全滚出可视区的项不注册命中区，否则点空白处会误切页面。
+            if (y + NAV_H <= NAV_TOP || y >= NAV_BOTTOM) continue;
+            add("nav" + i, Action.PAGE, i, 32, y, 210, NAV_H);
+        }
+        add("settings", Action.PAGE, 6, 32, 602, 210, 42);
+        add("account", Action.ACCOUNT, 0, 32, 442, 210, 64);
         add("close", Action.CLOSE, 0, 1012, 22, 36, 36);
         if (page == MusicView.Page.NOW) {
             // 播放页：上方歌词，底部一条控制栏。收藏与队列紧贴传输键两侧，控件整体居中。
@@ -52,6 +75,9 @@ public final class MusicLayout {
                 add("islandPos", Action.ISLAND_POS, 0, 318, 288 - settingsScroll, 704, 48);
                 add("darkMode", Action.DARK_MODE, 0, 318, 364 - settingsScroll, 704, 48);
                 add("panelScale", Action.PANEL_SCALE, 0, 318, 416 - settingsScroll, 704, 48);
+            } else if (page == MusicView.Page.ROOM) {
+                // 占位页：没有任何可点控件，不能继承列表页的刷新按钮和行命中区，
+                // 否则点空白处会取到空 rows 而越界。
             } else {
                 if (page == MusicView.Page.SEARCH) {
                     add("field", Action.SEARCH_FIELD, 0, 292, 116, 634, 36);
