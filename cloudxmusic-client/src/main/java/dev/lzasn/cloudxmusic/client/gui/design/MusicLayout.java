@@ -15,7 +15,7 @@ public final class MusicLayout {
     public enum Action { PAGE, ACCOUNT, CLOSE, PREVIOUS, PLAY, NEXT, SEEK, SEARCH_FIELD, SEARCH,
         ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, MODE_CYCLE,
         STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH,
-        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE }
+        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE, PLAY_ALL }
     public record Box(int x, int y, int w, int h) {
         public boolean contains(double px, double py) { return px >= x && py >= y && px < x + w && py < y + h; }
         public int cx() { return x + w / 2; }
@@ -85,6 +85,10 @@ public final class MusicLayout {
                     add("field", Action.SEARCH_FIELD, 0, 292, 116, 634, 36);
                     add("search", Action.SEARCH, 0, 950, 116, 100, 36);
                 } else {
+                    // 收藏页多一个「播放全部」，摆在刷新按钮左侧。
+                    if (page == MusicView.Page.FAVORITES) {
+                        add("playAll", Action.PLAY_ALL, 0, 830, 116, 104, 36);
+                    }
                     add("refresh", page == MusicView.Page.QUEUE ? Action.CLEAR : Action.REFRESH, 0, 946, 116, 104, 36);
                 }
                 for (int i = 0; i < Math.min(ROWS, rowCount); i++) {

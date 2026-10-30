@@ -30,6 +30,8 @@ public final class NeteaseSession {
     private String avatar = "";
     private String quality = NeteaseQuality.EXHIGH.apiName;
     private String lyricMode = LyricMode.BILINGUAL.name();
+    /** 播放页滚动歌词是否显示译文；与上面的灵动岛歌词模式互相独立。 */
+    private boolean playbackTranslation = true;
 
     private NeteaseSession() {}
 
@@ -67,6 +69,8 @@ public final class NeteaseSession {
             avatar = string(json, "avatar", "");
             quality = string(json, "quality", quality);
             lyricMode = string(json, "lyricMode", lyricMode);
+            playbackTranslation = !json.has("playbackTranslation")
+                    || json.get("playbackTranslation").getAsBoolean();
 
             // 0.3.4 及以前把 MUSIC_U 直接写在 netease.json 的 cookie 字段里。
             // 0.3.5 改用 cookies.json 后必须迁移，否则升级后会出现“显示已登录但没有 Cookie”。
@@ -102,6 +106,7 @@ public final class NeteaseSession {
         json.addProperty("avatar", avatar);
         json.addProperty("quality", quality);
         json.addProperty("lyricMode", lyricMode);
+        json.addProperty("playbackTranslation", playbackTranslation);
         try {
             Path path = file();
             Files.createDirectories(path.getParent());
@@ -211,6 +216,16 @@ public final class NeteaseSession {
 
     public void lyricMode(LyricMode mode) {
         lyricMode = mode.name();
+        save();
+    }
+
+    /** 播放页滚动歌词是否带译文。只影响这一处，灵动岛仍按 {@link #lyricMode()} 显示。 */
+    public boolean playbackTranslation() {
+        return playbackTranslation;
+    }
+
+    public void playbackTranslation(boolean value) {
+        playbackTranslation = value;
         save();
     }
 

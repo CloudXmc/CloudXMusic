@@ -473,6 +473,17 @@ public final class MusicState {
         select(queue.get(index < 0 ? 0 : (index - 1 + queue.size()) % queue.size()));
     }
 
+    /**
+     * 播放全部：把整份列表替换成播放队列，从第一首开始。
+     * 与逐首 {@link #enqueue} 不同，这里会丢掉原队列，符合「播放全部」的直觉。
+     */
+    public void playAll(java.util.List<Track> tracks) {
+        if (tracks == null || tracks.isEmpty()) return;
+        queue.clear();
+        queue.addAll(tracks);
+        select(tracks.get(0));
+    }
+
     public void select(Track track) {
         if (!queue.contains(track)) queue.add(track);
         current = track;

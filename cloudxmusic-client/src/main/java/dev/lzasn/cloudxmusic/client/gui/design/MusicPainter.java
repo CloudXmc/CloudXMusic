@@ -173,7 +173,7 @@ public final class MusicPainter {
             UiIcons.draw(c,"user",52,479,21,DEEP);
         }
         c.text(v.loggedIn() ? v.nickname() : "访客模式", 82, 474, 14, true, INK, 151);
-        c.text(v.loggedIn() ? "管理账号" : "登录网易云音乐",82,495,11,false,MUTED,151);
+        c.text(v.loggedIn() ? "网易云音乐 · 切换音源 / 管理" : "网易云音乐 · 切换 / 登录",82,495,11,false,MUTED,151);
         }
         c.text("让音乐陪你探索世界",36,552,12,false,MUTED,202);
         // 键位跟随游戏里的按键绑定，不再写死 H。
@@ -188,10 +188,11 @@ public final class MusicPainter {
         // QQ 的完整底栏由动态层独占，静态层不能再画一份标题和按钮。
         if(v.current().source()!=MusicSource.QQ){
             playerBar(c, v, l);
-            // 「译」开关：与 QQ 版同一位置和外观，只在双语与原文之间切换。
+            // 「译」开关：与 QQ 版同一位置和外观，控制滚动歌词是否显示译文。
             Box b = l.box("translate");
             if (b != null) {
-                boolean on = dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL.label.equals(v.lyricMode());
+                // 只读偏好，不触碰网络或游戏实例；灵动岛歌词模式另有设置项。
+                boolean on = dev.lzasn.cloudxmusic.client.netease.NeteaseSession.INSTANCE.playbackTranslation();
                 c.round(b.x(), b.y(), b.w(), b.h(), 9, on ? SOFT : CARD_BG);
                 c.center("译", b.cx(), b.cy() + 5, 13, true, on ? PINK : MUTED, b.w() - 8);
             }
@@ -447,6 +448,18 @@ public final class MusicPainter {
         } else {
             c.text(switch(v.page()){case DISCOVER->"每日推荐";case FAVORITES->"我喜欢的音乐";default->"你的播放队列";},292,143,17,true,INK,620);
             labelButton(c,v,l,"refresh",v.page()==MusicView.Page.QUEUE?"清空队列":"刷新列表");
+            // 收藏页的「播放全部」用主色按钮，和右侧灰底「刷新」拉开层级。
+            if (v.page() == MusicView.Page.FAVORITES) {
+                Box pa = l.box("playAll");
+                if (pa != null) {
+                    boolean hov = v.hover().equals("playAll");
+                    c.shadow(pa.x(), pa.y(), pa.w(), pa.h(), pa.h() / 2, 10, 5, new Color(150, 65, 99, 38));
+                    c.round(pa.x(), pa.y(), pa.w(), pa.h(), pa.h() / 2,
+                            new GradientPaint(pa.x(), pa.y(), new Color(245, 162, 189),
+                                    pa.x() + pa.w(), pa.y() + pa.h(), hov ? DEEP : PINK));
+                    c.center("播放全部", pa.cx(), pa.cy() + 5, 13, true, Color.WHITE, pa.w() - 16);
+                }
+            }
         }
         c.text("歌曲 / 歌手",360,194,11,false,MUTED,360);
         c.text("专辑",748,194,11,false,MUTED,180);

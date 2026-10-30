@@ -245,7 +245,9 @@ public final class MusicScreen extends Screen {
             for(int offset=-3;offset<=3;offset++){
                 int i=anchor+offset;
                 lines.add(i<0||i>=lyrics.size()?new MusicView.LyricRow("","",false):
-                        new MusicView.LyricRow(lyrics.get(i).text(),playback.source()==MusicSource.QQ?QQTranslationControl.translation(lyrics.get(i),playback.lyricMode()):lyrics.get(i).translated(),i==active));
+                        new MusicView.LyricRow(lyrics.get(i).text(),playback.source()==MusicSource.QQ
+                                ?QQTranslationControl.translation(lyrics.get(i),playback.lyricMode())
+                                :NeteaseSession.INSTANCE.playbackTranslation()?lyrics.get(i).translated():"",i==active));
             }
         }
         boolean qq=playback.source()==MusicSource.QQ;
@@ -604,14 +606,14 @@ public final class MusicScreen extends Screen {
             case ADD -> { Track t = rows.get(hit.index()); if (page == Page.QUEUE) state.removeFromQueue(t); else state.enqueue(t); }
             case CLEAR -> state.clearQueue();
             case REFRESH -> { if (page == Page.FAVORITES) state.loadFavorites(); else state.refreshLibrary(); }
+            case PLAY_ALL -> state.playAll(state.favorites());
             case QUALITY -> qualityMenuOpen = !qualityMenuOpen;
             case LYRIC -> session.lyricMode(session.lyricMode().next());
             case TRANSLATE -> {
-                // 播放页的「译」只在双语与原文之间来回，不经过「关闭」那一档。
-                dev.lzasn.cloudxmusic.client.state.LyricMode mode = session.lyricMode();
-                session.lyricMode(mode == dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL
-                        ? dev.lzasn.cloudxmusic.client.state.LyricMode.ORIGINAL
-                        : dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL);
+                // 只切「播放页滚动歌词是否带译文」，灵动岛那三档由设置页单独控制。
+                session.playbackTranslation(!session.playbackTranslation());
+                // 这个开关不在 MusicView 快照里，得显式让两层都重画，否则按钮和高亮不会变。
+                painted = null;
                 paintedLyrics = null;
             }
             case ISLAND -> state.toggleIsland(); case STOP -> state.stopAll();
