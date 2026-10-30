@@ -1,6 +1,8 @@
 package dev.lzasn.cloudxmusic.client.gui.design;
 
 import dev.lzasn.cloudxmusic.client.state.Track;
+import dev.lzasn.cloudxmusic.client.omni.SongView;
+import dev.lzasn.cloudxmusic.client.omni.MusicSource;
 import dev.lzasn.cloudxmusic.client.state.PlaybackMode;
 import java.awt.*;
 import java.awt.geom.*;
@@ -36,12 +38,22 @@ public final class MusicPainter {
     private MusicPainter() {}
 
     public static BufferedImage paint(MusicView v, MusicLayout layout, double scale, Function<String, BufferedImage> covers) {
+        return paint(v, layout, scale, covers, null);
+    }
+
+    /** 可选账号画布仅替换左侧账号块；null 完整沿用原网易云分支。 */
+    public static BufferedImage paint(MusicView v, MusicLayout layout, double scale, Function<String, BufferedImage> covers,
+                                      java.util.function.Consumer<FrostCanvas> accountPainter) {
+        return paint(v,layout,scale,covers,accountPainter,null);
+    }
+    public static BufferedImage paint(MusicView v, MusicLayout layout, double scale, Function<String, BufferedImage> covers,
+                                      java.util.function.Consumer<FrostCanvas> accountPainter,java.util.function.Consumer<FrostCanvas> catalogPainter) {
         BufferedImage image = new BufferedImage((int) Math.ceil((WIDTH + PAD * 2) * scale),
                 (int) Math.ceil((HEIGHT + PAD * 2) * scale), BufferedImage.TYPE_INT_ARGB);
         try (FrostCanvas c = new FrostCanvas(image, scale)) {
             blitBackdrop(c, image.getWidth(), image.getHeight(), scale);
             c.g.translate(PAD, PAD);
-            navigation(c, v, layout, covers);
+            navigation(c, v, layout, covers, accountPainter);
             // 标题独占标题带（0~92），基线按视觉重心对齐带中轴，不再挂副标题。
             c.text(TITLES[v.page().ordinal()], 292, 54, 21, true, INK, 600);
             if (v.page() == MusicView.Page.ROOM) {
@@ -50,7 +62,9 @@ public final class MusicPainter {
             c.g.setColor(LINE);
             c.g.drawLine(272, 92, 1070, 92);
             button(c, v, layout, "close", "close", false);
-            switch (v.page()) {
+            if(v.current().source()==MusicSource.QQ&&(v.page()==MusicView.Page.DISCOVER||v.page()==MusicView.Page.FAVORITES)){
+                if(catalogPainter!=null)catalogPainter.accept(c);else dev.lzasn.cloudxmusic.client.qqmusic.QQSourcePainter.placeholder(c,v.page());
+            } else switch (v.page()) {
                 case NOW -> now(c, v, layout, covers);
                 case SETTINGS -> {
                     // 设置页内容滚动时会越界，裁剪到标题下方到面板底部之间。
@@ -111,7 +125,8 @@ public final class MusicPainter {
         return image;
     }
 
-    private static void navigation(FrostCanvas c, MusicView v, MusicLayout l, Function<String,BufferedImage> covers) {
+    private static void navigation(FrostCanvas c, MusicView v, MusicLayout l, Function<String,BufferedImage> covers,
+                                   java.util.function.Consumer<FrostCanvas> accountPainter) {
         c.text("CloudXMusic", 36, 46, 19, true, DEEP, 202);
         c.text("云朵音乐盒", 36, 73, 13, false, MUTED, 202);
         c.g.setColor(LINE);
@@ -139,6 +154,9 @@ public final class MusicPainter {
         c.g.setClip(navClip);
         c.g.setColor(LINE); c.g.drawLine(24,412,252,412);
         c.text("账号", 36, 437, 12, false, MUTED, 190);
+        if (accountPainter != null) {
+            accountPainter.accept(c);
+        } else {
         Box account = l.box("account");
         if (v.hover().equals("account")) c.round(account.x(),account.y(),account.w(),account.h(),20,CARD_BG);
         BufferedImage avatar = v.loggedIn() && !v.avatarUrl().isBlank()
@@ -156,6 +174,7 @@ public final class MusicPainter {
         }
         c.text(v.loggedIn() ? v.nickname() : "访客模式", 82, 474, 14, true, INK, 151);
         c.text(v.loggedIn() ? "管理账号" : "登录网易云音乐",82,495,11,false,MUTED,151);
+        }
         c.text("让音乐陪你探索世界",36,552,12,false,MUTED,202);
         // 键位跟随游戏里的按键绑定，不再写死 H。
         c.text(v.openKey() + " 开关界面 · Esc 返回",36,575,11,false,MUTED,202);
@@ -166,7 +185,8 @@ public final class MusicPainter {
 
     /** 播放页：封面与歌词各自独立成层（便于动效），这里只画底部控制栏。 */
     private static void now(FrostCanvas c, MusicView v, MusicLayout l, Function<String,BufferedImage> covers) {
-        playerBar(c, v, l);
+        // QQ 的完整底栏由动态层独占，静态层不能再画一份标题和按钮。
+        if(v.current().source()!=MusicSource.QQ)playerBar(c, v, l);
     }
 
     /** 小号 BETA 胶囊：浅粉底 + 粉字，贴在导航项或页面大标题右侧。 */
@@ -207,7 +227,8 @@ public final class MusicPainter {
     /**
      * 歌词层：当前行清晰放大，上下边缘做 alpha 渐隐，形成「从中间淡出」的滚动感。
      */
-    public static BufferedImage paintLyrics(MusicView v, double scale) {
+    public static BufferedImage paintLyrics(MusicView v,double scale){return paintLyrics(v,scale,false);}
+    public static BufferedImage paintLyrics(MusicView v,double scale,boolean skipActive) {
         Box region = lyricRegion();
         int w = (int) Math.ceil(region.w() * scale), h = (int) Math.ceil(region.h() * scale);
         BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -226,6 +247,7 @@ public final class MusicPainter {
                 int distance = Math.abs(i - activeSlot);
                 int y = center + (i - activeSlot) * gap;
                 if (row.active()) {
+                    if(skipActive)continue;
                     c.text(row.text(), x, y, 19, true, INK, max);
                     if (!row.translation().isBlank())
                         c.text(row.translation(), x, y + 20, 11, false, mutedA(205), max);
@@ -258,33 +280,66 @@ public final class MusicPainter {
 
     /** 底部控制栏：曲目信息、收藏、队列、播放模式、传输键、音质与音量。 */
     private static void playerBar(FrostCanvas c, MusicView v, MusicLayout l) {
+        playerBar(c,v,l,new PlaybackBarView(v.current().title(),v.current().artist(),v.current().durationSeconds(),
+                v.position(),v.playing(),v.volume(),v.quality(),v.current().source()==MusicSource.QQ));
+    }
+
+    /** 音源无关的只读绘制数据，不回写 Track 或 MusicState。 */
+    public record PlaybackBarView(String title,String artist,int duration,double position,boolean playing,float volume,String quality,boolean qq,boolean vip,String coverUrl) {
+        public PlaybackBarView(String title,String artist,int duration,double position,boolean playing,float volume,String quality,boolean qq,boolean vip){this(title,artist,duration,position,playing,volume,quality,qq,vip,"");}
+        public PlaybackBarView(String title,String artist,int duration,double position,boolean playing,float volume,String quality,boolean qq){this(title,artist,duration,position,playing,volume,quality,qq,false);}
+    }
+    public static Box playbackBarRegion(){return new Box(292,586,758,76);}
+    public static Box playbackInfoRegion(){return new Box(292,596,232,42);}
+    public static BufferedImage paintPlaybackBar(MusicView music,PlaybackBarView bar,double scale){return paintPlaybackBar(music,bar,scale,url->null);}
+    public static BufferedImage paintPlaybackBar(MusicView music,PlaybackBarView bar,double scale,java.util.function.Function<String,BufferedImage> covers) {
+        Box region=playbackBarRegion();BufferedImage image=new BufferedImage((int)Math.ceil(region.w()*scale),(int)Math.ceil(region.h()*scale),BufferedImage.TYPE_INT_ARGB);
+        try(FrostCanvas c=new FrostCanvas(image,scale)) {
+            c.g.translate(-region.x(),-region.y());MusicLayout layout=new MusicLayout(MusicView.Page.NOW,0,0);
+            playerBar(c,music,layout,bar,covers.apply(bar.coverUrl()));seekBar(c,bar,layout.box("seek"));volumeBar(c,bar.volume(),layout.box("volume"));
+        }
+        return image;
+    }
+    private static void playerBar(FrostCanvas c,MusicView v,MusicLayout l,PlaybackBarView bar){playerBar(c,v,l,bar,null);}
+    private static void playerBar(FrostCanvas c,MusicView v,MusicLayout l,PlaybackBarView bar,BufferedImage artwork) {
         c.g.setColor(LINE);
         c.g.drawLine(292, 586, 1050, 586);
 
-        c.text(v.current().title(), 296, 613, 13, true, INK, 200);
-        c.text(v.current().artist(), 296, 630, 10, false, MUTED, 200);
+        if(bar.qq()){
+            if(artwork==null){c.round(296,599,36,36,8,SOFT);UiIcons.draw(c,"note",314,617,20,PINK);}
+            else {
+                Shape clip=c.g.getClip();c.g.clip(shape(296,599,36,36,8));
+                double zoom=36.0/Math.min(artwork.getWidth(),artwork.getHeight());
+                int w=(int)Math.ceil(artwork.getWidth()*zoom),h=(int)Math.ceil(artwork.getHeight()*zoom);
+                c.g.drawImage(artwork,296+(36-w)/2,599+(36-h)/2,w,h,null);c.g.setClip(clip);
+            }
+        }
+        int textX=bar.qq()?342:296,textWidth=bar.qq()?178:200;
+        dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,bar.title(),textX,613,13,true,INK,textWidth,bar.qq()&&bar.vip());
+        c.text(bar.artist(),textX,630,10,false,MUTED,textWidth);
 
         Box favorite = l.box("favorite");
-        UiIcons.draw(c, v.favorite() ? "heartFill" : "heart", favorite.cx(), favorite.cy(), 18,
+        if(bar.qq()) { c.g.setColor(DEEP);c.g.draw(new RoundRectangle2D.Double(favorite.cx()-6,favorite.cy()-6,12,12,2,2)); }
+        else UiIcons.draw(c, v.favorite() ? "heartFill" : "heart", favorite.cx(), favorite.cy(), 18,
                 v.favorite() ? DEEP : PINK);
         Box queued = l.box("queueBtn");
         UiIcons.draw(c, "list", queued.cx(), queued.cy(), 18, MUTED);
 
         Box mode = l.box("mode");
-        UiIcons.draw(c, v.playbackMode().icon, mode.cx(), mode.cy(), 18, DEEP);
+        UiIcons.draw(c, v.playbackMode().icon, mode.cx(), mode.cy(), 18, bar.qq()?MUTED:DEEP);
         // 没有歌曲时传输键置灰，避免看起来像能点。
-        boolean idle = v.current().durationSeconds() <= 0;
+        boolean idle = !bar.qq() && bar.duration() <= 0;
         Color primary = idle ? MUTED : INK;
         Box prev = l.box("prev");
         UiIcons.draw(c, "prev", prev.cx(), prev.cy(), 24, primary);
         Box play = l.box("play");
-        UiIcons.draw(c, v.playing() ? "pause" : "play", play.cx(), play.cy(), 30, primary);
+        UiIcons.draw(c, bar.playing() ? "pause" : "play", play.cx(), play.cy(), 30, primary);
         Box next = l.box("next");
         UiIcons.draw(c, "next", next.cx(), next.cy(), 24, primary);
 
         Box quality = l.box("quality");
         c.round(quality.x(), quality.y(), quality.w(), quality.h(), 10, SOFT);
-        c.center(v.quality(), quality.cx(), quality.cy() + 4, 10, true, DEEP, quality.w() - 8);
+        c.center(bar.quality(), quality.cx(), quality.cy() + 4, 10, true, DEEP, quality.w() - 8);
 
         Box volume = l.box("volume");
         UiIcons.draw(c, "volume", volume.x() - 14, volume.cy(), 14, MUTED);
@@ -295,11 +350,21 @@ public final class MusicPainter {
 
     public static Box qualityMenuRegion() { return new Box(818, QUALITY_MENU_TOP, 132, 111); }
     public static Box qualityRow(int index) { return new Box(818, QUALITY_MENU_TOP + index * 37, 132, 37); }
+    public static Box qualityMenuRegion(int count){return new Box(818,594-count*37,132,count*37);}
+    public static Box qualityRow(int index,int count){Box menu=qualityMenuRegion(count);return new Box(menu.x(),menu.y()+index*37,menu.w(),37);}
+    public static Box qualityMenuRegion(int count,int width){return new Box(950-width,594-count*37,width,count*37);}
+    public static Box qualityRow(int index,int count,int width){Box menu=qualityMenuRegion(count,width);return new Box(menu.x(),menu.y()+index*37,menu.w(),37);}
 
 
     /** 音质选择浮层：圆角面板 + 纯列表（文字、分隔线、勾选），不套卡片阴影。 */
     public static BufferedImage paintQualityMenu(int selected, int hovered, double scale) {
-        Box region = qualityMenuRegion();
+        return paintQualityMenu(selected,hovered,scale,new String[]{"标准","较高","极高"});
+    }
+    public static BufferedImage paintQualityMenu(int selected,int hovered,double scale,String[] names) {
+        return paintQualityMenu(selected,hovered,scale,names,132);
+    }
+    public static BufferedImage paintQualityMenu(int selected,int hovered,double scale,String[] names,int width) {
+        Box region = qualityMenuRegion(names.length,width);
         BufferedImage image = new BufferedImage((int) Math.ceil(region.w() * scale),
                 (int) Math.ceil(region.h() * scale), BufferedImage.TYPE_INT_ARGB);
         try (FrostCanvas c = new FrostCanvas(image, scale)) {
@@ -307,9 +372,8 @@ public final class MusicPainter {
             // 圆角面板，但不用卡片阴影，保持轻量列表感。
             c.round(region.x(), region.y(), region.w(), region.h(), 14,
                     dark ? new Color(42, 50, 54, 250) : new Color(255, 253, 255, 250));
-            String[] names = {"标准", "较高", "极高"};
             for (int i = 0; i < names.length; i++) {
-                Box b = qualityRow(i);
+                Box b = qualityRow(i,names.length,width);
                 // 分隔线画在每行顶部（第一行除外），先画线再画 hover，避免被高亮盖掉。
                 if (i > 0) {
                     c.g.setColor(LINE);
@@ -335,22 +399,29 @@ public final class MusicPainter {
 
     /** 进度条：左端已播时间，右端倒计时。没有歌曲时不画。 */
     private static void seekBar(FrostCanvas c, MusicView v, Box b) {
-        if (v.current().durationSeconds() <= 0) return;
-        c.text(Track.format((int) v.position()), b.x() - 32, b.cy() + 4, 9, false, MUTED, 40);
+        seekBar(c,new PlaybackBarView("","",v.current().durationSeconds(),v.position(),v.playing(),v.volume(),v.quality(),false),b);
+    }
+    private static void seekBar(FrostCanvas c,PlaybackBarView bar,Box b) {
+        if (bar.duration() <= 0) return;
+        float progress=(float)Math.max(0,Math.min(1,bar.position()/bar.duration()));
+        c.text(Track.format((int) bar.position()), b.x() - 32, b.cy() + 4, 9, false, MUTED, 40);
         c.round(b.x(), b.cy() - 1.5, b.w(), 3, 1.5, TRACK);
-        c.round(b.x(), b.cy() - 1.5, b.w() * v.progress(), 3, 1.5, PINK);
-        double knob = b.x() + b.w() * v.progress();
+        c.round(b.x(), b.cy() - 1.5, b.w() * progress, 3, 1.5, PINK);
+        double knob = b.x() + b.w() * progress;
         c.round(knob - 4, b.cy() - 4, 8, 8, 4, Color.WHITE);
         c.g.setColor(PINK);
         c.g.setStroke(new BasicStroke(1.4f));
         c.g.draw(shape(knob - 4, b.cy() - 4, 8, 8, 4));
-        int remain = Math.max(0, v.current().durationSeconds() - (int) v.position());
+        int remain = Math.max(0, bar.duration() - (int) bar.position());
         c.text("-" + Track.format(remain), b.x() + b.w() + 8, b.cy() + 4, 9, false, MUTED, 40);
     }
 
     private static void volumeBar(FrostCanvas c, MusicView v, Box b) {
+        volumeBar(c,v.volume(),b);
+    }
+    private static void volumeBar(FrostCanvas c,float volume,Box b) {
         c.round(b.x(), b.cy() - 1.5, b.w(), 3, 1.5, TRACK);
-        c.round(b.x(), b.cy() - 1.5, b.w() * Math.max(0, Math.min(1, v.volume())), 3, 1.5, PINK);
+        c.round(b.x(), b.cy() - 1.5, b.w() * Math.max(0, Math.min(1, volume)), 3, 1.5, PINK);
     }
 
     private static void list(FrostCanvas c,MusicView v,MusicLayout l,Function<String,BufferedImage> covers) {
@@ -376,18 +447,18 @@ public final class MusicPainter {
             c.center(emptyText(v.page(), v.loggedIn()),671,392,15,true,INK,660);
         }
         for(int i=0;i<v.tracks().size();i++) {
-            Track t=v.tracks().get(i);Box b=l.box("row"+i);
-            boolean on=t.equals(v.current());
+            SongView t=v.tracks().get(i);Box b=l.box("row"+i);
+            boolean on=t.source()==MusicSource.QQ?v.current().source()==MusicSource.QQ&&t.platformId().equals(v.current().platformId()):t.equals(v.current());
             // 行与行之间只用一条分隔线，不再给每行套圆角卡片。
             c.g.setColor(LINE);
             c.g.drawLine(292, b.y(), 1050, b.y());
             if(v.hover().equals("row"+i)||v.hover().equals("add"+i))
                 c.round(292,b.y(),758,46,10,HOVER);
             cover(c,t,304,b.y()+5,36,11,covers);
-            c.text(t.title(),360,b.y()+19,14,true,on?DEEP:INK,360);
+            dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,t.title(),360,b.y()+19,14,true,on?DEEP:INK,360,t.source()==MusicSource.QQ&&t.vip());
             c.text(t.artist(),360,b.y()+36,11,false,MUTED,360);
             c.text(t.album(),748,b.y()+29,12,false,MUTED,150);
-            c.right(t.durationText(),972,b.y()+29,12,MUTED);
+            c.right(t.source()==MusicSource.QQ&&t.durationSeconds()==0?"—":t.durationText(),972,b.y()+29,12,MUTED);
             Box add=l.box("add"+i);
             UiIcons.draw(c, v.page()==MusicView.Page.QUEUE?"remove":"plus",
                     add.cx(), add.cy(), 16, v.hover().equals("add"+i)?DEEP:MUTED);
@@ -664,7 +735,7 @@ public final class MusicPainter {
         c.center(label,b.cx(),b.cy()+5,13,true,DEEP,b.w()-16);
     }
 
-    public static void cover(FrostCanvas c,Track track,int x,int y,int size,int radius,Function<String,BufferedImage> covers) {
+    public static void cover(FrostCanvas c,SongView track,int x,int y,int size,int radius,Function<String,BufferedImage> covers) {
         if(size>100) c.shadow(x,y,size,size,radius,14,7,new Color(89,45,65,28));
         Shape previous=c.g.getClip();c.g.clip(shape(x,y,size,size,radius));
         BufferedImage image=covers.apply(track.coverUrl());

@@ -15,6 +15,26 @@ public final class IslandPainter {
     }
 
     public static BufferedImage paint(View view, double scale, BufferedImage cover) {
+        return paint(view,scale,cover,0);
+    }
+    /** 单位为逻辑像素；时间宽度动态扣除，长时长也不会盖住歌词。 */
+    private static float textWidth(FrostCanvas c,View view){return Math.max(1,Math.min(231,338-c.width(view.time(),11,true)-12-57));}
+    public static float availableTextWidth(View view){
+        try(FrostCanvas c=new FrostCanvas(new BufferedImage(1,1,BufferedImage.TYPE_INT_ARGB),1)){return textWidth(c,view);}
+    }
+    public static boolean scrolls(View view){
+        try(FrostCanvas c=new FrostCanvas(new BufferedImage(1,1,BufferedImage.TYPE_INT_ARGB),1)){
+            float available=textWidth(c,view);
+            return c.width(view.title(),13,true)>available||c.width(view.subtitle(),11,false)>available;
+        }
+    }
+    public static BufferedImage paint(View view,double scale,BufferedImage cover,double scrollSeconds) {
+        return paint(view,scale,cover,scrollSeconds,true);
+    }
+    public static BufferedImage paintBackdrop(View view,double scale,BufferedImage cover){
+        return paint(view,scale,cover,0,false);
+    }
+    private static BufferedImage paint(View view,double scale,BufferedImage cover,double scrollSeconds,boolean text) {
         BufferedImage image = new BufferedImage((int)Math.ceil((WIDTH+2*PAD)*scale),
                 (int)Math.ceil((HEIGHT+2*PAD)*scale),BufferedImage.TYPE_INT_ARGB);
         try(FrostCanvas c=new FrostCanvas(image,scale)) {
@@ -24,8 +44,9 @@ public final class IslandPainter {
             c.shadow(0,0,WIDTH,HEIGHT,30,20,0,0,new Color(241,136,178,24));
             c.glass(0,0,WIDTH,HEIGHT,30,true);
             artwork(c, cover);
-            c.text(view.title(),57,26,13,true,INK,231);
-            c.text(view.subtitle(),57,44,11,false,MUTED,231);
+            float available=textWidth(c,view);
+            if(text)MarqueeText.draw(c,view.title(),57,26,13,true,INK,available,scrollSeconds);
+            if(text)MarqueeText.draw(c,view.subtitle(),57,44,11,false,MUTED,available,scrollSeconds);
             // 倒计时加粗并用主文字色：11px 常规字重 + 次级灰在半透明药丸上几乎看不清。
             c.right(view.time(),338,35,11,true,INK);
             // 轨道与文字栏对齐（标题左缘 57、时间右缘 338），不再横贯整条药丸。

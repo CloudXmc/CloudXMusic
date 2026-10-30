@@ -2,10 +2,11 @@ package dev.lzasn.cloudxmusic.client.gui.design;
 
 import dev.lzasn.cloudxmusic.client.state.Track;
 import dev.lzasn.cloudxmusic.client.state.PlaybackMode;
+import dev.lzasn.cloudxmusic.client.omni.SongView;
 import java.util.List;
 
 /** 只包含绘制所需的不可变快照，不把游戏实例传入画布。 */
-public record MusicView(Page page, Track current, List<Track> tracks, List<Track> queue,
+public record MusicView(Page page, SongView current, List<SongView> tracks, List<SongView> queue,
                         List<LyricRow> lyrics, int positionTenths, boolean playing,
                         boolean loggedIn, String nickname, String search, boolean focused,
                         boolean cursor, String status, String quality, String lyricMode,
@@ -16,6 +17,15 @@ public record MusicView(Page page, Track current, List<Track> tracks, List<Track
                         String openKey) {
     public enum Page { NOW, DISCOVER, SEARCH, FAVORITES, QUEUE, ROOM, SETTINGS, ACCOUNT }
     public record LyricRow(String text, String translation, boolean active) {}
+    /** 保留原绘制测试/网易云调用的构造入口，转换只发生在展示边界。 */
+    public MusicView(Page page,Track current,List<Track> tracks,List<Track> queue,List<LyricRow> lyrics,int positionTenths,boolean playing,
+                     boolean loggedIn,String nickname,String search,boolean focused,boolean cursor,String status,String quality,String lyricMode,
+                     boolean islandEnabled,PlaybackMode playbackMode,boolean favorite,String version,String hover,int coverRevision,float seekPreview,
+                     float volume,String avatarUrl,boolean darkMode,float panelScale,float islandScale,float islandX,float islandY,String openKey){
+        this(page,SongView.from(current),tracks.stream().map(SongView::from).toList(),queue.stream().map(SongView::from).toList(),lyrics,
+                positionTenths,playing,loggedIn,nickname,search,focused,cursor,status,quality,lyricMode,islandEnabled,playbackMode,favorite,version,
+                hover,coverRevision,seekPreview,volume,avatarUrl,darkMode,panelScale,islandScale,islandX,islandY,openKey);
+    }
     public float position() { return seekPreview >= 0 ? seekPreview : positionTenths / 10f; }
     public float progress() { return Math.max(0, Math.min(1, position() / Math.max(1, current.durationSeconds()))); }
 

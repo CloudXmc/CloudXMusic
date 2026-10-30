@@ -45,6 +45,7 @@ public final class Mp3Player {
     private volatile long generation = 1;
     /** 当前这一代独占的连接、声卡和解码状态。 */
     private volatile Engine engine;
+    private final java.util.Set<Engine> handoffEngines = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     private volatile boolean paused;
     private volatile boolean active;
@@ -81,16 +82,33 @@ public final class Mp3Player {
         }
 
         /** 幂等：shutdown 和线程退出都会调，先关的那个生效。 */
-        void close() {
+        synchronized void close() {
             SourceDataLine current = line;
-            line = null;
             if (current != null) {
                 try {
                     current.stop();
                     current.close();
+                    if (!current.isOpen()) line = null;
                 } catch (RuntimeException ignored) {
                     // 已经关掉了
                 }
+            }
+        }
+
+        synchronized void closeForHandoff() {
+            SourceDataLine current = line;
+            if (current != null) {
+                // 设备支持硬件增益时，在停线前短暂淡出；不改变正常播放的音量逻辑。
+                if (current.isRunning() && current.isControlSupported(javax.sound.sampled.FloatControl.Type.MASTER_GAIN)) {
+                    javax.sound.sampled.FloatControl gain=(javax.sound.sampled.FloatControl)current.getControl(javax.sound.sampled.FloatControl.Type.MASTER_GAIN);
+                    float from=gain.getValue(),to=gain.getMinimum();
+                    for(int i=1;i<=5;i++){gain.setValue(from+(to-from)*i/5);java.util.concurrent.locks.LockSupport.parkNanos(2_000_000);}
+                }
+                current.stop();
+                current.flush();
+                current.close();
+                if (current.isOpen()) throw new IllegalStateException("网易云声卡未能关闭");
+                line = null;
             }
         }
     }
@@ -143,6 +161,29 @@ public final class Mp3Player {
         if (!active || paused) return;
         paused = true;
         pausedSince = System.currentTimeMillis();
+    }
+
+    /** 交接专用：立即使旧代次失效，后台停线并确认；不在游戏线程等待声卡或网络。 */
+    public synchronized java.util.concurrent.CompletableFuture<Void> pauseForHandoff() {
+        generation++;
+        active = false;
+        paused = true;
+        finished = false;
+        Engine old = engine;
+        engine = null;
+        if(old!=null)handoffEngines.add(old);
+        Thread thread = worker;
+        worker = null;
+        java.util.concurrent.CompletableFuture<Void> done = new java.util.concurrent.CompletableFuture<>();
+        Thread.ofVirtual().name("CloudXMusic-Netease-Handoff").start(() -> {
+            try {
+                for(Engine pending:handoffEngines){pending.closeForHandoff();handoffEngines.remove(pending);}
+                if (thread != null) thread.interrupt();
+                done.complete(null);
+            } catch (Throwable e) { done.completeExceptionally(e); }
+            finally { if(old!=null&&old.connection!=null)old.connection.disconnect(); }
+        });
+        return done.orTimeout(3,java.util.concurrent.TimeUnit.SECONDS);
     }
 
     /** 恢复：暂停太久（CDN 会掐空闲连接）才重开流，否则原地继续。 */
@@ -261,6 +302,9 @@ public final class Mp3Player {
         // 代次自增是最关键的一步：在跑的线程下一轮检查就会发现自己是旧一代，
         // 主动收工，不会再 rearm 自己去抢新线程的连接。
         generation++;
+        for(Engine pending:handoffEngines)Thread.ofVirtual().name("CloudXMusic-Handoff-Cleanup").start(()->{
+            pending.close();if(pending.line==null)handoffEngines.remove(pending);
+        });
         Engine old = engine;
         engine = null;
         if (old != null) {
@@ -308,6 +352,7 @@ public final class Mp3Player {
                         }
                         if (stale(e.gen)) break;
                         if ((header = bitstream.readFrame()) == null) {
+                            if (stale(e.gen)) break;
                             finished = true;
                             active = false;
                             drainLine(e);
@@ -340,6 +385,7 @@ public final class Mp3Player {
 
                         ensureLine(e, rate, channels);
                         writeFrames(e, buffer.getBuffer(), samples);
+                        if (stale(e.gen)) break;
                         decodedMs += frameMs;
                         positionMs = decodedMs;
                         lastProgressAt = System.currentTimeMillis();
@@ -436,6 +482,8 @@ public final class Mp3Player {
     }
 
     private void ensureLine(Engine engine, int rate, int channels) throws Exception {
+        synchronized (engine) {
+        if (stale(engine.gen)) return;
         if (engine.line != null && engine.line.isOpen()) return;
         AudioFormat format = new AudioFormat(rate, 16, channels, true, BIG_ENDIAN);
         DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
@@ -444,6 +492,7 @@ public final class Mp3Player {
         line.open(format, Math.max(8192, (int) (rate * 0.4) * channels * 2));
         line.start();
         engine.line = line;
+        }
     }
 
     private void writeFrames(Engine engine, short[] samples, int length) {

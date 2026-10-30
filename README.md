@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.4.10-D96A91?style=flat-square" alt="版本 2.4.10">
+  <img src="https://img.shields.io/badge/Version-2.13.5-D96A91?style=flat-square" alt="版本 2.13.5">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -29,23 +29,23 @@
 
 ## 项目简介
 
-CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客户端模组，提供游戏内音乐库、网易云音乐接入、歌词与独立 HUD 灵动岛。界面使用模组内置字体和抗锯齿画布绘制。
+CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客户端模组，支持网易云音乐与 QQ 音乐双音源、独立账号与播放队列、歌词和 HUD 灵动岛。界面使用模组内置字体和抗锯齿画布绘制；QQ 音乐直接通过 Java 请求，无需安装 Node.js 或部署外部 API 服务。
 
 开发者：Lzasn、xWtree、xiaota888。
 
-> **首次使用说明**：首次使用时须在游戏内阅读并确认免责声明。CloudXMusic 是非官方第三方客户端，与网易云音乐及其运营方无隶属、授权或背书关系。服务请求由客户端直接发送至网易云音乐相关服务及音频 CDN。登录 Cookie 以未加密文本保存在本机，请勿分享；使用时请遵守服务条款、所在地法律法规及作品版权要求。
+> **首次使用说明**：首次使用时须在游戏内阅读并确认相应音源的使用协议与免责声明；QQ 音乐登录前需要滚动到底部才能同意。CloudXMusic 是非官方第三方客户端，与网易云音乐、QQ 音乐及其运营方无隶属、授权或背书关系。服务请求由客户端直接发送至对应音乐服务及音频 CDN。账号凭证以未加密文本保存在本机，请勿分享；使用时请遵守服务条款、所在地法律法规及作品版权要求。
 
 ## 功能
 
 | 音乐与账号 | 播放与界面 |
 | --- | --- |
-| 网易云用户名密码、短信验证码、Cookie 登录 | 播放队列、单曲循环、列表循环与随机播放 |
-| 每日推荐、歌曲/歌手搜索、收藏 | 进度和音量控制，播放状态与队列持久化 |
-| 标准、较高与极高三档音质 | 滚动歌词、原文/双语模式与游戏内灵动岛 |
-| 专辑封面与当前歌曲信息 | 独立字体、圆角磨砂界面与低对比柔和阴影 |
+| 网易云账号登录、QQ 音乐扫码登录，左侧账号区域切换全局音源 | 两侧独立队列、单曲循环、列表循环与随机播放 |
+| 网易云每日推荐、搜索与收藏；QQ 每日30首、推荐歌单、搜索与我喜欢 | 进度、音量及播放控制，双音源互斥播放 |
+| QQ SQ FLAC、HQ 320k、标准 128k，取链失败自动降级 | LRC / QQ QRC 逐字歌词、翻译开关与 HUD 灵动岛 |
+| 专辑封面、QQ 头像与会员徽章、歌曲 VIP 标识 | Unicode 字形回退、圆角磨砂界面与柔和阴影 |
 | 音乐房间入口（Beta，占位） | 面板升降、导航滚动与灵动岛过渡动效 |
 
-首次确认免责声明前不会发起网易云 API 或封面请求。模组不会把登录 Cookie 保存在项目服务器上。
+两侧账号凭证分开存放，不会保存到项目服务器。v2.13.5 已移除 QQ“刷歌模式 / 个性电台”，每日30首与推荐歌单使用普通播放队列。
 
 ## 安装
 
@@ -57,7 +57,7 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 
 ## 使用
 
-默认是按 `H` 打开或关闭音乐盒（可在游戏按键设置中修改）。界面内可切换正在播放、发现、搜索、收藏、队列、音乐房间、账号和设置页面，登录、搜索、收藏、音质切换等全部在界面内完成，无需命令。
+默认是按 `H` 打开或关闭音乐盒（可在游戏按键设置中修改）。点击左侧账号区域切换网易云 / QQ 音乐，搜索、发现、收藏、队列、正在播放和底栏随全局音源更新。登录、搜索、音质与歌词切换等均在界面内完成，无需命令。返回游戏主标题界面时停止播放。
 
 ## 构建
 
@@ -77,6 +77,14 @@ Linux/macOS：
 
 构建产物位于 `cloudxmusic-client/build/libs/CloudXMusic-<version>.jar`。
 
+完整回归及离线界面预览：
+
+```powershell
+.\gradlew.bat clean :cloudxmusic-client:build :cloudxmusic-client:renderUiPreview
+```
+
+`libs/` 中的本地依赖与 Gradle Wrapper 均属于构建所需文件，应与源码一并保留。Nayuki FLAC 库使用固定提交的本地编译 JAR，由 Loom 嵌套打包；来源和许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 ## 配置与隐私
 
 配置目录：`config/cloudxmusic/`
@@ -86,18 +94,21 @@ Linux/macOS：
 | `cookies.json` | 网易云登录 Cookie 与游客会话 Cookie，未加密保存 |
 | `netease.json` | 昵称、UID、音质与歌词偏好 |
 | `state.json` | 当前歌曲与播放队列 |
+| `qqmusic/account.json` | QQ 账号票据，明文存储并由操作系统用户权限保护 |
+| `qqmusic/config.json` | QQ 音质、音量、歌词与协议确认等独立偏好 |
 
-- Cookie 仅保存于本机客户端，并会随网易云请求发送至网易云相关服务。
-- 请勿上传、截图或分享 `cookies.json`；退出登录会清理本地 Cookie。
+- 登录凭证仅保存于本机客户端，并用于对应音乐服务的认证请求。
+- 请勿上传、截图或分享 `cookies.json`、`qqmusic/account.json` 等账号文件。
 - 不要把账号密码、Cookie 或音频凭证提交到 Git 仓库或公开工单。
 
 ## 已知限制
 
-- 支持标准、较高与极高（MP3）三档音质；无损（FLAC）已下线——FLAC 是 VBR 格式，跳转只能从头逐帧解码，代价过高。
-- 网易云接口为非官方接口，可能随服务端变化而失效。
+- 网易云沿用原有 MP3 音质档位；QQ 支持 SQ FLAC、HQ 320kbps 与标准 128kbps，实际可用音质取决于歌曲及账号权限，自动降级不会覆盖全局偏好。
+- QQ 的 FLAC / MP3 进度跳转通过后台从头解码并按 PCM 样本数跳过，长曲目或慢速网络可能需要等待。
+- 网易云与 QQ 音乐接口为非官方接口，可能随服务端变化而失效。
 - 部分受版权、地区或账号权限限制的曲目可能无法播放。
 - 「音乐房间」页目前是 Beta 占位，只提供入口与说明，房间功能尚未接入。
-- 当前仓库只实现客户端；Folia 多人音乐房间及客户端/服务端协议计划在 2.5.0 开始开发。
+- 当前仓库只实现 Fabric 客户端，不提供 Paper / Folia 服务端插件。
 
 ## 开发资料
 
@@ -107,12 +118,15 @@ Linux/macOS：
 - [开发状态与交接记录](DEVELOPMENT_STATUS.md)
 - [第三方组件与许可证](THIRD_PARTY_NOTICES.md)
 
-主要代码位于 `cloudxmusic-client/src/main/java/dev/lzasn/cloudxmusic/client/`：`audio/` 处理音频，`gui/` 绘制界面，`hud/` 绘制灵动岛，`lyric/` 解析歌词，`netease/` 处理登录与 API，`state/` 管理播放状态。
+主要代码位于 `cloudxmusic-client/src/main/java/dev/lzasn/cloudxmusic/client/`：`audio/` 处理原有音频，`gui/` 绘制界面，`hud/` 绘制灵动岛，`lyric/` 解析歌词，`netease/` 保留网易云业务，`state/` 管理原有播放状态，`omni/` 提供统一音源路由与快照，`qqmusic/` 管理 QQ 登录、目录、取链、解码和独立状态。
+
+开发状态、UI 重构等文档包含历史阶段记录；当前版本的功能与变更以本 README 和 [CHANGELOG.md](CHANGELOG.md) 为准。
 
 ## 第三方组件与许可证
 
 - [JLayer](https://repo1.maven.org/maven2/javazoom/jlayer/)：MP3 解码，LGPL-3.0-or-later。
 - [ZXing Core](https://github.com/zxing/zxing)：二维码编码，Apache-2.0。
-- Inter 与 Noto Sans SC 字体的许可证随资源一并提供。
+- [Project Nayuki FLAC library](https://github.com/nayuki/FLAC-library-Java)：FLAC 解码，LGPL-3.0-or-later，保留上游源码与许可。
+- Inter、Noto Sans SC 与 Noto Sans CJK KR 字体的许可证随资源一并提供。
 
 完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目原创代码采用 [GNU GPL-3.0-only](LICENSE)；版权归 Lzasn、xWtree、xiaota888 所有。

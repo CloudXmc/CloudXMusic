@@ -10,6 +10,13 @@ import dev.lzasn.cloudxmusic.client.netease.NeteaseSession;
 import dev.lzasn.cloudxmusic.client.state.MusicState;
 import dev.lzasn.cloudxmusic.client.state.PlaybackMode;
 import dev.lzasn.cloudxmusic.client.state.Track;
+import dev.lzasn.cloudxmusic.client.qqmusic.*;
+import dev.lzasn.cloudxmusic.client.omni.*;
+import dev.lzasn.cloudxmusic.client.qqmusic.QQSearchPainter;
+import dev.lzasn.cloudxmusic.client.qqmusic.QQLoginUi;
+import dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration;
+import dev.lzasn.cloudxmusic.client.qqmusic.QQPlaybackController;
+import dev.lzasn.cloudxmusic.client.qqmusic.QQPlaybackUi;
 import dev.lzasn.cloudxmusic.client.util.Async;
 import dev.lzasn.cloudxmusic.client.util.Browser;
 import net.fabricmc.loader.api.FabricLoader;
@@ -32,6 +39,23 @@ public final class MusicScreen extends Screen {
     private static final String VERSION = FabricLoader.getInstance().getModContainer("cloudxmusic")
             .map(m -> m.getMetadata().getVersion().getFriendlyString()).orElse("dev");
     private final MusicState state = CloudXMusicClient.STATE;
+    private final QQSearchController search;
+    private final QQSearchMetadata searchMetadata=QQMusicIntegration.createSearchMetadata();
+    private final QQLoginUi qqLogin = QQMusicIntegration.createLoginUi();
+    private final QQNowLyricsRenderer qqLyrics=new QQNowLyricsRenderer();
+    private final QQPlaybackController qqPlayback=QQMusicIntegration.playback();
+    private final QQCatalogController qqCatalog=QQMusicIntegration.createCatalog();
+    private MusicPainter.PlaybackBarView paintedQqBar;
+    private int lastBarArtwork=-1;
+    private PlaybackMode paintedQqMode;
+    private boolean paintedQqDark;
+    private String paintedQqStatus="";
+    private boolean overlayQq,qqVolumeDrag;
+    private boolean sourceMenuOpen;
+    private MusicSource displayedSource;
+    private final UiTexture modalSurface = new UiTexture();
+    private String paintedModalKey;
+    private List<UnifiedSong> qqRows = List.of();
     private final UiTexture surface = new UiTexture();
     private final UiTexture overlay = new UiTexture();
     private final UiTexture lyricSurface = new UiTexture();
@@ -98,7 +122,13 @@ public final class MusicScreen extends Screen {
     private static final float PAUSED_COVER = .9f, PLAYING_COVER = 1f;
     private static final long COVER_ANIM_NANOS = 340_000_000L, LYRIC_ANIM_NANOS = 260_000_000L;
 
-    public MusicScreen() { super(Component.literal("CloudXMusic · 云朵音乐盒")); }
+    public MusicScreen() {
+        super(Component.literal("CloudXMusic · 云朵音乐盒"));
+        search = new QQSearchController(Async::main, () -> painted = null,
+                error -> CloudXMusicClient.LOGGER.warn("音乐搜索失败", error));
+        search.seedNetease(state.searchResults(), state.searchKeyword());
+        syncSource();
+    }
 
     @Override protected void init() {
         // 同一个设计坐标变换用于绘制和命中，GUI 缩放不改变相对布局。
@@ -110,6 +140,8 @@ public final class MusicScreen extends Screen {
 
     /** 关闭：先播下滑动画，动画结束再真正退出界面。 */
     @Override public void onClose() {
+        if (qqLogin.isOpen()) { qqLogin.dismiss(); painted = null; return; }
+        if (sourceMenuOpen) {sourceMenuOpen=false;return;}
         if (closing) return;
         closing = true;
         panelClosing = true;
@@ -140,22 +172,30 @@ public final class MusicScreen extends Screen {
         // 画布像素数按倍率平方增长，而 Java2D 路径填充是纯 CPU 光栅化。
         // 1.5 倍已接近原生清晰度（原先最高 2 倍只是超采样，代价是 4 倍像素）。
         rasterScale = Math.max(.75, Math.min(1.5, scale * minecraft.getWindow().getGuiScale()));
-        painted = null; paintedDynamic = null; paintedLyrics = null; paintedCoverKey = null;
+        painted = null; paintedDynamic = null; paintedQqBar = null; paintedLyrics = null; paintedCoverKey = null;
+        paintedModalKey=null;paintedQualityKey=null;paintedAccountKey=null;
         lastPaint = 0; lastOverlayPaint = 0; rebuildLayout();
     }
 
     private List<Track> source() {
+        if(QQMusicIntegration.isQq())return List.of();
         return switch (page) {
-            case DISCOVER -> state.library(); case SEARCH -> state.searchResults();
+            case DISCOVER -> state.library(); case SEARCH -> search.isQq() ? List.of() : search.neteaseTracks();
             case FAVORITES -> state.favorites(); case QUEUE -> state.queue(); default -> List.of();
         };
     }
 
     private void rebuildLayout() {
         List<Track> source = source();
-        scroll = Math.max(0, Math.min(scroll, Math.max(0, source.size() - ROWS)));
-        rows = List.copyOf(source.subList(scroll, Math.min(source.size(), scroll + ROWS)));
-        List<Track> queue = state.queue();
+        qqRows=List.of();
+        if(QQMusicIntegration.isQq()&&page==Page.QUEUE){
+            var queue=qqPlayback.queue();scroll=Math.max(0,Math.min(scroll,Math.max(0,queue.size()-7)));
+            qqRows=List.copyOf(queue.subList(scroll,Math.min(queue.size(),scroll+7)));
+        }
+        scroll = QQMusicIntegration.isQq() ? scroll
+                : Math.max(0, Math.min(scroll, Math.max(0, source.size() - ROWS)));
+        rows = QQMusicIntegration.isQq()?List.of():List.copyOf(source.subList(scroll, Math.min(source.size(), scroll + ROWS)));
+        List<Track> queue = QQMusicIntegration.isQq()?List.of():state.queue();
         List<Track> next = new ArrayList<>();
         int current = queue.indexOf(state.current());
         for (int i = 1; i <= queue.size() && next.size() < 3; i++) {
@@ -163,36 +203,68 @@ public final class MusicScreen extends Screen {
             if (!track.equals(state.current())) next.add(track);
         }
         upcoming = List.copyOf(next);
-        layout = new MusicLayout(page, rows.size(), upcoming.size(), settingsScroll, navScroll);
+        layout = new MusicLayout(page, QQMusicIntegration.isQq()?qqRows.size():rows.size(), upcoming.size(), settingsScroll, navScroll);
     }
 
+    /** 音源提交后只替换展示会话，不重建 Screen，不触碰另一音源队列。 */
+    private void syncSource(){
+        MusicSource selected=QQMusicIntegration.coordinator().source();
+        if(displayedSource==selected)return;
+        if(displayedSource==null)input=search.draft();
+        displayedSource=selected;
+        search.switchTo(selected==MusicSource.QQ?QQSearchController.Source.QQ:QQSearchController.Source.NETEASE,
+                input,page==Page.SEARCH&&!search.isQq()?scroll:search.scroll());
+        input=search.draft();scroll=search.isQq()?0:search.scroll();
+        focused=false;selectAll=false;drag=null;seekPreview=-1;qualityMenuOpen=false;qqVolumeDrag=false;
+        accountFocus=-1;accountSelectAll=false;
+        if(selected==MusicSource.QQ&&page==Page.ACCOUNT)page=Page.NOW;
+        qqLyrics.close();
+        painted=null;paintedDynamic=null;paintedQqBar=null;paintedLyrics=null;paintedCoverKey=null;
+        paintedModalKey=null;paintedQualityKey=null;paintedAccountKey=null;
+    }
+    private boolean sharedQqBar(){return QQMusicIntegration.isQq()&&page!=Page.SETTINGS&&page!=Page.ACCOUNT&&page!=Page.ROOM;}
+    private int artworkRevision(){return CoverCache.revision()+QQMusicIntegration.artwork().revision();}
+    private java.awt.image.BufferedImage artwork(String url){
+        if(!FirstRunNotice.accepted())return null;
+        return QQMusicIntegration.isQq()?QQMusicIntegration.artwork().image(url):CoverCache.image(url);
+    }
     private MusicView snapshot(String hover) {
-        NeteaseSession session = NeteaseSession.INSTANCE;
-        List<MusicView.LyricRow> lines = new ArrayList<>();
-        Lyric lyric = state.lyric();
-        if (!lyric.isEmpty()) {
-            int active = Math.max(0, lyric.indexAt((int) (state.position() * 1000)));
-            Lyric.Line[] all = lyric.lines();
-            // 固定七槽窗口（当前行居中），越界留空槽，保证当前行始终停在同一条基线。
-            for (int offset = -3; offset <= 3; offset++) {
-                int index = active + offset;
-                if (index < 0 || index >= all.length) {
-                    lines.add(new MusicView.LyricRow("", "", false));
-                    continue;
-                }
-                lines.add(new MusicView.LyricRow(all[index].text(), all[index].translated(), index == active));
+        NeteaseSession session=NeteaseSession.INSTANCE;
+        PlaybackSnapshot playback=QQMusicIntegration.snapshot();
+        List<MusicView.LyricRow> lines=new ArrayList<>();
+        var lyrics=playback.lyrics();
+        if(!lyrics.isEmpty()){
+            // 首句尚未开始时下标为 -1，不能把 null 传给不可变列表的 indexOf。
+            int active=playback.lyricIndexAt((int)(playback.position()*1000));
+            int anchor=Math.max(0,active);
+            for(int offset=-3;offset<=3;offset++){
+                int i=anchor+offset;
+                lines.add(i<0||i>=lyrics.size()?new MusicView.LyricRow("","",false):
+                        new MusicView.LyricRow(lyrics.get(i).text(),playback.source()==MusicSource.QQ?QQTranslationControl.translation(lyrics.get(i),playback.lyricMode()):lyrics.get(i).translated(),i==active));
             }
         }
-        String status = state.statusLine();
-        if (status.isBlank() && source().size() > ROWS) status = (scroll + 1) + "–" + (scroll + rows.size()) + " / " + source().size();
-        return new MusicView(page, state.current(), rows, upcoming, List.copyOf(lines), (int) (state.position() * 10),
-                state.playing(), session.loggedIn(), session.nickname().isBlank() ? "已登录" : session.nickname(),
-                input, focused, focused && System.currentTimeMillis() / 500 % 2 == 0, status, session.quality().label,
-                session.lyricMode().label, state.islandEnabled(), state.playbackMode(),
-                state.isFavorite(state.current()), VERSION, hover,
-                CoverCache.revision(), seekPreview, state.volume(), session.avatar(),
-                state.darkMode(), state.panelScale(), state.islandScale(),
-                state.islandX(), state.islandY(), CloudXMusicClient.openKeyLabel());
+        boolean qq=playback.source()==MusicSource.QQ;
+        String status=page==Page.SEARCH?search.view().status():playback.status();
+        var route=QQMusicIntegration.coordinator().view();
+        if(route.switching()||route.error())status=route.status();
+        else if(qq&&(playback.loading()||playback.error()))status=playback.status();
+        if(qq&&page==Page.QUEUE)status=QQMusicIntegration.queueStatus();
+        var account=QQMusicIntegration.account();
+        List<SongView> displayRows=qq?qqRows.stream().map(song->song.platformId().equals(playback.song().platformId())?playback.song():QQMusicIntegration.queueSong(song)).toList():rows.stream().map(SongView::from).toList();
+        return new MusicView(page,playback.song(),displayRows,qq?List.of():upcoming.stream().map(SongView::from).toList(),List.copyOf(lines),
+                (int)(playback.position()*10),playback.playing(),qq?account.loggedIn():session.loggedIn(),
+                qq?account.nickname():session.nickname().isBlank()?"已登录":session.nickname(),input,focused,
+                focused&&System.currentTimeMillis()/500%2==0,status,playback.quality(),playback.lyricMode().label,
+                state.islandEnabled(),playback.playbackMode(),playback.favorite(),VERSION,hover,artworkRevision(),seekPreview,
+                playback.volume(),qq?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel());
+    }
+
+    private java.awt.image.BufferedImage paintMain(MusicView still,QQPlaybackController.View qqView){
+        var image=QQSearchPainter.decoratePlayback(MusicPainter.paint(still,layout,rasterScale,this::artwork,
+                qqLogin.sidebarPainter(still,QQMusicIntegration.isQq()),QQMusicIntegration.isQq()&&catalogPage()?canvas->QQCatalogPainter.paint(canvas,qqCatalog.view(),this::artwork,qqView.song()):null),rasterScale,still,search.view(),qqView,searchMetadata::song,this::artwork);
+        if(QQMusicIntegration.isQq()&&page==Page.QUEUE)image=QQQueuePainter.notice(image,rasterScale,QQMusicIntegration.queueStatus());
+        if(QQMusicIntegration.isQq()&&page==Page.NOW)image=QQNowPainter.decorate(image,rasterScale,still,qqView);
+        return image;
     }
 
     @Override public void render(GuiGraphics graphics, int mx, int my, float partialTick) {
@@ -204,6 +276,9 @@ public final class MusicScreen extends Screen {
             closeDone = true;
             if (minecraft != null) minecraft.execute(() -> minecraft.setScreen(null));
         }
+        syncSource();
+        syncCatalog();
+        if(searchMetadata.update(search.view(),search.isQq()&&page==Page.SEARCH))painted=null;
         rebuildLayout();
         // 关闭时不再铺原版模糊：renderBlurredBackground 内部带一层固定不透明度的暗色，
         // 无法随动画渐隐，只要还在调用，遮罩就一定比面板晚走。改为只用可调 alpha 的纯色遮罩，
@@ -217,26 +292,32 @@ public final class MusicScreen extends Screen {
         Hit hover = layout.hit(localX(mx), localY(my));
         MusicView view = snapshot("");
         // 老版本持久化的账号可能没有头像地址，静默补一次。
-        if (view.loggedIn() && NeteaseSession.INSTANCE.avatar().isBlank() && !avatarSynced) {
+        if (!QQMusicIntegration.isQq() && view.loggedIn() && NeteaseSession.INSTANCE.avatar().isBlank() && !avatarSynced) {
             avatarSynced = true;
             syncAccountQuietly();
         }
         // 静态层只在页面、列表、封面等真正变化时重画；播放进度不再驱动整幅重绘。
+        qqLogin.checkTerms(QQMusicIntegration.isQq());
+        if(qqLogin.isOpen())sourceMenuOpen=false;
+        boolean qqLoginChanged = qqLogin.changed();
+        QQPlaybackController.View qqView=qqPlayback.view();
+        boolean qqBar=sharedQqBar();
+        search.visibleRows(qqBar?7:8);
+        String qqKey=(qqBar&&qqView.song()!=null?qqView.song().platformId():"")+"|"+qqView.loading()+"|"+qqView.playing()+"|"+qqView.status()+"|"+qqView.error();
+        if (!qqKey.equals(paintedQqStatus)||qqLoginChanged) {painted=null;paintedQqStatus=qqKey;}
+        if(overlayQq!=qqBar){overlayQq=qqBar;paintedDynamic=null;paintedQqBar=null;}
         MusicView still = view.staticView();
         boolean scrollChanged = lastSettingsScroll != settingsScroll;
         if ((!still.equals(painted) || scrollChanged) && (painted == null || now - lastPaint >= 33_333_333L)) {
-            surface.update(MusicPainter.paint(still, layout, rasterScale, CoverCache::image));
-            painted = still; lastPaint = now; lastCoverRevision = CoverCache.revision();
-            lastSettingsScroll = settingsScroll;
-        } else if (CoverCache.revision() != lastCoverRevision && now - lastPaint >= 33_333_333L) {
-            // 头像/封面异步加载完成后 revision 变化，重画一次让头像现身。
-            surface.update(MusicPainter.paint(still, layout, rasterScale, CoverCache::image));
-            painted = still; lastPaint = now; lastCoverRevision = CoverCache.revision();
-            lastSettingsScroll = settingsScroll;
+            surface.update(paintMain(still,qqView));
+            painted=still;lastPaint=now;lastCoverRevision=artworkRevision();lastSettingsScroll=settingsScroll;
+        } else if(artworkRevision()!=lastCoverRevision&&now-lastPaint>=33_333_333L){
+            surface.update(paintMain(still,qqView));
+            painted=still;lastPaint=now;lastCoverRevision=artworkRevision();lastSettingsScroll=settingsScroll;
         }
         // 动态层只有播放页的进度条与音量，尺寸很小，按进度以 10Hz 刷新。
         boolean nowPage = page == Page.NOW;
-        boolean accountPage = page == Page.ACCOUNT;
+        boolean accountPage = page == Page.ACCOUNT && !QQMusicIntegration.isQq();
         if (accountPage) {
             // 账号页整块内容单独成纹理，打字/倒计时只重画这一块。
             boolean blink = accountFocus >= 0 && System.currentTimeMillis() / 500 % 2 == 0;
@@ -252,15 +333,25 @@ public final class MusicScreen extends Screen {
                 paintedAccountKey = key;
             }
         }
-        if (nowPage && !view.equals(paintedDynamic)
+        if (nowPage && !qqBar && !view.equals(paintedDynamic)
                 && (paintedDynamic == null || now - lastOverlayPaint >= 33_333_333L)) {
             overlay.update(MusicPainter.paintDynamic(view, layout, rasterScale));
             paintedDynamic = view; lastOverlayPaint = now;
         }
+        if(qqBar) {
+            PlaybackSnapshot pb=QQMusicIntegration.snapshot();
+            MusicPainter.PlaybackBarView bar=new MusicPainter.PlaybackBarView(pb.song().title(),pb.song().artist(),(int)Math.ceil(pb.duration()),
+                    seekPreview>=0?seekPreview:pb.position(),pb.playing(),pb.volume(),pb.quality(),true,pb.song().vip(),pb.song().coverUrl());
+            boolean styleChanged=paintedQqMode!=pb.playbackMode()||paintedQqDark!=view.darkMode()||lastBarArtwork!=artworkRevision();
+            if((!bar.equals(paintedQqBar)||styleChanged)&&(paintedQqBar==null||styleChanged||now-lastOverlayPaint>=100_000_000L)) {
+                overlay.update(MusicPainter.paintPlaybackBar(view,bar,rasterScale,this::artwork));paintedQqBar=bar;lastOverlayPaint=now;
+                paintedQqMode=pb.playbackMode();paintedQqDark=view.darkMode();lastBarArtwork=artworkRevision();
+            }
+        }
         if (nowPage) {
             // 歌词层：内容变化（当前行走了）才重画，滚动动效只移动贴图。
             if (!view.lyrics().equals(paintedLyrics)) {
-                lyricSurface.update(MusicPainter.paintLyrics(view, rasterScale));
+                lyricSurface.update(MusicPainter.paintLyrics(view,rasterScale,QQMusicIntegration.isQq()));
                 paintedLyrics = view.lyrics();
                 lyricAnimStart = now;
             }
@@ -271,18 +362,18 @@ public final class MusicScreen extends Screen {
             }
             double ct = coverAnimStart == 0 ? 1 : Math.min(1, (now - coverAnimStart) / (double) COVER_ANIM_NANOS);
             coverScale = coverFrom + (coverTo - coverFrom) * (float) (1 - Math.pow(1 - ct, 3));
-            String coverKey = view.current().coverUrl() + "#" + CoverCache.revision();
+            String coverKey = view.current().coverUrl() + "#" + artworkRevision();
             if (ct < 1 || !coverKey.equals(paintedCoverKey)) {
-                coverSurface.update(MusicPainter.paintCover(view, rasterScale, coverScale, CoverCache::image));
+                coverSurface.update(MusicPainter.paintCover(view, rasterScale, coverScale, this::artwork));
                 paintedCoverKey = coverKey;
             }
         }
-        if (nowPage && qualityMenuOpen) {
+        if ((nowPage || qqBar) && qualityMenuOpen) {
             int hoverRow = qualityHover(mx, my);
-            int selected = NeteaseSession.INSTANCE.quality().ordinal();
-            String key = selected + "|" + hoverRow;
+            int selected = QQMusicIntegration.isQq()?QQQualityMenu.selected(qqView,qqPlayback.preferredQuality()):NeteaseSession.INSTANCE.quality().ordinal();
+            String key = QQMusicIntegration.isQq()+"|"+view.darkMode()+"|"+selected + "|" + hoverRow;
             if (!key.equals(paintedQualityKey)) {
-                qualitySurface.update(MusicPainter.paintQualityMenu(selected, hoverRow, rasterScale));
+                qualitySurface.update(QQMusicIntegration.isQq()?QQQualityMenu.paint(selected,hoverRow,rasterScale):MusicPainter.paintQualityMenu(selected, hoverRow, rasterScale));
                 paintedQualityKey = key;
             }
         }
@@ -325,9 +416,18 @@ public final class MusicScreen extends Screen {
                     (int) Math.round(originY + lyric.y() * scale + lyricOffset),
                     (int) Math.round(lyric.w() * scale), (int) Math.round(lyric.h() * scale));
             graphics.disableScissor();
-        }
-        if (nowPage) {
-            Box band = dynamicRegion(page);
+            if(QQMusicIntegration.isQq()){
+                graphics.pose().pushMatrix();
+                try{
+                    graphics.pose().translate((float)originX,(float)(originY+lyricOffset));
+                    graphics.pose().scale((float)scale,(float)scale);
+                    var lyricPlayback=QQMusicIntegration.snapshot();
+                    qqLyrics.draw(graphics,view,rasterScale,now,lyricPlayback.lyricIndexAt((int)(lyricPlayback.position()*1000)));
+                }finally{graphics.pose().popMatrix();}
+            }
+        }else qqLyrics.close();
+        if (nowPage || qqBar) {
+            Box band = qqBar?MusicPainter.playbackBarRegion():dynamicRegion(page);
             overlay.draw(graphics, (int) Math.round(originX + band.x() * scale),
                     (int) Math.round(originY + band.y() * scale),
                     (int) Math.round(band.w() * scale), (int) Math.round(band.h() * scale));
@@ -338,13 +438,25 @@ public final class MusicScreen extends Screen {
                     (int) Math.round(originY + ar.y() * scale),
                     (int) Math.round(ar.w() * scale), (int) Math.round(ar.h() * scale));
         }
-        if (nowPage && qualityMenuOpen) {
-            Box qm = MusicPainter.qualityMenuRegion();
+        if ((nowPage || qqBar) && qualityMenuOpen) {
+            Box qm = QQMusicIntegration.isQq()?QQQualityMenu.region():MusicPainter.qualityMenuRegion();
             qualitySurface.draw(graphics, (int) Math.round(originX + qm.x() * scale),
                     (int) Math.round(originY + qm.y() * scale),
                     (int) Math.round(qm.w() * scale), (int) Math.round(qm.h() * scale));
         }
-        renderHover(graphics, hover);
+        if(!sourceMenuOpen&&!qqLogin.isOpen())renderHover(graphics,hover);
+        // 模态层最后绘制，封面、歌词、控制栏均不能覆盖二维码或穿透点击。
+        if(sourceMenuOpen||qqLogin.isOpen()){
+            var route=QQMusicIntegration.coordinator().view();var account=QQMusicIntegration.account();
+            String key=sourceMenuOpen+"|"+route+"|"+account+"|"+qqLoginChanged+"|"+view.darkMode();
+            if(qqLoginChanged||!key.equals(paintedModalKey)){
+                java.awt.image.BufferedImage modal=sourceMenuOpen?QQSourcePainter.menu(rasterScale,route,
+                        NeteaseSession.INSTANCE.loggedIn()?NeteaseSession.INSTANCE.nickname():"访客模式",account.loggedIn()?account.nickname():"未登录"):
+                        qqLogin.decorate(new java.awt.image.BufferedImage(drawWForRaster(),drawHForRaster(),java.awt.image.BufferedImage.TYPE_INT_ARGB),rasterScale,view,true);
+                modalSurface.update(modal);paintedModalKey=key;
+            }
+            modalSurface.draw(graphics,x,y,drawW,drawH);
+        }
         graphics.pose().popMatrix();
         super.render(graphics, mx, my, partialTick);
     }
@@ -359,6 +471,8 @@ public final class MusicScreen extends Screen {
     @Override public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
     }
 
+    private int drawWForRaster(){return (int)Math.ceil((WIDTH+2*PAD)*rasterScale);}
+    private int drawHForRaster(){return (int)Math.ceil((HEIGHT+2*PAD)*rasterScale);}
     private double transitionEased(long now) {
         if (pageTransitionAt == 0) return 1;
         double t = Math.min(1, Math.max(0, (now - pageTransitionAt) / (double) PAGE_TRANSITION_NANOS));
@@ -397,23 +511,58 @@ public final class MusicScreen extends Screen {
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean handled) {
         if (closing) return true;
+        if (qqLogin.isOpen()) {
+            if (event.button() == 0) qqLogin.click(localX(event.x()), localY(event.y()));
+            painted = null; return true;
+        }
         if (event.button() != 0) return super.mouseClicked(event, handled);
         rebuildLayout();
-        // 只有点在账号内容区才拦下，否则导航和关闭按钮还要能点。
+        syncSource();
+        double x=localX(event.x()),y=localY(event.y());
+        if(sourceMenuOpen){
+            if(QQSourcePainter.NETEASE.contains(x,y))QQMusicIntegration.coordinator().select(MusicSource.NETEASE);
+            else if(QQSourcePainter.QQ.contains(x,y))QQMusicIntegration.coordinator().select(MusicSource.QQ);
+            else if(QQSourcePainter.CLOSE.contains(x,y))sourceMenuOpen=false;
+            else if(QQSourcePainter.MANAGE.contains(x,y)&&!QQMusicIntegration.coordinator().view().switching()){
+                sourceMenuOpen=false;if(QQMusicIntegration.isQq())qqLogin.open();else setPage(Page.ACCOUNT);
+            }
+            paintedModalKey=null;return true;
+        }
+        if(qualityMenuOpen){
+            int count=QQMusicIntegration.isQq()?QQQuality.values().length:NeteaseQuality.values().length;
+            for(int i=0;i<count;i++)if((QQMusicIntegration.isQq()?QQQualityMenu.row(i):MusicPainter.qualityRow(i,count)).contains(x,y)){
+                if(QQMusicIntegration.isQq())QQMusicIntegration.quality(QQQuality.values()[i]);
+                else{NeteaseSession.INSTANCE.quality(NeteaseQuality.values()[i]);state.applyQuality();}
+                break;
+            }
+            qualityMenuOpen=false;painted=null;return true;
+        }
+        if(QQMusicIntegration.isQq()&&page==Page.NOW&&QQTranslationControl.BUTTON.contains(x,y)){
+            QQMusicIntegration.toggleTranslation();painted=null;paintedLyrics=null;return true;
+        }
+        if(sharedQqBar()&&QQPlaybackUi.nowPlayingAt(x,y)){setPage(Page.NOW);return true;}
+        if(sharedQqBar()&&MusicPainter.playbackBarRegion().contains(x,y)){
+            Action action=QQPlaybackUi.actionAt(x,y);focused=false;selectAll=false;
+            if(action!=null&&QQMusicIntegration.coordinator().allowsPlayback(MusicSource.QQ))switch(action){
+                case PLAY->qqPlayback.toggle();case STOP->qqPlayback.stop();case PREVIOUS->qqPlayback.previous();case NEXT->qqPlayback.next();
+                case PAGE->setPage(Page.QUEUE);case QUALITY->qualityMenuOpen=true;
+                case MODE_CYCLE->qqPlayback.cycleMode();
+                case VOLUME,SEEK->{drag=action;qqVolumeDrag=true;updateDrag(x);}
+                default->{}
+            }
+            painted=null;return true;
+        }
+        if((QQMusicIntegration.coordinator().view().switching()||QQMusicIntegration.coordinator().view().error())&&x>=MAIN_X)return true;
+        if(QQMusicIntegration.isQq()&&catalogPage()){
+            syncCatalog();if(QQCatalogPainter.click(qqCatalog,x,y)){focused=false;painted=null;return true;}
+        }
+        if(page==Page.SEARCH&&QQMusicIntegration.isQq()){
+            var results=search.view();int row=QQPlaybackUi.rowAt(x,y,results.scroll(),results.songs().size(),sharedQqBar());
+            if(row>=0){qqPlayback.play(results.songs(),row);focused=false;selectAll=false;painted=null;return true;}
+            if(QQSearchPainter.blocksQqClick(x,y)){focused=false;selectAll=false;return true;}
+        }
         if (page == Page.ACCOUNT && accountRegion().contains(localX(event.x()), localY(event.y()))) {
             accountClick(localX(event.x()), localY(event.y()));
-            return true;
-        }
-        if (page == Page.NOW && qualityMenuOpen) {
-            double lx = localX(event.x()), ly = localY(event.y());
-            for (int i = 0; i < NeteaseQuality.values().length; i++) {
-                if (!MusicPainter.qualityRow(i).contains(lx, ly)) continue;
-                NeteaseSession.INSTANCE.quality(NeteaseQuality.values()[i]);
-                state.applyQuality();
-                qualityMenuOpen = false;
-                return true;
-            }
-            qualityMenuOpen = false;
             return true;
         }
         Hit hit = layout.hit(localX(event.x()), localY(event.y()));
@@ -426,10 +575,22 @@ public final class MusicScreen extends Screen {
     }
 
     private void activate(Hit hit) {
+        if(QQMusicIntegration.isQq()){
+            switch(hit.action()){
+                case ROW->{if(page==Page.QUEUE&&hit.index()<qqRows.size())qqPlayback.play(qqPlayback.queue(),scroll+hit.index());painted=null;return;}
+                case ADD->{if(page==Page.QUEUE)qqPlayback.remove(scroll+hit.index());painted=null;return;}
+                case CLEAR->{qqPlayback.clearQueue();painted=null;return;}
+                case REFRESH,FAVORITE->{return;}
+                case LYRIC->{QQMusicIntegration.cycleLyrics();painted=null;return;}
+                case STOP->{qqPlayback.stop();painted=null;return;}
+                case PREVIOUS,PLAY,NEXT,SEEK,VOLUME,QUALITY,PLAYBACK_MODE,MODE_CYCLE->{return;}
+                default->{}
+            }
+        }
         NeteaseSession session = NeteaseSession.INSTANCE;
         switch (hit.action()) {
             case PAGE -> setPage(Page.values()[hit.index()]);
-            case ACCOUNT -> setPage(Page.ACCOUNT);
+            case ACCOUNT -> {sourceMenuOpen=true;focused=false;drag=null;seekPreview=-1;paintedModalKey=null;}
             case CLOSE -> onClose();
             case PREVIOUS -> state.previous(); case PLAY -> state.togglePlaying(); case NEXT -> state.next();
             case SEARCH_FIELD -> focused = true; case SEARCH -> submit();
@@ -481,40 +642,54 @@ public final class MusicScreen extends Screen {
     }
 
     private void setPage(Page next) {
+        qqVolumeDrag=false;
+        qualityMenuOpen=false;paintedQualityKey=null;
+        paintedDynamic=null;paintedQqBar=null;paintedLyrics=null;paintedCoverKey=null;
+        if (page == Page.SEARCH) search.remember(input, search.isQq() ? search.scroll() : scroll);
         if (next != page) pageTransitionAt = System.nanoTime();
         page = next; scroll = 0; settingsScroll = 0; seekPreview = -1; drag = null; focused = page == Page.SEARCH;
-        if (focused && input.isBlank()) input = state.searchKeyword();
-        if (next == Page.FAVORITES) state.ensureFavoritesLoaded();
-        if (next == Page.DISCOVER) state.refreshLibraryIfNeeded();
+        if (focused) { input = search.draft(); scroll = search.isQq() ? 0 : search.scroll(); }
+        if (!QQMusicIntegration.isQq() && next == Page.FAVORITES) state.ensureFavoritesLoaded();
+        if (!QQMusicIntegration.isQq() && next == Page.DISCOVER) state.refreshLibraryIfNeeded();
+        syncCatalog();
         rebuildLayout(); painted = null;
+    }
+    private boolean catalogPage(){return page==Page.DISCOVER||page==Page.FAVORITES;}
+    private void syncCatalog(){
+        if(qqCatalog.update(QQMusicIntegration.isQq()&&catalogPage()?page==Page.DISCOVER?QQCatalogController.Area.DISCOVER:QQCatalogController.Area.FAVORITES:QQCatalogController.Area.NONE))painted=null;
     }
 
     private void updateDrag(double x) {
         if (drag == Action.VOLUME) {
-            Box b = layout.box("volume");
+            Box b = qqVolumeDrag?QQPlaybackUi.volumeBox():layout.box("volume");
             float ratio = (float) Math.max(0, Math.min(1, (x - b.x()) / b.w()));
-            state.volume(ratio);
+            if(qqVolumeDrag)QQMusicIntegration.volume(ratio);else state.volume(ratio);
             return;
         }
-        Box b = layout.box("seek");
+        Box b = qqVolumeDrag?QQPlaybackUi.seekBox():layout.box("seek");
         float ratio = (float) Math.max(0, Math.min(1, (x - b.x()) / b.w()));
-        seekPreview = ratio * state.current().durationSeconds();
+        seekPreview = ratio * (float)QQMusicIntegration.snapshot().duration();
     }
     @Override public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (qqLogin.isOpen() || sourceMenuOpen) return true;
         if (drag != null) { updateDrag(localX(event.x())); return true; }
         return super.mouseDragged(event, dx, dy);
     }
     @Override public boolean mouseReleased(MouseButtonEvent event) {
+        if (qqLogin.isOpen() || sourceMenuOpen) return true;
         if (drag != null) {
             updateDrag(localX(event.x()));
             // 拖动只更新预览，松开再跳转，避免每次鼠标移动都重启解码。
-            if (drag == Action.SEEK) state.seek(seekPreview);
-            drag = null; seekPreview = -1; painted = null; return true;
+            if (drag == Action.SEEK) {if(qqVolumeDrag)qqPlayback.seek(seekPreview);else state.seek(seekPreview);}
+            drag = null;qqVolumeDrag=false; seekPreview = -1; painted = null; return true;
         }
         return super.mouseReleased(event);
     }
     @Override public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+        if(qqLogin.isOpen()){qqLogin.scroll(localX(mx),localY(my),sy);return true;}
+        if(sourceMenuOpen)return true;
         if (closing) return true;
+        if(QQMusicIntegration.isQq()&&catalogPage()&&QQCatalogPainter.scroll(qqCatalog,localX(mx),localY(my),sx,sy)){painted=null;return true;}
         // 导航区滚动：项目多于可视高度时才生效，避免压到下面的账号组。
         int navMax = MusicLayout.navMaxScroll();
         if (navMax > 0 && localX(mx) < 252 && sy != 0
@@ -526,6 +701,11 @@ public final class MusicScreen extends Screen {
             settingsScroll = Math.max(0, Math.min(200, settingsScroll + (sy > 0 ? -1 : 1) * 28));
             rebuildLayout(); painted = null; return true;
         }
+        if (page == Page.SEARCH && search.isQq() && sy != 0
+                && QQSearchPainter.resultArea(localX(mx), localY(my))) {
+            search.scrollQq(sy > 0 ? -1 : 1);
+            painted = null; return true;
+        }
         if (page != Page.NOW && page != Page.SETTINGS && localX(mx) >= MAIN_X && localX(mx) <= 1050
                 && localY(my) >= ROW_TOP && localY(my) < 620 && sy != 0) {
             scroll += sy > 0 ? -1 : 1; rebuildLayout(); painted = null; return true;
@@ -533,6 +713,11 @@ public final class MusicScreen extends Screen {
         return super.mouseScrolled(mx, my, sx, sy);
     }
     @Override public boolean keyPressed(KeyEvent event) {
+        if (qqLogin.isOpen()) {
+            if (event.isEscape()) { qqLogin.dismiss(); painted = null; }
+            return true;
+        }
+        if (sourceMenuOpen){if(event.isEscape())sourceMenuOpen=false;return true;}
         if (closing) return true;
         if (page == Page.ACCOUNT && accountFocus >= 0) {
             if (event.isEscape()) { accountFocus = -1; accountSelectAll = false; return true; }
@@ -569,11 +754,14 @@ public final class MusicScreen extends Screen {
         } else {
             // 跟随按键绑定：改成 M 就只认 M，不再写死 H。
             if (CloudXMusicClient.matchesOpenKey(event)) { onClose(); return true; }
-            if (event.key() == GLFW.GLFW_KEY_SPACE) { state.togglePlaying(); return true; }
+            if (event.key() == GLFW.GLFW_KEY_SPACE) {
+                if(QQMusicIntegration.isQq())qqPlayback.toggle();else if(QQMusicIntegration.neteaseActive())state.togglePlaying();return true;
+            }
         }
         return super.keyPressed(event);
     }
     @Override public boolean charTyped(CharacterEvent event) {
+        if (qqLogin.isOpen() || sourceMenuOpen) return true;
         if (page == Page.ACCOUNT && accountFocus >= 0 && event.isAllowedChatCharacter()) {
             appendAccount(event.codepointAsString());
             return true;
@@ -598,8 +786,8 @@ public final class MusicScreen extends Screen {
     /** 音质浮层里鼠标悬停到第几档。 */
     private int qualityHover(int mx, int my) {
         double lx = localX(mx), ly = localY(my);
-        for (int i = 0; i < NeteaseQuality.values().length; i++)
-            if (MusicPainter.qualityRow(i).contains(lx, ly)) return i;
+        for (int i = 0; i < (QQMusicIntegration.isQq()?QQQuality.values().length:NeteaseQuality.values().length); i++)
+            if ((QQMusicIntegration.isQq()?QQQualityMenu.row(i):MusicPainter.qualityRow(i)).contains(lx, ly)) return i;
         return -1;
     }
 
@@ -769,6 +957,7 @@ public final class MusicScreen extends Screen {
 
     @Override public void tick() {
         super.tick();
+        syncSource();
         // 按墙钟每秒递减；倒计时只体现在发送按钮上，不写状态行。
         if (accountCountdown > 0 && System.currentTimeMillis() - accountSecondAt >= 1000) {
             accountSecondAt += 1000;
@@ -784,14 +973,19 @@ public final class MusicScreen extends Screen {
         input += clean.substring(0, end);
     }
     private void submit() {
-        if (input.isBlank() || state.searchLoading()) return;
-        state.search(input.trim()); scroll = 0; focused = false; selectAll = false; painted = null;
+        if (page != Page.SEARCH || !search.submit(input)) return;
+        scroll = 0; focused = false; selectAll = false; painted = null;
     }
     @Override public void removed() {
+        qqCatalog.close();
+        qqLogin.close();
+        search.close();
+        searchMetadata.close();
+        qqLyrics.close();
         panelClosing = false;
         surface.close(); overlay.close(); lyricSurface.close(); coverSurface.close();
-        accountSurface.close(); qualitySurface.close();
-        painted = null; paintedDynamic = null; paintedLyrics = null; paintedCoverKey = null; paintedAccountKey = null;
+        accountSurface.close(); qualitySurface.close();modalSurface.close();
+        painted = null; paintedDynamic = null; paintedQqBar = null; paintedLyrics = null; paintedCoverKey = null; paintedAccountKey = null;
         drag = null; seekPreview = -1; super.removed();
     }
     @Override public boolean isPauseScreen() { return false; }

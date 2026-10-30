@@ -11,6 +11,16 @@ version = project.mod_version
 group = project.maven_group
 
 repositories {
+    // 本地专用坐标只指向 libs/，不向远程仓库请求该实验依赖。
+    exclusiveContent {
+        forRepository {
+            flatDir {
+                name = "LocalNayukiFlac"
+                dirs rootProject.file("libs")
+            }
+        }
+        filter { includeModule("dev.lzasn.local", "nayuki-flac") }
+    }
     maven { name = "Tencent"; url = "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/" }
     mavenCentral()
 }
@@ -26,6 +36,10 @@ dependencies {
     implementation files(rootProject.file("libs/jlayer-1.0.1.jar"))
     // 二维码编码（Apache-2.0）：扫码登录要在游戏里画出真的二维码
     implementation files(rootProject.file("libs/zxing-core-3.5.3.jar"))
+
+    // 独立 FLAC 实验：上游固定提交本地编译，使用 Loom 嵌套打包保留库边界。
+    implementation "dev.lzasn.local:nayuki-flac:0.0.0-e807ab25"
+    include "dev.lzasn.local:nayuki-flac:0.0.0-e807ab25"
 
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
@@ -63,8 +77,14 @@ java {
 
 jar {
     inputs.property "archivesName", project.base.archivesName
-    from("LICENSE") {
-        rename { "${it}_${project.base.archivesName}" }
+    from(rootProject.file("libs/nayuki-flac-e807ab25-sources.zip")) {
+        into "META-INF/licenses/nayuki-flac"
+    }
+    from(rootProject.file("THIRD_PARTY_NOTICES.md")) {
+        into "META-INF"
+    }
+    from(rootProject.file("LICENSE")) {
+        rename { "${it}_${project.base.archivesName.get()}" }
     }
     // 把 JLayer 的类直接并进来（不是模组，不能走 jar-in-jar）
     from({ zipTree(rootProject.file("libs/jlayer-1.0.1.jar")) }) {

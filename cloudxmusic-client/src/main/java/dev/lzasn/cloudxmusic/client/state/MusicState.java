@@ -68,6 +68,25 @@ public final class MusicState {
     private Lyric lyric = Lyric.EMPTY;
     private String statusLine = "";
     private int consecutiveFailures;
+    // 仅添加播放交接边界；默认仍立即执行，不改变网易云登录、队列或取链业务。
+    private java.util.function.Consumer<Runnable> playbackHandoff = Runnable::run;
+    private final java.util.concurrent.atomic.AtomicLong playbackRequest = new java.util.concurrent.atomic.AtomicLong();
+
+    public void playbackHandoff(java.util.function.Consumer<Runnable> handoff) {
+        playbackHandoff = java.util.Objects.requireNonNull(handoff);
+    }
+
+    public java.util.concurrent.CompletableFuture<Void> pauseForExternalPlayback() {
+        playbackRequest.incrementAndGet(); // 旧取链回调不能在另一音源开始后重新启动。
+        playing = false;
+        return player.pauseForHandoff();
+    }
+
+    public void playbackHandoffFailed(String message) {
+        playbackRequest.incrementAndGet();
+        playing = false;
+        statusLine = message;
+    }
 
     // ------------------------------------------------------------ 外观配置
     private boolean darkMode;
@@ -411,8 +430,12 @@ public final class MusicState {
                 return;
             }
             if (player.isPaused()) {
-                player.resume();
-                playing = true;
+                long request = playbackRequest.incrementAndGet();
+                playbackHandoff.accept(() -> {
+                    if (request != playbackRequest.get()) return;
+                    player.resume();
+                    playing = true;
+                });
             } else {
                 player.pause();
                 playing = false;
@@ -467,7 +490,10 @@ public final class MusicState {
 
     /** 播放网易云的歌：先取播放地址和歌词，再交给播放器。 */
     private void startNetease(Track track, long startMs) {
+        long request = playbackRequest.incrementAndGet();
         statusLine = "正在解析播放地址…";
+        playbackHandoff.accept(() -> {
+        if (request != playbackRequest.get() || !current.equals(track)) return;
         Async.run(() -> {
             String url = null;
             String failure = "";
@@ -488,7 +514,7 @@ public final class MusicState {
             Lyric finalLyric = parsed;
             Async.main(() -> {
                 // 退出登录或切歌后，旧请求不能再启动播放。
-                if (!current.equals(track)) return;
+                if (request != playbackRequest.get() || !current.equals(track)) return;
                 lyric = finalLyric;
                 if (finalUrl == null) {
                     consecutiveFailures++;
@@ -507,10 +533,12 @@ public final class MusicState {
                 player.play(finalUrl, startMs, track.durationSeconds() * 1000L);
             });
         });
+        });
     }
 
     /** 离开世界/退出时停掉播放，别在主菜单继续放。 */
     public void stopAll() {
+        playbackRequest.incrementAndGet();
         playing = false;
         consecutiveFailures = 0;
         player.stop();

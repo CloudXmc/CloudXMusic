@@ -153,7 +153,7 @@ public final class FrostCanvas implements AutoCloseable {
         float width = 0;
         for (int i = 0; i < text.length();) {
             int cp = text.codePointAt(i);
-            g.setFont(UiFonts.font(UiFonts.isCjk(cp), size, bold));
+            g.setFont(UiFonts.font(cp, size, bold));
             String glyph = new String(Character.toChars(cp));
             width += (float) g.getFont().getStringBounds(glyph, g.getFontRenderContext()).getWidth();
             i += Character.charCount(cp);
@@ -186,7 +186,7 @@ public final class FrostCanvas implements AutoCloseable {
         for (int i = 0; i < text.length();) {
             int cp = text.codePointAt(i);
             String glyph = new String(Character.toChars(cp));
-            g.setFont(UiFonts.font(UiFonts.isCjk(cp), size, bold));
+            g.setFont(UiFonts.font(cp, size, bold));
             g.setColor(new Color(75, 43, 60, Math.min(40, color.getAlpha() / 7)));
             g.drawString(glyph, cursor, baseline + .8f);
             g.setColor(color);

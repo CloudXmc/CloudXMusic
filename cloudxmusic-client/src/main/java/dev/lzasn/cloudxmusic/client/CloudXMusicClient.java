@@ -54,24 +54,26 @@ public final class CloudXMusicClient implements ClientModInitializer {
                             : new FirstRunNoticeScreen(null,new MusicScreen()));
                 }
             }
-            STATE.tick(client);
+            if(dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.neteaseActive()) STATE.tick(client);
         });
 
         // 退出世界/回主菜单就停播，否则音乐会在菜单里继续放
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> STATE.refreshLibraryIfNeeded());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.worldJoined();
+            if(dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.neteaseActive())STATE.refreshLibraryIfNeeded();
+        });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            STATE.stopAll();
             QrLogin.cancel();
             CoverCache.clear();
-            // 断开回调跑在网络线程，纹理释放必须回到客户端线程，否则会抛
-            // "Rendersystem called from wrong thread" 并漏掉这张纹理。
+            // 播放状态和纹理清理统一回客户端线程，避免断开回调跨线程修改会话。
             dev.lzasn.cloudxmusic.client.util.Async.main(() -> {
+                dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.stopForMenu();
                 DynamicIslandHud.clear();
                 FrostCanvas.clearCaches();
             });
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
-            STATE.stopAll();
+            dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.stopForMenu();
             QrLogin.cancel();
             CoverCache.close();
             DynamicIslandHud.clear();
@@ -79,6 +81,8 @@ public final class CloudXMusicClient implements ClientModInitializer {
         });
 
         DynamicIslandHud.register();
+        dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.register();
+        // 正式播放由交接协调器控制；不再自动启动独立声卡测试。
     }
 
     /**
