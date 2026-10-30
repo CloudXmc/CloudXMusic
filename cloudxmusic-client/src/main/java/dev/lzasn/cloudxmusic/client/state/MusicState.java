@@ -510,9 +510,16 @@ public final class MusicState {
         Async.run(() -> {
             String url = null;
             String failure = "";
+            // 实际落到的档位：请求无损但服务端没有时会降级，界面要据此提示。
+            NeteaseQuality actualQuality = null;
             try {
-                url = NeteaseApi.playableUrl(track.id(), NeteaseSession.INSTANCE.quality());
-                if (url == null) failure = "没有可用播放地址（版权受限/需要会员，或 CDN 拒绝）";
+                NeteaseQuality wanted = NeteaseSession.INSTANCE.quality();
+                NeteaseApi.Playable playable = NeteaseApi.playable(track.id(), wanted);
+                if (playable == null) failure = "没有可用播放地址（版权受限/需要会员，或 CDN 拒绝）";
+                else {
+                    url = playable.url();
+                    actualQuality = playable.quality();
+                }
             } catch (Exception e) {
                 failure = "取播放地址失败：" + e.getMessage();
             }
@@ -525,6 +532,7 @@ public final class MusicState {
             String finalUrl = url;
             String finalFailure = failure;
             Lyric finalLyric = parsed;
+            NeteaseQuality finalQuality = actualQuality;
             Async.main(() -> {
                 // 退出登录或切歌后，旧请求不能再启动播放。
                 if (request != playbackRequest.get() || !current.equals(track)) return;
@@ -542,6 +550,12 @@ public final class MusicState {
                     return;
                 }
                 consecutiveFailures = 0;
+                // 请求的档位没拿到时给个右上角提示，省得用户以为无损生效了。
+                NeteaseQuality wanted = NeteaseSession.INSTANCE.quality();
+                if (finalQuality != null && finalQuality != wanted) {
+                    dev.lzasn.cloudxmusic.client.netease.NeteaseQualityToast.quality(
+                            "《" + track.title() + "》没有" + wanted.label + "音源，已切换到" + finalQuality.label);
+                }
                 statusLine = "";
                 player.play(finalUrl, startMs, track.durationSeconds() * 1000L);
             });

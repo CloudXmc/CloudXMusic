@@ -242,7 +242,9 @@ public final class MusicPainter {
         Box region = lyricRegion();
         int w = (int) Math.ceil(region.w() * scale), h = (int) Math.ceil(region.h() * scale);
         BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        int center = region.y() + region.h() / 2, gap = 48, activeSlot = 3;
+        // 单行模式每行只占一行高度，行距要跟着收；否则关掉译文后中间会空出一大块。
+        boolean bilingual = v.lyrics().stream().anyMatch(r -> !r.translation().isBlank());
+        int center = region.y() + region.h() / 2, gap = bilingual ? 48 : 36, activeSlot = 3;
         int x = region.x() + 24, max = region.w() - 32;
         try (FrostCanvas c = new FrostCanvas(image, scale)) {
             c.g.translate(-region.x(), -region.y());
@@ -291,7 +293,7 @@ public final class MusicPainter {
     /** 底部控制栏：曲目信息、收藏、队列、播放模式、传输键、音质与音量。 */
     private static void playerBar(FrostCanvas c, MusicView v, MusicLayout l) {
         playerBar(c,v,l,new PlaybackBarView(v.current().title(),v.current().artist(),v.current().durationSeconds(),
-                v.position(),v.playing(),v.volume(),v.quality(),v.current().source()==MusicSource.QQ));
+                v.position(),v.playing(),v.volume(),v.quality(),v.current().source()==MusicSource.QQ,v.current().vip()));
     }
 
     /** 音源无关的只读绘制数据，不回写 Track 或 MusicState。 */
@@ -325,7 +327,7 @@ public final class MusicPainter {
             }
         }
         int textX=bar.qq()?342:296,textWidth=bar.qq()?178:200;
-        dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,bar.title(),textX,613,13,true,INK,textWidth,bar.qq()&&bar.vip());
+        dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,bar.title(),textX,613,13,true,INK,textWidth,bar.vip());
         c.text(bar.artist(),textX,630,10,false,MUTED,textWidth);
 
         Box favorite = l.box("favorite");
@@ -448,17 +450,9 @@ public final class MusicPainter {
         } else {
             c.text(switch(v.page()){case DISCOVER->"每日推荐";case FAVORITES->"我喜欢的音乐";default->"你的播放队列";},292,143,17,true,INK,620);
             labelButton(c,v,l,"refresh",v.page()==MusicView.Page.QUEUE?"清空队列":"刷新列表");
-            // 收藏页的「播放全部」用主色按钮，和右侧灰底「刷新」拉开层级。
-            if (v.page() == MusicView.Page.FAVORITES) {
-                Box pa = l.box("playAll");
-                if (pa != null) {
-                    boolean hov = v.hover().equals("playAll");
-                    c.shadow(pa.x(), pa.y(), pa.w(), pa.h(), pa.h() / 2, 10, 5, new Color(150, 65, 99, 38));
-                    c.round(pa.x(), pa.y(), pa.w(), pa.h(), pa.h() / 2,
-                            new GradientPaint(pa.x(), pa.y(), new Color(245, 162, 189),
-                                    pa.x() + pa.w(), pa.y() + pa.h(), hov ? DEEP : PINK));
-                    c.center("播放全部", pa.cx(), pa.cy() + 5, 13, true, Color.WHITE, pa.w() - 16);
-                }
+            // 收藏页的「播放全部」：与「刷新列表」同一套中性样式，只靠位置区分主次。
+            if (v.page() == MusicView.Page.FAVORITES && l.box("playAll") != null) {
+                labelButton(c, v, l, "playAll", "播放全部");
             }
         }
         c.text("歌曲 / 歌手",360,194,11,false,MUTED,360);

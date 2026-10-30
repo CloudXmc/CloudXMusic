@@ -169,7 +169,16 @@ public final class NeteaseApi {
      *
      * <p>探测时会依次尝试：原链接 → 换成 https → 不带 Cookie。哪个通过用哪个。</p>
      */
+    /** 取到的播放地址，以及它实际落在哪个音质档——可能低于请求档位。 */
+    public record Playable(String url, NeteaseQuality quality) {}
+
+    /** 只关心地址的调用方用这个。 */
     public static String playableUrl(String id, NeteaseQuality preferred) throws Exception {
+        Playable playable = playable(id, preferred);
+        return playable == null ? null : playable.url();
+    }
+
+    public static Playable playable(String id, NeteaseQuality preferred) throws Exception {
         // 降级顺序：先试用户选的档位，再按「极高 → 较高 → 标准」回落。
         // 用列表去重，首选就是极高时不会重复请求同一档。
         java.util.List<NeteaseQuality> order = new java.util.ArrayList<>();
@@ -181,15 +190,16 @@ public final class NeteaseApi {
         for (NeteaseQuality quality : order) {
             String url = songUrl(id, quality);
             if (url == null || url.isBlank()) continue;
-            String working = probe(url);
-            if (working != null) return working;
+            String working = probe(url, quality.lossless());
+            if (working != null) return new Playable(working, quality);
         }
         // 上面全是 403 时的兜底：外链播放接口。它会 302 到一个**不带 authSecret** 的直链，
         // 能放就能放，不能放会 302 到 music.163.com/404（会员/版权限制）。
         String fallback = outerUrl(id);
         if (fallback != null) {
             CloudXMusicClient.LOGGER.info("改用外链播放地址：{}", fallback);
-            return fallback;
+            // 外链固定是 mp3，按最低档记，界面据此提示「已降级」。
+            return new Playable(fallback, NeteaseQuality.STANDARD);
         }
         return null;
     }
@@ -217,10 +227,19 @@ public final class NeteaseApi {
 
     /** @return 可用的地址（可能被换成 https），都不可用返回 null。 */
     private static String probe(String url) {
+        return probe(url, false);
+    }
+
+    /**
+     * @param requireFlac 无损档专用：除了状态码，还要确认响应体真的是 FLAC。
+     *                    服务端在无版权或非会员时常回一个能下载的 mp3，只查状态码会误判成可用，
+     *                    结果进到 FLAC 解码路径后直接失败，看起来就是「降级没生效」。
+     */
+    private static String probe(String url, boolean requireFlac) {
         String https = url.startsWith("http://") ? "https://" + url.substring(7) : url;
         String[] candidates = url.startsWith("http://") ? new String[]{https, url} : new String[]{url};
         for (String candidate : candidates) {
-            if (headOk(candidate)) return candidate;
+            if (headOk(candidate, requireFlac)) return candidate;
         }
         return null;
     }
@@ -231,7 +250,7 @@ public final class NeteaseApi {
      * <p>带 Range 的探测在这类带签名的 CDN 链接上会被判成异常请求（403），
      * 会把本来能播的地址误杀。这里只要状态码，拿到头就断开，不读 body。</p>
      */
-    private static boolean headOk(String url) {
+    private static boolean headOk(String url, boolean requireFlac) {
         java.net.HttpURLConnection connection = null;
         try {
             connection = (java.net.HttpURLConnection) java.net.URI.create(url).toURL().openConnection();
@@ -244,7 +263,20 @@ public final class NeteaseApi {
             String cookie = NeteaseHttp.cookieHeader(url);
             if (!cookie.isEmpty()) connection.setRequestProperty("Cookie", cookie);
             int code = connection.getResponseCode();
-            if (code == 200 || code == 206) return true;
+            if (code == 200 || code == 206) {
+                if (!requireFlac) return true;
+                // 读魔数确认内容格式：fLaC 才是原生无损，其余一律视为这一档不可用。
+                try (java.io.InputStream body = connection.getInputStream()) {
+                    byte[] magic = body.readNBytes(4);
+                    boolean flac = magic.length == 4 && magic[0] == 'f' && magic[1] == 'L'
+                            && magic[2] == 'a' && magic[3] == 'C';
+                    if (!flac) {
+                        CloudXMusicClient.LOGGER.info("无损地址返回的不是 FLAC（魔数 {}），降级到下一档",
+                                new String(magic, java.nio.charset.StandardCharsets.ISO_8859_1));
+                    }
+                    return flac;
+                }
+            }
             String reason = "";
             try (java.io.InputStream error = connection.getErrorStream()) {
                 if (error != null) {
