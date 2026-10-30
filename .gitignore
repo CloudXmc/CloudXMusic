@@ -34,3 +34,5 @@ libs/nested/
 
 # 本地备份（含大体积 jar，不入库）
 backups/
+
+err.txt
