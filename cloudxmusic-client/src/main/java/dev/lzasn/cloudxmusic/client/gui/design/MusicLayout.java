@@ -15,7 +15,7 @@ public final class MusicLayout {
     public enum Action { PAGE, ACCOUNT, CLOSE, PREVIOUS, PLAY, NEXT, SEEK, SEARCH_FIELD, SEARCH,
         ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, MODE_CYCLE,
         STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH,
-        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS }
+        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE }
     public record Box(int x, int y, int w, int h) {
         public boolean contains(double px, double py) { return px >= x && py >= y && px < x + w && py < y + h; }
         public int cx() { return x + w / 2; }
@@ -67,6 +67,8 @@ public final class MusicLayout {
             add("quality", Action.QUALITY, 0, 886, 605, 64, 28);
             add("volume", Action.VOLUME, 0, 982, 610, 62, 18);
             add("seek", Action.SEEK, 0, 328, 646, 672, 12);
+            // 播放页的「译」开关，位置与 QQ 版一致：歌词区下方、控制栏上方的留白。
+            add("translate", Action.TRANSLATE, 0, 1008, 520, 36, 28);
         } else {
             if (page == MusicView.Page.SETTINGS) {
                 add("lyric", Action.LYRIC, 0, 318, 132 - settingsScroll, 704, 48);

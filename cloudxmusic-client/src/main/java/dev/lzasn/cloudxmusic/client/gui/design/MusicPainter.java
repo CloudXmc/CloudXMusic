@@ -186,7 +186,16 @@ public final class MusicPainter {
     /** 播放页：封面与歌词各自独立成层（便于动效），这里只画底部控制栏。 */
     private static void now(FrostCanvas c, MusicView v, MusicLayout l, Function<String,BufferedImage> covers) {
         // QQ 的完整底栏由动态层独占，静态层不能再画一份标题和按钮。
-        if(v.current().source()!=MusicSource.QQ)playerBar(c, v, l);
+        if(v.current().source()!=MusicSource.QQ){
+            playerBar(c, v, l);
+            // 「译」开关：与 QQ 版同一位置和外观，只在双语与原文之间切换。
+            Box b = l.box("translate");
+            if (b != null) {
+                boolean on = dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL.label.equals(v.lyricMode());
+                c.round(b.x(), b.y(), b.w(), b.h(), 9, on ? SOFT : CARD_BG);
+                c.center("译", b.cx(), b.cy() + 5, 13, true, on ? PINK : MUTED, b.w() - 8);
+            }
+        }
     }
 
     /** 小号 BETA 胶囊：浅粉底 + 粉字，贴在导航项或页面大标题右侧。 */
@@ -455,7 +464,7 @@ public final class MusicPainter {
             if(v.hover().equals("row"+i)||v.hover().equals("add"+i))
                 c.round(292,b.y(),758,46,10,HOVER);
             cover(c,t,304,b.y()+5,36,11,covers);
-            dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,t.title(),360,b.y()+19,14,true,on?DEEP:INK,360,t.source()==MusicSource.QQ&&t.vip());
+            dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,t.title(),360,b.y()+19,14,true,on?DEEP:INK,360,t.vip());
             c.text(t.artist(),360,b.y()+36,11,false,MUTED,360);
             c.text(t.album(),748,b.y()+29,12,false,MUTED,150);
             c.right(t.source()==MusicSource.QQ&&t.durationSeconds()==0?"—":t.durationText(),972,b.y()+29,12,MUTED);

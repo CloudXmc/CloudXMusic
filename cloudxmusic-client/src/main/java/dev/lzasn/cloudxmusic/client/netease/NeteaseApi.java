@@ -484,7 +484,11 @@ public final class NeteaseApi {
             album = stringOr(al, "name", "");
             cover = stringOr(al, "picUrl", "");
         }
-        return new Track(name, artist, (int) Math.max(0, durationMs / 1000), id, album, cover);
+        // fee：0 免费、1 会员专享、4 付费专辑、8 免费但非会员只能低音质。
+        // 前两种都需要会员或付费才能完整收听，列表里统一标 VIP。
+        long fee = longOr(song, "fee", 0L);
+        return new Track(name, artist, (int) Math.max(0, durationMs / 1000), id, album, cover,
+                fee == 1L || fee == 4L);
     }
 
     private static String artists(JsonObject song) {

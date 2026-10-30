@@ -6,10 +6,15 @@ package dev.lzasn.cloudxmusic.client.state;
  * <p>网易云的歌带 {@link #id()}，本地演示曲则为 {@code null}；{@link #album()} / {@link #coverUrl()}
  * 只有网易云来源才有值。GUI 里仍然只用 title/artist/duration，不需要区分来源。</p>
  */
-public record Track(String title, String artist, int durationSeconds, String id, String album, String coverUrl) {
+public record Track(String title, String artist, int durationSeconds, String id, String album, String coverUrl,
+                    boolean vip) {
+
+    public Track(String title, String artist, int durationSeconds, String id, String album, String coverUrl) {
+        this(title, artist, durationSeconds, id, album, coverUrl, false);
+    }
 
     public Track(String title, String artist, int durationSeconds) {
-        this(title, artist, durationSeconds, null, "", "");
+        this(title, artist, durationSeconds, null, "", "", false);
     }
 
     public boolean netease() {

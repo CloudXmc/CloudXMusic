@@ -606,6 +606,14 @@ public final class MusicScreen extends Screen {
             case REFRESH -> { if (page == Page.FAVORITES) state.loadFavorites(); else state.refreshLibrary(); }
             case QUALITY -> qualityMenuOpen = !qualityMenuOpen;
             case LYRIC -> session.lyricMode(session.lyricMode().next());
+            case TRANSLATE -> {
+                // 播放页的「译」只在双语与原文之间来回，不经过「关闭」那一档。
+                dev.lzasn.cloudxmusic.client.state.LyricMode mode = session.lyricMode();
+                session.lyricMode(mode == dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL
+                        ? dev.lzasn.cloudxmusic.client.state.LyricMode.ORIGINAL
+                        : dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL);
+                paintedLyrics = null;
+            }
             case ISLAND -> state.toggleIsland(); case STOP -> state.stopAll();
             case DARK_MODE -> { state.toggleDarkMode(); FrostCanvas.setDark(state.darkMode()); }
             case PANEL_SCALE -> { state.panelScale(cyclePanelScale(state.panelScale())); rebuildScale(); }

@@ -394,6 +394,7 @@ public final class MusicState {
         json.addProperty("id", track.id());
         json.addProperty("album", track.album());
         json.addProperty("coverUrl", track.coverUrl());
+        json.addProperty("vip", track.vip());
         return json;
     }
 
@@ -405,7 +406,8 @@ public final class MusicState {
         String id = json.has("id") && !json.get("id").isJsonNull() ? json.get("id").getAsString() : null;
         String album = json.has("album") ? json.get("album").getAsString() : "";
         String cover = json.has("coverUrl") ? json.get("coverUrl").getAsString() : "";
-        return new Track(title, artist, Math.max(0, duration), id, album, cover);
+        boolean vip = json.has("vip") && json.get("vip").getAsBoolean();
+        return new Track(title, artist, Math.max(0, duration), id, album, cover, vip);
     }
 
     private static boolean getBool(JsonObject json, String key, boolean fallback) {
