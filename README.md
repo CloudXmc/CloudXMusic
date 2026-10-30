@@ -17,12 +17,6 @@
   <img src="https://img.shields.io/badge/Java-21-ED8B00?style=flat-square" alt="Java 21">
 </p>
 
-<p align="center">
-  <img src="docs/images/cloudxmusic-showcase.png" width="920" alt="CloudXMusic 播放页面与游戏内灵动岛预览">
-</p>
-
-<p align="center"><sub>白粉磨砂界面 · 滚动歌词 · 游戏内灵动岛</sub></p>
-
 ## 目录
 
 [功能](#功能) · [安装](#安装) · [使用](#使用) · [构建](#构建) · [配置与隐私](#配置与隐私) · [已知限制](#已知限制) · [开发资料](#开发资料)
