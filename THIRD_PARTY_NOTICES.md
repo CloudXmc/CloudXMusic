@@ -109,7 +109,7 @@ FLAC 测试依赖位于 `META-INF/jars/`；界面随模组提供下列开源字�
 | 0.2.5 ~ 0.2.8 | Microsoft Fluent Emoji 3D PNG（MIT），烘焙成 20px emoji 图集 | 0.2.9 起移除。生成工具保留在 `tools/EmojiAtlas.java`，需要时可重新生成 |
 | 2.4.10 | jFLAC（LGPL-2.1），FLAC 无损解码 | 已移除。无损档位随之下线：FLAC 是 VBR，seek 只能从头逐帧解码，跳转代价过高。`libs/jflac-codec-1.5.2.jar` 已删除 |
 
-> 2.14.1 起无损档恢复，但不再使用 jFLAC：改由 nayuki-flac 解码（见上表），并在播放前建立帧索引解决跳转问题。
+> 2.4.11 起无损档恢复，但不再使用 jFLAC：改由 nayuki-flac 解码（见上表），并在播放前建立帧索引解决跳转问题。
 
 ## 参考实现：DangoMusic QQ 封面与逐行歌词（2.9.0）
 

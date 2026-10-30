@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.13.5-D96A91?style=flat-square" alt="版本 2.13.5">
+  <img src="https://img.shields.io/badge/Version-2.4.11-D96A91?style=flat-square" alt="版本 2.4.11">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -45,7 +45,7 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 | 专辑封面、QQ 头像与会员徽章、歌曲 VIP 标识 | Unicode 字形回退、圆角磨砂界面与柔和阴影 |
 | 音乐房间入口（Beta，占位） | 面板升降、导航滚动与灵动岛过渡动效 |
 
-两侧账号凭证分开存放，不会保存到项目服务器。v2.13.5 已移除 QQ“刷歌模式 / 个性电台”，每日30首与推荐歌单使用普通播放队列。
+两侧账号凭证分开存放，不会保存到项目服务器。2.4.11 已移除 QQ“刷歌模式 / 个性电台”，每日30首与推荐歌单使用普通播放队列。
 
 ## 安装
 
