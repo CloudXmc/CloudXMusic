@@ -149,7 +149,7 @@ public final class NeteaseApi {
     /** 取播放地址；版权受限或无权限时返回 null。 */
     public static String songUrl(String id, NeteaseQuality quality) throws Exception {
         // ids 的方括号必须编码：URI 里裸 [] 在某些实现下会抛 URISyntaxException
-        String url = WEB + "/api/song/enhance/player/url/v1?encodeType=mp3&ids=%5B"
+        String url = WEB + "/api/song/enhance/player/url/v1?encodeType=" + quality.encodeType + "&ids=%5B"
                 + URLEncoder.encode(id, StandardCharsets.UTF_8) + "%5D&level=" + quality.apiName;
         JsonObject json = getJson(url);
         JsonArray data = json.getAsJsonArray("data");
@@ -170,7 +170,14 @@ public final class NeteaseApi {
      * <p>探测时会依次尝试：原链接 → 换成 https → 不带 Cookie。哪个通过用哪个。</p>
      */
     public static String playableUrl(String id, NeteaseQuality preferred) throws Exception {
-        NeteaseQuality[] order = {preferred, NeteaseQuality.HIGHER, NeteaseQuality.STANDARD};
+        // 降级顺序：先试用户选的档位，再按「极高 → 较高 → 标准」回落。
+        // 用列表去重，首选就是极高时不会重复请求同一档。
+        java.util.List<NeteaseQuality> order = new java.util.ArrayList<>();
+        order.add(preferred);
+        for (NeteaseQuality quality : new NeteaseQuality[]{
+                NeteaseQuality.EXHIGH, NeteaseQuality.HIGHER, NeteaseQuality.STANDARD}) {
+            if (quality != preferred) order.add(quality);
+        }
         for (NeteaseQuality quality : order) {
             String url = songUrl(id, quality);
             if (url == null || url.isBlank()) continue;

@@ -373,7 +373,7 @@ public final class MusicScreen extends Screen {
             int selected = QQMusicIntegration.isQq()?QQQualityMenu.selected(qqView,qqPlayback.preferredQuality()):NeteaseSession.INSTANCE.quality().ordinal();
             String key = QQMusicIntegration.isQq()+"|"+view.darkMode()+"|"+selected + "|" + hoverRow;
             if (!key.equals(paintedQualityKey)) {
-                qualitySurface.update(QQMusicIntegration.isQq()?QQQualityMenu.paint(selected,hoverRow,rasterScale):MusicPainter.paintQualityMenu(selected, hoverRow, rasterScale));
+                qualitySurface.update(QQMusicIntegration.isQq()?QQQualityMenu.paint(selected,hoverRow,rasterScale):MusicPainter.paintQualityMenu(selected, hoverRow, rasterScale, neteaseQualityNames()));
                 paintedQualityKey = key;
             }
         }
@@ -439,7 +439,8 @@ public final class MusicScreen extends Screen {
                     (int) Math.round(ar.w() * scale), (int) Math.round(ar.h() * scale));
         }
         if ((nowPage || qqBar) && qualityMenuOpen) {
-            Box qm = QQMusicIntegration.isQq()?QQQualityMenu.region():MusicPainter.qualityMenuRegion();
+            Box qm = QQMusicIntegration.isQq()?QQQualityMenu.region()
+                    :MusicPainter.qualityMenuRegion(NeteaseQuality.values().length);
             qualitySurface.draw(graphics, (int) Math.round(originX + qm.x() * scale),
                     (int) Math.round(originY + qm.y() * scale),
                     (int) Math.round(qm.w() * scale), (int) Math.round(qm.h() * scale));
@@ -786,9 +787,18 @@ public final class MusicScreen extends Screen {
     /** 音质浮层里鼠标悬停到第几档。 */
     private int qualityHover(int mx, int my) {
         double lx = localX(mx), ly = localY(my);
-        for (int i = 0; i < (QQMusicIntegration.isQq()?QQQuality.values().length:NeteaseQuality.values().length); i++)
-            if ((QQMusicIntegration.isQq()?QQQualityMenu.row(i):MusicPainter.qualityRow(i)).contains(lx, ly)) return i;
+        int count = QQMusicIntegration.isQq()?QQQuality.values().length:NeteaseQuality.values().length;
+        for (int i = 0; i < count; i++)
+            if ((QQMusicIntegration.isQq()?QQQualityMenu.row(i):MusicPainter.qualityRow(i, count)).contains(lx, ly)) return i;
         return -1;
+    }
+
+    /** 网易云音质档位名，档数由枚举自己决定（含无损共四档）。 */
+    private static String[] neteaseQualityNames() {
+        NeteaseQuality[] all = NeteaseQuality.values();
+        String[] names = new String[all.length];
+        for (int i = 0; i < all.length; i++) names[i] = all[i].label;
+        return names;
     }
 
     /** 账号页点击：菜单选方式，表单里聚焦输入框 / 发送验证码 / 登录 / 返回。 */

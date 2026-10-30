@@ -335,6 +335,11 @@ public final class Mp3Player {
         while (!stale(e.gen)) {
             boolean ranged;
             try {
+                // 无损直链走独立路径：FLAC 无字节↔时间换算，必须先落盘建帧索引。
+                if (isFlacUrl(currentUrl)) {
+                    runFlacLoop(e, startAt);
+                    break;
+                }
                 long startByte = byteOffset(e, startAt);
                 Stream stream = open(e, currentUrl, startByte);
                 e.streamBytes = stream.contentLength();
@@ -430,7 +435,88 @@ public final class Mp3Player {
                 && !String.valueOf(t.getMessage()).contains("HTTP ");
     }
 
-    /** 时间 → 字节偏移（CBR 近似）。 */
+    /** 直链是否指向 FLAC：网易云无损档返回 .flac，查询串里带鉴权参数。 */
+    private static boolean isFlacUrl(String url) {
+        if (url == null) return false;
+        int query = url.indexOf('?');
+        String path = query >= 0 ? url.substring(0, query) : url;
+        return path.toLowerCase(java.util.Locale.ROOT).endsWith(".flac");
+    }
+
+    /**
+     * FLAC 播放：整轨落盘 → 建帧索引 → 边解边写声卡。
+     *
+     * <p>跳转只需在索引里二分定位、换一个解码器，既不用重连 CDN，也不用从头解码——
+     * 这是与 MP3 那条 Range + byteOffset 路径最大的不同。</p>
+     */
+    private void runFlacLoop(Engine e, long startAt) {
+        try (InputStream raw = open(e, currentUrl, 0).input()) {
+            FlacSeekable track = FlacSeekable.prepare(raw);
+            try {
+                io.nayuki.flac.common.StreamInfo info = track.info();
+                int rate = info.sampleRate;
+                int channels = info.numChannels;
+                if (info.numSamples > 0) totalMs = info.numSamples * 1000L / rate;
+                int[][] planes = new int[channels][65536];
+                short[] pcm = new short[65536 * channels];
+                long decodedMs = Math.max(0, startAt);
+                track.seekToMs(decodedMs);
+                ensureLine(e, rate, channels);
+                while (!stale(e.gen)) {
+                    while (paused && !stale(e.gen)) sleep(40);
+                    if (stale(e.gen)) break;
+
+                    long pending = seekTargetMs;
+                    if (pending >= 0 && Math.abs(pending - decodedMs) > 250) {
+                        track.seekToMs(pending);
+                        decodedMs = pending;
+                        seekTargetMs = -1;
+                        continue;
+                    }
+                    seekTargetMs = -1;
+
+                    int frames = track.readFrame(planes);
+                    if (frames == 0) {
+                        finished = true;
+                        active = false;
+                        drainLine(e);
+                        return;
+                    }
+                    // 跳到帧中间时，首帧的前若干个采样要丢掉，才能对得上目标时间。
+                    int skip = Math.min(track.skipSamples(), frames);
+                    track.clearSkip();
+                    int count = (frames - skip) * channels;
+                    for (int f = skip; f < frames; f++) {
+                        for (int c = 0; c < channels; c++) {
+                            pcm[(f - skip) * channels + c] = to16(planes[c][f], info.sampleDepth);
+                        }
+                    }
+                    writeFrames(e, pcm, count);
+                    decodedMs += (frames - skip) * 1000L / rate;
+                    positionMs = decodedMs;
+                    lastProgressAt = System.currentTimeMillis();
+                }
+            } finally {
+                track.close();
+            }
+        } catch (Throwable t) {
+            if (stale(e.gen)) return;
+            error = String.valueOf(t.getMessage());
+            CloudXMusicClient.LOGGER.warn("无损播放失败：{}", error, t);
+            active = false;
+        }
+    }
+
+    /** FLAC 解出的是原始位宽的整数采样，统一折成 16 bit 交给声卡。 */
+    private static short to16(int value, int depth) {
+        if (depth == 16) return (short) value;
+        if (depth > 16) return (short) (value >> (depth - 16));
+        return (short) (value << (16 - depth));
+    }
+
+    /**
+     * 时间 → 字节偏移（CBR 近似）。
+     */
     private long byteOffset(Engine engine, long ms) {
         if (engine.streamBytes <= 0 || totalMs <= 0) return 0;
         long offset = (long) (engine.streamBytes * (ms / (double) totalMs));
