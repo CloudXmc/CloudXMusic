@@ -242,9 +242,10 @@ public final class MusicPainter {
         Box region = lyricRegion();
         int w = (int) Math.ceil(region.w() * scale), h = (int) Math.ceil(region.h() * scale);
         BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        // 单行模式每行只占一行高度，行距要跟着收；否则关掉译文后中间会空出一大块。
+        // 单行模式每行只占一行高度，行距收窄后上下还能各多放一行；双语仍只显示中间 7 行。
         boolean bilingual = v.lyrics().stream().anyMatch(r -> !r.translation().isBlank());
-        int center = region.y() + region.h() / 2, gap = bilingual ? 48 : 36, activeSlot = 3;
+        int center = region.y() + region.h() / 2, gap = bilingual ? 48 : 36, activeSlot = 4;
+        int halfSlots = bilingual ? 3 : 4;
         int x = region.x() + 24, max = region.w() - 32;
         try (FrostCanvas c = new FrostCanvas(image, scale)) {
             c.g.translate(-region.x(), -region.y());
@@ -257,6 +258,7 @@ public final class MusicPainter {
                 MusicView.LyricRow row = v.lyrics().get(i);
                 if (row.text().isBlank()) continue;
                 int distance = Math.abs(i - activeSlot);
+                if (distance > halfSlots) continue;
                 int y = center + (i - activeSlot) * gap;
                 if (row.active()) {
                     if(skipActive)continue;

@@ -242,7 +242,8 @@ public final class MusicScreen extends Screen {
             // 首句尚未开始时下标为 -1，不能把 null 传给不可变列表的 indexOf。
             int active=playback.lyricIndexAt((int)(playback.position()*1000));
             int anchor=Math.max(0,active);
-            for(int offset=-3;offset<=3;offset++){
+            // 取 9 行：双语模式下只画中间 7 行，单行模式则用满整个歌词区。
+            for(int offset=-4;offset<=4;offset++){
                 int i=anchor+offset;
                 lines.add(i<0||i>=lyrics.size()?new MusicView.LyricRow("","",false):
                         new MusicView.LyricRow(lyrics.get(i).text(),playback.source()==MusicSource.QQ

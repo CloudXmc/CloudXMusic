@@ -1,9 +1,21 @@
-﻿Starting a Gradle Daemon, 1 incompatible and 10 stopped Daemons could not be reused, use --status for details
+﻿Starting a Gradle Daemon, 1 incompatible and 7 stopped Daemons could not be reused, use --status for details
 
 > Configure project :cloudxmusic-client
 Fabric Loom: 1.17.21
 
 > Task :cloudxmusic-client:compileJava
+.\gradlew.bat : 娉? C:\Users\Lzasn\Desktop\CloudXMusic\cloudxmusic-client\src\ma
+in\java\dev\lzasn\cloudxmusic\client\hud\DynamicIslandHud.java浣跨敤鎴栬鐩栦簡宸茶繃鏃剁殑 A
+PI銆?
+所在位置 行:508 字符: 70
++ ... 1-hotspot'; .\gradlew.bat :cloudxmusic-client:build :cloudxmusic-clie ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (娉? C:\Users\Lza...鐩栦簡宸茶繃鏃剁殑 API銆? 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+娉? 鏈夊叧璇︾粏淇℃伅, 璇蜂娇鐢?-Xlint:deprecation 閲嶆柊缂栬瘧銆?
+
 > Task :cloudxmusic-client:processResources UP-TO-DATE
 > Task :cloudxmusic-client:classes
 > Task :cloudxmusic-client:jar
@@ -20,6 +32,9 @@ Fabric Loom: 1.17.21
 > Task :cloudxmusic-client:check
 > Task :cloudxmusic-client:build
 
+> Task :cloudxmusic-client:renderUiPreview
+Java 21.0.12.1+1-LTS; layout smoke check passed; previews: C:\Users\Lzasn\Desktop\CloudXMusic\outputs
+
 [Incubating] Problems report is available at: file:///C:/Users/Lzasn/Desktop/CloudXMusic/build/reports/problems/problems-report.html
 
 Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
@@ -28,5 +43,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/9.5.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 1m 34s
-10 actionable tasks: 6 executed, 4 up-to-date
+BUILD SUCCESSFUL in 2m 22s
+11 actionable tasks: 7 executed, 4 up-to-date
