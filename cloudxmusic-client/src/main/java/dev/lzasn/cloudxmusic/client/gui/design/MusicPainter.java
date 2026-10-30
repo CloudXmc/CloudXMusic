@@ -74,7 +74,7 @@ public final class MusicPainter {
                     c.g.setClip(savedClip);
                 }
                 case ACCOUNT -> { /* 内容由 paintAccount 单独绘制 */ }
-                case ROOM -> room(c, v, layout);
+                case ROOM -> room(c, v, layout, covers);
                 default -> list(c, v, layout, covers);
             }
         }
@@ -206,14 +206,243 @@ public final class MusicPainter {
         c.text("BETA", (float) (x + fontSize / 2.0), (float) (centerY + fontSize * .36), fontSize, true, PINK, (float) w);
     }
 
-    /** 音乐房间：功能尚未上线，先放一个占位页说明后续计划。 */
-    private static void room(FrostCanvas c, MusicView v, MusicLayout l) {
-        int cx = MusicLayout.MAIN_X + MusicLayout.MAIN_W / 2;
-        // 内容块 308~456，中心 382，对齐标题带下方到面板底部的视觉中轴。
-        UiIcons.draw(c, "coffee", cx, 326, 54, PINK);
-        c.center("音乐房间", cx, 400, 26, true, INK, 500);
-        c.center("和朋友同步听同一首歌的房间功能还在开发中", cx, 434, 12, false, MUTED, 560);
-        c.center("2.5.0 先落地客户端与服务端协议，再开放房间", cx, 456, 12, false, MUTED, 560);
+    /** 音乐房间：未加入显示创建/加入入口，已加入显示同步播放、队列和成员。 */
+    private static void room(FrostCanvas c, MusicView v, MusicLayout l,
+                             Function<String, BufferedImage> covers) {
+        if (v.room().joined()) roomActive(c, v, covers);
+        else roomLobby(c, v);
+    }
+
+    private static void roomLobby(FrostCanvas c, MusicView v) {
+        Box hero = roomHeroBox();
+        roomCard(c, hero, 24);
+        Color orb = dark ? new Color(76, 91, 98, 150) : new Color(255, 246, 250, 190);
+        c.round(hero.x() + 22, hero.y() + 20, 52, 52, 26, orb);
+        UiIcons.draw(c, "group", hero.x() + 48, hero.y() + 46, 28, DEEP);
+        c.text("一起听，不只是听歌", hero.x() + 90, hero.y() + 42, 16, true, INK, 350);
+        c.text("同音源房间 · 各自取链 · 播放进度同步", hero.x() + 90, hero.y() + 63,
+                10, false, MUTED, 350);
+        c.g.setColor(LINE);
+        c.g.drawLine(hero.x() + 22, hero.y() + 86, hero.x() + hero.w() - 22, hero.y() + 86);
+        c.text("公开房间", hero.x() + 30, hero.y() + 116, 14, true, INK, 160);
+        c.right(v.room().publicRooms().size() + " 个", hero.x() + hero.w() - 30,
+                hero.y() + 116, 10, false, MUTED);
+        if (v.room().publicRooms().isEmpty()) {
+            c.center("暂无公开房间，创建第一个吧", hero.cx(), hero.y() + 186, 12, false, MUTED, 360);
+        } else {
+            for (int i = 0; i < Math.min(8, v.room().publicRooms().size()); i++) {
+                roomSummaryRow(c, roomListRowBox(i), v.room().publicRooms().get(i));
+            }
+        }
+
+        Box create = roomCreateBox();
+        roomCard(c, create, 20);
+        c.text("创建房间", create.x() + 22, create.y() + 37, 17, true, INK, create.w() - 44);
+        c.text("选择本次房间音源", create.x() + 22, create.y() + 59, 11, false, MUTED, create.w() - 44);
+        boolean qq = v.room().source().contains("QQ");
+        roomSourceChip(c, roomSourceNeteaseBox(), "网易云音乐", "netease", !qq);
+        roomSourceChip(c, roomSourceQqBox(), "QQ 音乐", "qqmusic", qq);
+        roomPrimaryButton(c, roomCreateButtonBox(), "创建并进入");
+        c.text(v.room().roomStatus().isBlank() ? "音源创建后固定" : v.room().roomStatus(),
+                create.x() + 22, create.y() + 218, 10, false, MUTED, create.w() - 44);
+
+        Box join = roomJoinBox();
+        roomCard(c, join, 20);
+        c.text("加入房间", join.x() + 22, join.y() + 37, 17, true, INK, join.w() - 44);
+        c.text("输入房主分享的房间码", join.x() + 22, join.y() + 59, 11, false, MUTED, join.w() - 44);
+        roomField(c, roomJoinFieldBox(), v.search(), "例如：CXM7Q2", v.focused(), v.cursor());
+        roomSecondaryButton(c, roomJoinButtonBox(), "加入房间");
+        c.text("加入前会检查对应音源登录状态", join.x() + 22, join.y() + 219, 10, false, MUTED, join.w() - 44);
+    }
+
+    private static void roomSummaryRow(FrostCanvas c, Box row, MusicView.RoomSummary room) {
+        Color rowFill = dark ? new Color(48, 58, 63, 105) : new Color(255, 255, 255, 105);
+        c.round(row.x(), row.y(), row.w(), row.h(), 12, rowFill);
+        roomMojangAvatar(c, row.x() + 10, row.y() + 8, 24, room.playerId());
+        c.text(room.playerId() + "的房间", row.x() + 44, row.y() + 24, 12, true, INK, 170);
+        c.text(room.source() + " · " + room.members() + " 人", row.x() + 196,
+                row.y() + 24, 9, false, MUTED, 120);
+        Color statusFill = room.status().contains("播放") ? SOFT : CARD_BG;
+        c.round(row.x() + row.w() - 82, row.y() + 9, 70, 22, 11, statusFill);
+        c.center(room.status(), row.x() + row.w() - 47, row.y() + 24, 9, true, DEEP, 62);
+    }
+
+    private static void roomActive(FrostCanvas c, MusicView v, Function<String, BufferedImage> covers) {
+        MusicView.RoomView room = v.room();
+        Box now = roomNowBox();
+        roomCard(c, now, 22);
+        cover(c, v.current(), 314, 134, 132, 16, covers);
+        c.text(room.nowTitle(), 468, 170, 20, true, INK, 300);
+        c.text(room.nowArtist(), 468, 194, 12, false, MUTED, 300);
+        String status = room.roomStatus().isBlank() ? "已同步到房间时间轴" : room.roomStatus();
+        c.text(status, 468, 218, 11, false, MUTED, 300);
+        float progress = room.durationSeconds() <= 0 ? 0
+                : Math.max(0, Math.min(1, room.positionTenths() / 10f / room.durationSeconds()));
+        roomProgress(c, 468, 242, 310, progress);
+        int currentSeconds = Math.max(0, room.positionTenths() / 10);
+        c.text(roomTime(currentSeconds), 468, 265, 9, false, MUTED, 60);
+        c.right(roomTime(room.durationSeconds()), 778, 265, 9, false, MUTED);
+
+        Box queue = roomQueueBox();
+        roomCard(c, queue, 22);
+        c.text("房间队列", queue.x() + 22, queue.y() + 34, 15, true, INK, 220);
+        c.right(room.queue().size() + " 首", queue.x() + queue.w() - 22, queue.y() + 34, 10, false, MUTED);
+        if (room.queue().isEmpty()) {
+            c.center("队列还是空的，等房主添加歌曲", queue.cx(), queue.y() + 146, 12, false, MUTED, 360);
+        } else {
+            int total = room.queue().size();
+            int maxScroll = Math.max(0, total - ROOM_QUEUE_VISIBLE);
+            int start = Math.max(0, Math.min(room.queueScroll(), maxScroll));
+            int shown = Math.min(ROOM_QUEUE_VISIBLE, total - start);
+            for (int i = 0; i < shown; i++) {
+                int index = start + i;
+                MusicView.RoomTrack track = room.queue().get(index);
+                int rowY = queue.y() + 50 + i * ROOM_QUEUE_STEP;
+                c.text(String.format(java.util.Locale.ROOT, "%02d", index + 1),
+                        queue.x() + 22, rowY + 26, 10, true, PINK, 32);
+                albumPlaceholder(c, queue.x() + 42, rowY + 12, 20, 5);
+                c.text(track.title(), queue.x() + 76, rowY + 20, 12, true, INK, 278);
+                c.text(track.artist(), queue.x() + 76, rowY + 36, 10, false, MUTED, 278);
+                c.right(track.duration(), queue.x() + queue.w() - 22, rowY + 24, 10, false, MUTED);
+                if (i < shown - 1) {
+                    c.g.setColor(LINE);
+                    c.g.drawLine(queue.x() + 22, rowY + 44, queue.x() + queue.w() - 24, rowY + 44);
+                }
+            }
+            if (maxScroll > 0) roomQueueScrollbar(c, queue, total, start, maxScroll);
+        }
+
+        Box members = roomMembersBox();
+        roomCard(c, members, 22);
+        c.text("房间成员", members.x() + 20, members.y() + 37, 15, true, INK, 140);
+        c.right(room.members().size() + "/8", members.x() + members.w() - 20, members.y() + 37, 10, false, MUTED);
+        Box code = new Box(840, 164, 210, 54);
+        c.round(code.x(), code.y(), code.w(), code.h(), 14, SOFT);
+        c.text("房间码", code.x() + 14, code.y() + 20, 9, false, MUTED, 80);
+        c.text(room.roomCode(), code.x() + 14, code.y() + 43, 20, true, INK, 180);
+        Box sourceBox = new Box(840, 230, 210, 24);
+        roomSourceBadge(c, sourceBox, room.source() + "房间");
+
+        Color ok = dark ? new Color(117, 210, 167) : new Color(76, 152, 116);
+        Color warn = dark ? new Color(242, 172, 104) : new Color(194, 112, 49);
+        for (int i = 0; i < Math.min(4, room.members().size()); i++) {
+            MusicView.RoomMember member = room.members().get(i);
+            int rowY = members.y() + 152 + i * 50;
+            roomMojangAvatar(c, 854, rowY + 8, 28, member.name());
+            c.text(member.name(), 890, rowY + 20, 12, true, INK, 90);
+            c.text(member.detail(), 890, rowY + 36, 9, false, member.canPlay() ? MUTED : warn, 120);
+            if (member.owner()) {
+                c.round(1007, rowY + 10, 42, 18, 9, SOFT);
+                c.center("房主", 1028, rowY + 23, 9, true, DEEP, 36);
+            } else {
+                c.round(1027, rowY + 18, 6, 6, 3, member.canPlay() ? ok : warn);
+            }
+            c.g.setColor(LINE);
+            c.g.drawLine(840, rowY + 44, 1050, rowY + 44);
+        }
+        c.center("分享房间码即可邀请朋友", members.cx(), members.y() + 410, 10, false, MUTED, 200);
+        roomSecondaryButton(c, roomExitButtonBox(), "退出房间");
+    }
+
+    private static void roomMojangAvatar(FrostCanvas c, int x, int y, int size, String playerId) {
+        c.round(x, y, size, size, size / 2.0, SOFT);
+        BufferedImage avatar = dev.lzasn.cloudxmusic.client.gui.MojangAvatarCache.avatar(playerId);
+        if (avatar == null) {
+            c.round(x, y, size, size, size / 2.0, CARD_BG);
+            c.center("?", x + size / 2f, y + size * .64f, Math.max(10, size * .54f), true, MUTED, size - 2);
+            return;
+        }
+        Shape previous = c.g.getClip();
+        c.g.clip(shape(x, y, size, size, size / 2.0));
+        double scale = (double) size / Math.max(1, Math.min(avatar.getWidth(), avatar.getHeight()));
+        int aw = Math.max(1, (int) Math.round(avatar.getWidth() * scale));
+        int ah = Math.max(1, (int) Math.round(avatar.getHeight() * scale));
+        c.g.drawImage(avatar, x + (size - aw) / 2, y + (size - ah) / 2, aw, ah, null);
+        c.g.setClip(previous);
+    }
+
+    private static void roomCard(FrostCanvas c, Box b, int radius) {
+        c.shadow(b.x(), b.y(), b.w(), b.h(), radius, 16, 1, 3,
+                dark ? new Color(0, 0, 0, 52) : new Color(116, 70, 93, 20));
+        c.round(b.x(), b.y(), b.w(), b.h(), radius, CARD_BG);
+        c.g.setColor(LINE);
+        c.g.setStroke(new BasicStroke(1f));
+        c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, radius));
+    }
+
+    private static void roomSourceChip(FrostCanvas c, Box b, String label, String icon, boolean selected) {
+        c.round(b.x(), b.y(), b.w(), b.h(), 14, selected ? SOFT : CARD_BG);
+        if (selected) {
+            c.g.setColor(PINK);
+            c.g.setStroke(new BasicStroke(1.4f));
+            c.g.draw(shape(b.x() + .7, b.y() + .7, b.w() - 1.4, b.h() - 1.4, 14));
+        }
+        UiIcons.draw(c, icon, b.x() + 22, b.cy(), 17, selected ? DEEP : MUTED);
+        c.text(label, b.x() + 38, b.cy() + 4, 11, selected, selected ? DEEP : INK, b.w() - 44);
+    }
+
+    private static void roomSourceBadge(FrostCanvas c, Box b, String label) {
+        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2, SOFT);
+        UiIcons.draw(c, "note", b.x() + 14, b.cy(), 12, DEEP);
+        c.text(label, b.x() + 25, b.cy() + 4, 9, true, DEEP, b.w() - 30);
+    }
+
+    private static void roomField(FrostCanvas c, Box b, String value, String hint, boolean focused, boolean cursor) {
+        Color fill = dark ? new Color(46, 55, 60, 210) : new Color(255, 255, 255, 115);
+        c.round(b.x(), b.y(), b.w(), b.h(), 14, fill);
+        c.g.setColor(focused ? PINK : dark ? new Color(120, 135, 140, 90) : new Color(135, 90, 115, 55));
+        c.g.setStroke(new BasicStroke(focused ? 1.4f : 1f));
+        c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, 14));
+        boolean empty = value == null || value.isBlank();
+        String shown = empty ? hint : value;
+        c.text(shown, b.x() + 16, b.cy() + 4, 11, false, empty ? MUTED : INK, b.w() - 32);
+        if (focused && cursor) {
+            float caret = b.x() + 16 + c.width(empty ? "" : shown, 11, false);
+            c.g.setColor(PINK);
+            c.g.setStroke(new BasicStroke(1.4f));
+            c.g.drawLine((int) caret, b.cy() - 9, (int) caret, b.cy() + 9);
+        }
+    }
+
+    private static void roomPrimaryButton(FrostCanvas c, Box b, String label) {
+        c.shadow(b.x(), b.y(), b.w(), b.h(), b.h() / 2, 10, 3, 2,
+                new Color(150, 65, 99, 38));
+        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2,
+                new GradientPaint(b.x(), b.y(), new Color(245, 162, 189), b.x() + b.w(), b.y() + b.h(), DEEP));
+        c.center(label, b.cx(), b.cy() + 4, 12, true, Color.WHITE, b.w() - 20);
+    }
+
+    private static void roomSecondaryButton(FrostCanvas c, Box b, String label) {
+        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2, CARD_BG);
+        c.g.setColor(dark ? new Color(150, 130, 140, 90) : new Color(190, 150, 170, 75));
+        c.g.setStroke(new BasicStroke(1f));
+        c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, b.h() / 2));
+        c.center(label, b.cx(), b.cy() + 4, 12, true, DEEP, b.w() - 20);
+    }
+
+    private static void roomProgress(FrostCanvas c, int x, int y, int width, float progress) {
+        float safe = Math.max(0f, Math.min(1f, progress));
+        c.round(x, y, width, 4, 2, TRACK);
+        c.round(x, y, width * safe, 4, 2, PINK);
+        // 轨道中心是 y+2；圆点必须同轴，且首尾圆心内缩 4px，避免越出轨道。
+        double centerX = x + 4 + (width - 8) * safe;
+        c.round(centerX - 4, y - 2, 8, 8, 4, SOFT);
+        c.round(centerX - 2.5, y - .5, 5, 5, 2.5, PINK);
+    }
+
+    private static void roomQueueScrollbar(FrostCanvas c, Box queue, int total, int start, int maxScroll) {
+        int trackX = queue.x() + queue.w() - 10;
+        int trackY = queue.y() + 50;
+        int trackHeight = ROOM_QUEUE_VISIBLE * ROOM_QUEUE_STEP - 4;
+        int thumbHeight = Math.max(28, (int) Math.round(trackHeight * (double) ROOM_QUEUE_VISIBLE / total));
+        int thumbY = trackY + (int) Math.round((trackHeight - thumbHeight) * (double) start / maxScroll);
+        c.round(trackX, trackY, 3, trackHeight, 1.5, TRACK);
+        c.round(trackX, thumbY, 3, thumbHeight, 1.5, PINK);
+    }
+
+    private static String roomTime(int seconds) {
+        int safe = Math.max(0, seconds);
+        return String.format(java.util.Locale.ROOT, "%d:%02d", safe / 60, safe % 60);
     }
 
     /**
@@ -764,6 +993,15 @@ public final class MusicPainter {
         c.center(label,b.cx(),b.cy()+5,13,true,DEEP,b.w()-16);
     }
 
+    /** 无封面时复用的专辑占位图：渐变底 + 同心唱片纹路。 */
+    private static void albumPlaceholder(FrostCanvas c, int x, int y, int size, int radius) {
+        c.round(x, y, size, size, radius,
+                new GradientPaint(x, y, new Color(178, 216, 207), x + size, y + size, new Color(226, 137, 168)));
+        c.round(x + size * .17, y + size * .17, size * .66, size * .66, size * .33, new Color(255, 236, 244, 100));
+        c.round(x + size * .27, y + size * .27, size * .46, size * .46, size * .23, new Color(229, 147, 174, 120));
+        c.round(x + size * .42, y + size * .42, size * .16, size * .16, size * .08, new Color(255, 248, 244, 220));
+    }
+
     public static void cover(FrostCanvas c,SongView track,int x,int y,int size,int radius,Function<String,BufferedImage> covers) {
         if(size>100) c.shadow(x,y,size,size,radius,14,7,new Color(89,45,65,28));
         Shape previous=c.g.getClip();c.g.clip(shape(x,y,size,size,radius));
@@ -773,10 +1011,7 @@ public final class MusicPainter {
             int w=(int)Math.ceil(image.getWidth()*zoom),h=(int)Math.ceil(image.getHeight()*zoom);
             c.g.drawImage(image,x+(size-w)/2,y+(size-h)/2,w,h,null);
         } else {
-            c.round(x,y,size,size,radius,new GradientPaint(x,y,new Color(178,216,207),x+size,y+size,new Color(226,137,168)));
-            c.round(x+size*.17,y+size*.17,size*.66,size*.66,size*.33,new Color(255,236,244,100));
-            c.round(x+size*.27,y+size*.27,size*.46,size*.46,size*.23,new Color(229,147,174,120));
-            c.round(x+size*.42,y+size*.42,size*.16,size*.16,size*.08,new Color(255,248,244,220));
+            albumPlaceholder(c, x, y, size, radius);
         }
         c.g.setClip(previous);
     }

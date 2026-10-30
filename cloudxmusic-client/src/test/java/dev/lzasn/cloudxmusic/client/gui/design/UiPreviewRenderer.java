@@ -1,6 +1,8 @@
 package dev.lzasn.cloudxmusic.client.gui.design;
 
 import dev.lzasn.cloudxmusic.client.state.Track;
+import dev.lzasn.cloudxmusic.client.omni.SongView;
+import dev.lzasn.cloudxmusic.client.gui.MojangAvatarCache;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -24,6 +26,34 @@ public final class UiPreviewRenderer {
             new Track("回家的路", "白日梦", 223, "1007", "北方的风", ""),
             new Track("夜色慢慢降落", "木棉", 198, "1008", "灯火温柔", ""),
             new Track("候鸟与信", "南屿", 236, "1009", "远行", ""));
+    private static final MusicView.RoomView ROOM_LOBBY = new MusicView.RoomView(
+            false, "", "网易云音乐", "", "", "", 0, 0, false, List.of(), List.of(),
+            List.of(
+                    new MusicView.RoomSummary("CXM7Q2", "xWtree", "网易云音乐", 4, "播放中"),
+                    new MusicView.RoomSummary("QQM3A8", "jeb_", "QQ 音乐", 2, "等待加入"),
+                    new MusicView.RoomSummary("NF2K9P", "Dinnerbone", "网易云音乐", 6, "播放中"),
+                    new MusicView.RoomSummary("LOFI42", "Notch", "网易云音乐", 3, "播放中"),
+                    new MusicView.RoomSummary("QQP7X1", "Grumm", "QQ 音乐", 5, "等待加入"),
+                    new MusicView.RoomSummary("CXM9R4", "Searge", "网易云音乐", 2, "播放中")),
+            0);
+    private static final MusicView.RoomView ROOM_ACTIVE = new MusicView.RoomView(
+            true, "CXM7Q2", "网易云音乐", "已同步 · 房间播放中",
+            "春日序曲", "雲與微光", 1020, 258, true,
+            List.of(
+                    new MusicView.RoomMember("Lzasn", "房主 · 正在跟听", true, true),
+                    new MusicView.RoomMember("xWtree", "正在跟听", false, true),
+                    new MusicView.RoomMember("xiaota888", "缓冲中", false, true),
+                    new MusicView.RoomMember("阿岚", "本曲不可播放", false, false)),
+            List.of(
+                    new MusicView.RoomTrack("雨中的花开", "雲與微光", "3:36"),
+                    new MusicView.RoomTrack("安静的清晨", "星", "4:02"),
+                    new MusicView.RoomTrack("远方的世界", "森", "3:51"),
+                    new MusicView.RoomTrack("晚风吹过花园", "橙子海", "3:25"),
+                    new MusicView.RoomTrack("玻璃海岸", "时雨", "3:07"),
+                    new MusicView.RoomTrack("回家的路", "白日梦", "3:43"),
+                    new MusicView.RoomTrack("夜色慢慢降落", "木棉", "3:18"),
+                    new MusicView.RoomTrack("候鸟与信", "南屿", "3:56")),
+            List.of(), 1);
 
     UiPreviewRenderer() {}
 
@@ -32,11 +62,16 @@ public final class UiPreviewRenderer {
         Path out=Path.of(args.length==0?"../../outputs":args[0]).toAbsolutePath().normalize();
         Files.createDirectories(out);
         validateLayout();
+        for (String playerId : List.of("xWtree", "jeb_", "Dinnerbone", "Notch", "Grumm", "Searge")) {
+            MojangAvatarCache.loadNowForPreview(playerId);
+        }
         render(out,"cloudxmusic-now-playing.png",Page.NOW,"",false,0,false);
         render(out,"cloudxmusic-library.png",Page.DISCOVER,"",false,0,false);
         render(out,"cloudxmusic-search.png",Page.SEARCH,"微光",true,1,false);
-        render(out,"cloudxmusic-room.png",Page.ROOM,"",false,0,false);
-        render(out,"cloudxmusic-room-dark.png",Page.ROOM,"",false,0,true);
+        render(out,"cloudxmusic-room-lobby.png",Page.ROOM,"",false,0,false,null,ROOM_LOBBY);
+        render(out,"cloudxmusic-room-lobby-dark.png",Page.ROOM,"",false,0,true,null,ROOM_LOBBY);
+        render(out,"cloudxmusic-room-active.png",Page.ROOM,"",false,0,false,null,ROOM_ACTIVE);
+        render(out,"cloudxmusic-room-active-dark.png",Page.ROOM,"",false,0,true,null,ROOM_ACTIVE);
         render(out,"cloudxmusic-settings.png",Page.SETTINGS,"",false,0,false);
         render(out,"cloudxmusic-settings-dark.png",Page.SETTINGS,"",false,0,true);
         render(out,"cloudxmusic-account.png",Page.ACCOUNT,"",false,0,false);
@@ -76,14 +111,27 @@ public final class UiPreviewRenderer {
             throw new AssertionError("verification code row is not aligned");
         if(submit.x()!=field.x()||submit.w()!=field.w())
             throw new AssertionError("account submit button does not match the form width");
+        for(Box b:List.of(roomHeroBox(),roomCreateBox(),roomJoinBox(),roomSourceNeteaseBox(),
+                roomSourceQqBox(),roomCreateButtonBox(),roomJoinFieldBox(),roomJoinButtonBox(),
+                roomListRowBox(0),roomListRowBox(7),roomNowBox(),roomQueueBox(),roomQueueRowBox(0),roomQueueRowBox(4),roomMembersBox(),
+                roomExitButtonBox())) {
+            if(b.w()<=0||b.h()<=0||b.x()<0||b.y()<0||b.x()+b.w()>WIDTH||b.y()+b.h()>HEIGHT)
+                throw new AssertionError("room box out of bounds: "+b);
+        }
     }
 
     private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,boolean darkMode) throws Exception {
-        render(out,file,page,search,focused,focusIndex,darkMode,null);
+        render(out,file,page,search,focused,focusIndex,darkMode,null,null);
     }
 
     private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,
                                boolean darkMode,MusicPainter.AccountView accountViewOverride) throws Exception {
+        render(out,file,page,search,focused,focusIndex,darkMode,accountViewOverride,null);
+    }
+
+    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,
+                               boolean darkMode,MusicPainter.AccountView accountViewOverride,
+                               MusicView.RoomView roomViewOverride) throws Exception {
         int width=1600,height=900;
         BufferedImage frame=new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);
         Graphics2D bg=frame.createGraphics();
@@ -118,10 +166,12 @@ public final class UiPreviewRenderer {
                 new MusicView.LyricRow("轻柔的旋律，陪伴方块世界","",false),
                 new MusicView.LyricRow("风穿过打开的窗","",false),
                 new MusicView.LyricRow("云图在远方缓缓展开","",false));
-        MusicView view=new MusicView(page,CURRENT,rows,upcoming,lyrics,102,true,true,"CloudXMusic",
-                search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
-                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.4.10","",0,-1,.8f,"",
-                darkMode,.8f,1f,.5f,.06f,"H",0,40);
+        MusicView view=new MusicView(page,SongView.from(CURRENT),
+                rows.stream().map(SongView::from).toList(),upcoming.stream().map(SongView::from).toList(),lyrics,
+                102,true,true,"CloudXMusic",search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
+                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.5.0-alpha.1","",0,-1,.8f,"",
+                darkMode,.8f,1f,.5f,.06f,"H",0,40,
+                roomViewOverride==null?MusicView.RoomView.empty():roomViewOverride);
         BufferedImage canvas=MusicPainter.paint(view,layout,1d,url->null);
         Graphics2D oc=canvas.createGraphics();
         if(page==Page.NOW){

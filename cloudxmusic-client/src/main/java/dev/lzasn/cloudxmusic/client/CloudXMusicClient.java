@@ -3,10 +3,12 @@ package dev.lzasn.cloudxmusic.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.lzasn.cloudxmusic.client.gui.MusicScreen;
 import dev.lzasn.cloudxmusic.client.gui.CoverCache;
+import dev.lzasn.cloudxmusic.client.gui.MojangAvatarCache;
 import dev.lzasn.cloudxmusic.client.gui.FirstRunNotice;
 import dev.lzasn.cloudxmusic.client.gui.design.FirstRunNoticeScreen;
 import dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas;
 import dev.lzasn.cloudxmusic.client.netease.QrLogin;
+import dev.lzasn.cloudxmusic.client.room.MusicRoomClient;
 import dev.lzasn.cloudxmusic.client.hud.DynamicIslandHud;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseSession;
 import dev.lzasn.cloudxmusic.client.state.MusicState;
@@ -34,6 +36,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
     public void onInitializeClient() {
         NeteaseSession.INSTANCE.load();
         FirstRunNotice.load();
+        MusicRoomClient.INSTANCE.register();
         STATE.loadPersisted();
         if(FirstRunNotice.accepted()) NeteaseSession.INSTANCE.refreshAccountAsync();
 
@@ -60,11 +63,14 @@ public final class CloudXMusicClient implements ClientModInitializer {
         // 退出世界/回主菜单就停播，否则音乐会在菜单里继续放
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.worldJoined();
+            MusicRoomClient.INSTANCE.joinedWorld();
             if(dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.neteaseActive())STATE.refreshLibraryIfNeeded();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             QrLogin.cancel();
+            MusicRoomClient.INSTANCE.disconnected();
             CoverCache.clear();
+            MojangAvatarCache.clear();
             // 播放状态和纹理清理统一回客户端线程，避免断开回调跨线程修改会话。
             dev.lzasn.cloudxmusic.client.util.Async.main(() -> {
                 dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.stopForMenu();
@@ -75,7 +81,9 @@ public final class CloudXMusicClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.stopForMenu();
             QrLogin.cancel();
+            MusicRoomClient.INSTANCE.disconnected();
             CoverCache.close();
+            MojangAvatarCache.close();
             DynamicIslandHud.clear();
             FrostCanvas.clearCaches();
         });

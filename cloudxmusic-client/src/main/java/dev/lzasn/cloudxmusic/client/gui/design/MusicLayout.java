@@ -15,7 +15,8 @@ public final class MusicLayout {
     public enum Action { PAGE, ACCOUNT, CLOSE, PREVIOUS, PLAY, NEXT, SEEK, SEARCH_FIELD, SEARCH,
         ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, MODE_CYCLE,
         STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH,
-        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE, PLAY_ALL }
+        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE, PLAY_ALL,
+        ROOM_SOURCE, ROOM_CREATE, ROOM_JOIN_FIELD, ROOM_JOIN, ROOM_LIST_ENTRY, ROOM_LEAVE }
     public record Box(int x, int y, int w, int h) {
         public boolean contains(double px, double py) { return px >= x && py >= y && px < x + w && py < y + h; }
         public int cx() { return x + w / 2; }
@@ -38,6 +39,25 @@ public final class MusicLayout {
         return Math.max(0, navContentHeight() - (NAV_BOTTOM - NAV_TOP));
     }
 
+    /** 房间页未加入状态的卡片；纯 UI 阶段先只共享坐标，不注册可点击命中区。 */
+    public static Box roomHeroBox() { return new Box(MAIN_X, 112, 468, 520); }
+    public static Box roomCreateBox() { return new Box(780, 112, 290, 252); }
+    public static Box roomJoinBox() { return new Box(780, 384, 290, 248); }
+    public static Box roomSourceNeteaseBox() { return new Box(802, 190, 120, 48); }
+    public static Box roomSourceQqBox() { return new Box(930, 190, 120, 48); }
+    public static Box roomCreateButtonBox() { return new Box(802, 254, 246, 44); }
+    public static Box roomJoinFieldBox() { return new Box(802, 464, 246, 48); }
+    public static Box roomJoinButtonBox() { return new Box(802, 525, 246, 44); }
+    public static Box roomListRowBox(int index) { return new Box(314, 254 + Math.max(0, Math.min(7, index)) * 45, 424, 40); }
+
+    /** 房间页已加入状态：左侧当前播放/队列，右侧成员，全部保持在主内容区内。 */
+    public static Box roomNowBox() { return new Box(MAIN_X, 112, 508, 202); }
+    public static Box roomQueueBox() { return new Box(MAIN_X, 326, 508, 306); }
+    public static final int ROOM_QUEUE_VISIBLE = 5, ROOM_QUEUE_STEP = 47;
+    public static Box roomQueueRowBox(int index) { return new Box(MAIN_X + 22, 376 + Math.max(0, Math.min(4, index)) * ROOM_QUEUE_STEP, 452, 45); }
+    public static Box roomMembersBox() { return new Box(820, 112, 250, 520); }
+    public static Box roomExitButtonBox() { return new Box(840, 574, 210, 40); }
+
     public MusicLayout(MusicView.Page page, int rowCount, int queueCount) {
         this(page, rowCount, queueCount, 0, 0);
     }
@@ -47,6 +67,11 @@ public final class MusicLayout {
     }
 
     public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll, int navScroll) {
+        this(page, rowCount, queueCount, settingsScroll, navScroll, false);
+    }
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll, int navScroll,
+                       boolean roomJoined) {
         for (int i = 0; i < NAV_COUNT; i++) {
             int y = NAV_TOP + i * NAV_STEP - navScroll;
             // 完全滚出可视区的项不注册命中区，否则点空白处会误切页面。
@@ -56,6 +81,18 @@ public final class MusicLayout {
         add("settings", Action.PAGE, 6, 32, 602, 210, 42);
         add("account", Action.ACCOUNT, 0, 32, 442, 210, 64);
         add("close", Action.CLOSE, 0, 1012, 22, 36, 36);
+        if (page == MusicView.Page.ROOM) {
+            if (roomJoined) {
+                add("roomExit", Action.ROOM_LEAVE, 0, roomExitButtonBox());
+            } else {
+                add("roomNetease", Action.ROOM_SOURCE, 0, roomSourceNeteaseBox());
+                add("roomQq", Action.ROOM_SOURCE, 1, roomSourceQqBox());
+                add("roomCreate", Action.ROOM_CREATE, 0, roomCreateButtonBox());
+                add("roomJoinField", Action.ROOM_JOIN_FIELD, 0, roomJoinFieldBox());
+                add("roomJoin", Action.ROOM_JOIN, 0, roomJoinButtonBox());
+                for (int i = 0; i < 8; i++) add("roomRow" + i, Action.ROOM_LIST_ENTRY, i, roomListRowBox(i));
+            }
+        }
         if (page == MusicView.Page.NOW) {
             // 播放页：上方歌词，底部一条控制栏。收藏与队列紧贴传输键两侧，控件整体居中。
             add("favorite", Action.FAVORITE, 0, 532, 601, 36, 36);
@@ -101,6 +138,9 @@ public final class MusicLayout {
 
     private void add(String id, Action action, int index, int x, int y, int w, int h) {
         hits.add(new Hit(id, action, index, new Box(x, y, w, h)));
+    }
+    private void add(String id, Action action, int index, Box box) {
+        add(id, action, index, box.x(), box.y(), box.w(), box.h());
     }
     public List<Hit> hits() { return List.copyOf(hits); }
     public Hit hit(double x, double y) {

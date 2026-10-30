@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.4.11-D96A91?style=flat-square" alt="版本 2.4.11">
+  <img src="https://img.shields.io/badge/Version-2.5.0--alpha.1-D96A91?style=flat-square" alt="版本 2.5.0-alpha.1">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -27,6 +27,9 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 
 开发者：Lzasn（客户端、网易云音源与解码）、xiaota888（QQ 音乐音源、双音源架构与逐字歌词）、xWtree（早期界面开发、项目宣传者）。
 
+> [!IMPORTANT]
+> 音乐房间功能正在开发中，目前还不能正常使用；请勿依赖本版本进行正式房间活动。
+
 > **首次使用说明**：首次使用时须在游戏内阅读并确认相应音源的使用协议与免责声明；QQ 音乐登录前需要滚动到底部才能同意。CloudXMusic 是非官方第三方客户端，与网易云音乐、QQ 音乐及其运营方无隶属、授权或背书关系。服务请求由客户端直接发送至对应音乐服务及音频 CDN。账号凭证以未加密文本保存在本机，请勿分享；使用时请遵守服务条款、所在地法律法规及作品版权要求。
 
 ## 功能
@@ -37,7 +40,7 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 | 网易云每日推荐、搜索与收藏；QQ 每日30首、推荐歌单、搜索与我喜欢 | 进度、音量及播放控制，双音源互斥播放 |
 | QQ SQ FLAC、HQ 320k、标准 128k，取链失败自动降级 | LRC / QQ QRC 逐字歌词、翻译开关与 HUD 灵动岛 |
 | 专辑封面、QQ 头像与会员徽章、歌曲 VIP 标识 | Unicode 字形回退、圆角磨砂界面与柔和阴影 |
-| 音乐房间入口（Beta，占位） | 面板升降、导航滚动与灵动岛过渡动效 |
+| 音乐房间界面预览（开发中，暂不可用） | 面板升降、导航滚动与灵动岛过渡动效 |
 
 两侧账号凭证分开存放，不会保存到项目服务器。2.4.11 已移除 QQ“刷歌模式 / 个性电台”，每日30首与推荐歌单使用普通播放队列。
 

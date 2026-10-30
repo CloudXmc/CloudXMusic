@@ -7,6 +7,8 @@ import dev.lzasn.cloudxmusic.client.netease.NeteaseApi;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseHttp;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseQuality;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseSession;
+import dev.lzasn.cloudxmusic.client.room.MusicRoomClient;
+import dev.lzasn.cloudxmusic.protocol.MusicSourceType;
 import dev.lzasn.cloudxmusic.client.state.MusicState;
 import dev.lzasn.cloudxmusic.client.state.PlaybackMode;
 import dev.lzasn.cloudxmusic.client.state.Track;
@@ -79,7 +81,9 @@ public final class MusicScreen extends Screen {
     private String paintedQualityKey;
     private String paintedAccountKey;
     private Page page = Page.NOW;
-    private int scroll, settingsScroll, navScroll, originX, originY;
+    private int scroll, settingsScroll, navScroll, roomQueueScroll, originX, originY;
+    private String roomCodeInput = "";
+    private boolean roomCodeFocused, roomCodeSelectAll;
     /** 当前页列表总条数，配合 scroll 给右侧滚动条用。 */
     private int totalRows;
     private double scale, rasterScale;
@@ -90,6 +94,7 @@ public final class MusicScreen extends Screen {
     private long lastPaint, lastOverlayPaint;
     private int lastCoverRevision;
     private int lastSettingsScroll;
+    private boolean lastRoomJoined;
     private long pageTransitionAt;
     /**
      * 切页不再缩放/位移整块面板——整窗一缩一弹看着像「跳一下」。
@@ -208,7 +213,7 @@ public final class MusicScreen extends Screen {
             if (!track.equals(state.current())) next.add(track);
         }
         upcoming = List.copyOf(next);
-        layout = new MusicLayout(page, QQMusicIntegration.isQq()?qqRows.size():rows.size(), upcoming.size(), settingsScroll, navScroll);
+        layout = new MusicLayout(page, QQMusicIntegration.isQq()?qqRows.size():rows.size(), upcoming.size(), settingsScroll, navScroll, MusicRoomClient.INSTANCE.joined());
     }
 
     /** 音源提交后只替换展示会话，不重建 Screen，不触碰另一音源队列。 */
@@ -228,7 +233,7 @@ public final class MusicScreen extends Screen {
         paintedModalKey=null;paintedQualityKey=null;paintedAccountKey=null;
     }
     private boolean sharedQqBar(){return QQMusicIntegration.isQq()&&page!=Page.SETTINGS&&page!=Page.ACCOUNT&&page!=Page.ROOM;}
-    private int artworkRevision(){return CoverCache.revision()+QQMusicIntegration.artwork().revision();}
+    private int artworkRevision(){return CoverCache.revision()+MojangAvatarCache.revision()+QQMusicIntegration.artwork().revision();}
     private java.awt.image.BufferedImage artwork(String url){
         if(!FirstRunNotice.accepted())return null;
         return QQMusicIntegration.isQq()?QQMusicIntegration.artwork().image(url):CoverCache.image(url);
@@ -259,12 +264,16 @@ public final class MusicScreen extends Screen {
         if(qq&&page==Page.QUEUE)status=QQMusicIntegration.queueStatus();
         var account=QQMusicIntegration.account();
         List<SongView> displayRows=qq?qqRows.stream().map(song->song.platformId().equals(playback.song().platformId())?playback.song():QQMusicIntegration.queueSong(song)).toList():rows.stream().map(SongView::from).toList();
+        boolean roomPage=page==Page.ROOM;
+        String activeInput=roomPage?roomCodeInput:input;
+        boolean activeFocused=roomPage?roomCodeFocused:focused;
         return new MusicView(page,playback.song(),displayRows,qq?List.of():upcoming.stream().map(SongView::from).toList(),List.copyOf(lines),
                 (int)(playback.position()*10),playback.playing(),qq?account.loggedIn():session.loggedIn(),
-                qq?account.nickname():session.nickname().isBlank()?"已登录":session.nickname(),input,focused,
-                focused&&System.currentTimeMillis()/500%2==0,status,playback.quality(),playback.lyricMode().label,
+                qq?account.nickname():session.nickname().isBlank()?"已登录":session.nickname(),activeInput,activeFocused,
+                activeFocused&&System.currentTimeMillis()/500%2==0,status,playback.quality(),playback.lyricMode().label,
                 state.islandEnabled(),playback.playbackMode(),playback.favorite(),VERSION,hover,artworkRevision(),seekPreview,
-                playback.volume(),qq?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel(),scroll,totalRows);
+                playback.volume(),qq?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel(),scroll,totalRows,
+                MusicRoomClient.INSTANCE.view().withQueueScroll(roomQueueScroll));
     }
 
     private java.awt.image.BufferedImage paintMain(MusicView still,QQPlaybackController.View qqView){
@@ -314,6 +323,11 @@ public final class MusicScreen extends Screen {
         String qqKey=(qqBar&&qqView.song()!=null?qqView.song().platformId():"")+"|"+qqView.loading()+"|"+qqView.playing()+"|"+qqView.status()+"|"+qqView.error();
         if (!qqKey.equals(paintedQqStatus)||qqLoginChanged) {painted=null;paintedQqStatus=qqKey;}
         if(overlayQq!=qqBar){overlayQq=qqBar;paintedDynamic=null;paintedQqBar=null;}
+        if (lastRoomJoined != MusicRoomClient.INSTANCE.joined()) {
+            lastRoomJoined = MusicRoomClient.INSTANCE.joined();
+            rebuildLayout();
+            painted = null;
+        }
         MusicView still = view.staticView();
         boolean scrollChanged = lastSettingsScroll != settingsScroll;
         if ((!still.equals(painted) || scrollChanged) && (painted == null || now - lastPaint >= 33_333_333L)) {
@@ -577,6 +591,7 @@ public final class MusicScreen extends Screen {
         Hit hit = layout.hit(localX(event.x()), localY(event.y()));
         if (hit == null) { focused = false; return super.mouseClicked(event, handled); }
         if (hit.action() != Action.SEARCH_FIELD) focused = false;
+        if (hit.action() != Action.ROOM_JOIN_FIELD) roomCodeFocused = false;
         if (hit.action() == Action.SEEK || hit.action() == Action.VOLUME) {
             drag = hit.action(); updateDrag(localX(event.x())); return true;
         }
@@ -625,6 +640,16 @@ public final class MusicScreen extends Screen {
             case FAVORITE -> state.toggleFavoriteCurrent();
             case MODE_CYCLE -> state.playbackMode(nextMode());
             case PLAYBACK_MODE -> state.playbackMode(PlaybackMode.values()[hit.index()]);
+            case ROOM_SOURCE -> MusicRoomClient.INSTANCE.selectSource(
+                    hit.index() == 1 ? MusicSourceType.QQ : MusicSourceType.NETEASE);
+            case ROOM_CREATE -> {
+                MusicSourceType source = MusicRoomClient.INSTANCE.selectedSource();
+                MusicRoomClient.INSTANCE.createRoom(source, loggedInFor(source));
+            }
+            case ROOM_JOIN_FIELD -> { roomCodeFocused = true; roomCodeSelectAll = true; }
+            case ROOM_JOIN -> submitRoomJoin();
+            case ROOM_LIST_ENTRY -> joinPublicRoom(hit.index());
+            case ROOM_LEAVE -> MusicRoomClient.INSTANCE.leaveRoom();
             default -> { }
         }
         painted = null;
@@ -665,7 +690,9 @@ public final class MusicScreen extends Screen {
         if (page == Page.SEARCH) search.remember(input, search.isQq() ? search.scroll() : scroll);
         if (next != page) pageTransitionAt = System.nanoTime();
         page = next; scroll = 0; settingsScroll = 0; seekPreview = -1; drag = null; focused = page == Page.SEARCH;
+        roomCodeFocused = false;
         if (focused) { input = search.draft(); scroll = search.isQq() ? 0 : search.scroll(); }
+        if (next == Page.ROOM) MusicRoomClient.INSTANCE.requestRooms();
         if (!QQMusicIntegration.isQq() && next == Page.FAVORITES) state.ensureFavoritesLoaded();
         if (!QQMusicIntegration.isQq() && next == Page.DISCOVER) state.refreshLibraryIfNeeded();
         syncCatalog();
@@ -723,6 +750,13 @@ public final class MusicScreen extends Screen {
             search.scrollQq(sy > 0 ? -1 : 1);
             painted = null; return true;
         }
+        if (page == Page.ROOM && MusicRoomClient.INSTANCE.joined() && sy != 0
+                && MusicLayout.roomQueueBox().contains(localX(mx), localY(my))) {
+            int max = Math.max(0, MusicRoomClient.INSTANCE.view().queue().size() - MusicLayout.ROOM_QUEUE_VISIBLE);
+            roomQueueScroll = Math.max(0, Math.min(max,
+                    roomQueueScroll + (sy > 0 ? -1 : 1)));
+            painted = null; return true;
+        }
         if (page != Page.NOW && page != Page.SETTINGS && localX(mx) >= MAIN_X && localX(mx) <= 1050
                 && localY(my) >= ROW_TOP && localY(my) < 620 && sy != 0) {
             scroll += sy > 0 ? -1 : 1; rebuildLayout(); painted = null; return true;
@@ -756,6 +790,22 @@ public final class MusicScreen extends Screen {
                 return true;
             }
         }
+        if (page == Page.ROOM && roomCodeFocused) {
+            if (event.isEscape()) { roomCodeFocused = false; roomCodeSelectAll = false; return true; }
+            if (event.isConfirmation()) { submitRoomJoin(); return true; }
+            if (event.isSelectAll()) { roomCodeSelectAll = true; return true; }
+            if (event.isPaste()) { appendRoomCode(minecraft.keyboardHandler.getClipboard()); return true; }
+            if (event.isCopy() || event.isCut()) {
+                if (event.isCut()) roomCodeInput = "";
+                return true;
+            }
+            if (event.key() == GLFW.GLFW_KEY_BACKSPACE) {
+                if (roomCodeSelectAll) roomCodeInput = "";
+                else if (!roomCodeInput.isEmpty()) roomCodeInput = roomCodeInput.substring(0, roomCodeInput.offsetByCodePoints(roomCodeInput.length(), -1));
+                roomCodeSelectAll = false;
+                return true;
+            }
+        }
         if (focused) {
             if (event.isEscape()) { focused = false; selectAll = false; return true; }
             if (event.isConfirmation()) { submit(); return true; }
@@ -783,8 +833,44 @@ public final class MusicScreen extends Screen {
             appendAccount(event.codepointAsString());
             return true;
         }
+        if (page == Page.ROOM && roomCodeFocused && event.isAllowedChatCharacter()) {
+            appendRoomCode(event.codepointAsString());
+            return true;
+        }
         if (focused && event.isAllowedChatCharacter()) { append(event.codepointAsString()); return true; }
         return super.charTyped(event);
+    }
+
+    private void appendRoomCode(String text) {
+        if (text == null || text.isEmpty()) return;
+        if (roomCodeSelectAll) { roomCodeInput = ""; roomCodeSelectAll = false; }
+        String clean = text.toUpperCase(java.util.Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        int room = Math.max(0, 6 - roomCodeInput.length());
+        if (room == 0) return;
+        roomCodeInput += clean.substring(0, Math.min(room, clean.length()));
+        painted = null;
+    }
+
+    private void submitRoomJoin() {
+        if (page != Page.ROOM || MusicRoomClient.INSTANCE.joined()) return;
+        MusicSourceType source = MusicRoomClient.INSTANCE.selectedSource();
+        MusicRoomClient.INSTANCE.joinRoom(roomCodeInput, source, loggedInFor(source));
+        roomCodeFocused = false;
+        roomCodeSelectAll = false;
+        painted = null;
+    }
+
+    private void joinPublicRoom(int index) {
+        if (index < 0 || index >= MusicRoomClient.INSTANCE.publicRooms().size()) return;
+        var room = MusicRoomClient.INSTANCE.publicRooms().get(index);
+        MusicRoomClient.INSTANCE.joinRoom(room.roomCode(), room.source(), loggedInFor(room.source()));
+        painted = null;
+    }
+
+    private static boolean loggedInFor(MusicSourceType source) {
+        return source == MusicSourceType.QQ
+                ? QQMusicIntegration.account().loggedIn()
+                : NeteaseSession.INSTANCE.loggedIn();
     }
 
     /** 账号页输入：按字段类型限制长度，Cookie 允许粘贴更长内容。 */

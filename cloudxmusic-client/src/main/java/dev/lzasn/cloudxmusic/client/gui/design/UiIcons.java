@@ -1,11 +1,32 @@
 package dev.lzasn.cloudxmusic.client.gui.design;
 
+import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.geom.*;
+import java.awt.image.BufferedImage;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 /** 全部使用几何路径，避免字体图标基线和缺字引起的歪斜。 */
 public final class UiIcons {
+    private static final Map<String, BufferedImage> TEXTURES = new HashMap<>();
+
     private UiIcons() {}
+
+    /** 品牌图标来自随模组打包的透明 PNG，避免 Java2D 直接解析 SVG。 */
+    private static BufferedImage texture(String name) {
+        if (TEXTURES.containsKey(name)) return TEXTURES.get(name);
+        String path = "/assets/cloudxmusic/textures/gui/" + name + ".png";
+        try (InputStream in = UiIcons.class.getResourceAsStream(path)) {
+            BufferedImage image = in == null ? null : ImageIO.read(in);
+            TEXTURES.put(name, image);
+            return image;
+        } catch (Exception ignored) {
+            TEXTURES.put(name, null);
+            return null;
+        }
+    }
 
     public static void draw(FrostCanvas c, String name, double cx, double cy, double size, Color color) {
         Graphics2D g = (Graphics2D) c.g.create();
@@ -70,6 +91,37 @@ public final class UiIcons {
             case "note" -> {
                 Path2D p = new Path2D.Double(); p.moveTo(-4,5); p.lineTo(-4,-7); p.lineTo(7,-10); p.lineTo(7,2); g.draw(p);
                 g.fill(new Ellipse2D.Double(-10,3,7,5)); g.fill(new Ellipse2D.Double(1,0,7,5));
+            }
+            // 正式品牌资源；资源缺失时退回几何图标。
+            case "netease" -> {
+                BufferedImage logo = texture("netease-cloud-music");
+                if (logo != null) {
+                    g.drawImage(logo, -10, -10, 20, 20, null);
+                } else {
+                    g.setColor(new Color(0xD43C33));
+                    g.fill(new Ellipse2D.Double(-10, -10, 20, 20));
+                    g.setColor(Color.WHITE);
+                    g.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    Path2D p = new Path2D.Double();
+                    p.moveTo(-3, 3); p.lineTo(-3, -5); p.lineTo(6, -7); p.lineTo(6, 1); g.draw(p);
+                    g.fill(new Ellipse2D.Double(-7, 1, 6, 5));
+                    g.fill(new Ellipse2D.Double(2, -1, 6, 5));
+                }
+            }
+            case "qqmusic" -> {
+                BufferedImage logo = texture("qq-music");
+                if (logo != null) {
+                    g.drawImage(logo, -10, -10, 20, 20, null);
+                } else {
+                    g.setColor(new Color(0x27B96B));
+                    g.fill(new RoundRectangle2D.Double(-10, -10, 20, 20, 7, 7));
+                    g.setColor(Color.WHITE);
+                    g.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    Path2D p = new Path2D.Double();
+                    p.moveTo(-3, 4); p.lineTo(-3, -5); p.lineTo(5, -7); p.lineTo(5, 2); g.draw(p);
+                    g.fill(new Ellipse2D.Double(-7, 2, 6, 5));
+                    g.fill(new Ellipse2D.Double(1, 0, 6, 5));
+                }
             }
             default -> g.draw(new Ellipse2D.Double(-8,-8,16,16));
         }

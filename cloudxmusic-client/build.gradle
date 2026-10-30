@@ -30,6 +30,8 @@ dependencies {
     mappings loom.officialMojangMappings()
     modImplementation("net.fabricmc:fabric-loader:${project.loader_version}")
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.fabric_version}")
+    // 协议源码仅在本地开发；远端客户端构建使用 libs/ 中的协议运行包。
+    implementation files(rootProject.file("libs/cloudxmusic-protocol.jar"))
 
     // 无第三方前置：界面全部自绘（fill + 程序化矢量图标），不再内置 Modern UI。
     // MP3 解码（LGPL-3.0）：只用来把网易云的 mp3 流转成 PCM，类会合并进产物 jar。
@@ -77,6 +79,9 @@ java {
 
 jar {
     inputs.property "archivesName", project.base.archivesName
+    from({ zipTree(rootProject.file("libs/cloudxmusic-protocol.jar")) }) {
+        exclude "META-INF/**"
+    }
     from(rootProject.file("libs/nayuki-flac-e807ab25-sources.zip")) {
         into "META-INF/licenses/nayuki-flac"
     }
