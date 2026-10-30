@@ -468,6 +468,17 @@ public final class MusicPainter {
             int last = l.box("row"+(v.tracks().size()-1)).y()+46;
             c.g.drawLine(292, last, 1050, last);
         }
+        // 滚动条：超出可视行数时，在列表右缘的留白里画一条细指示。
+        // 算法与 QQ 搜索页一致——轨道固定，滑块高度按可见比例、位置按滚动比例。
+        int total = v.total();
+        int shown = v.tracks().size();
+        if (shown > 0 && total > shown) {
+            double viewport = shown * ROW_H;
+            double height = Math.max(24, viewport * shown / (double) total);
+            double top = ROW_TOP + (viewport - height) * v.scroll() / (double) Math.max(1, total - shown);
+            c.round(1058, ROW_TOP, 4, viewport, 2, TRACK);
+            c.round(1058, top, 4, height, 2, PINK);
+        }
     }
 
     /** 各页空态的文案；状态行不再挤进这里。 */

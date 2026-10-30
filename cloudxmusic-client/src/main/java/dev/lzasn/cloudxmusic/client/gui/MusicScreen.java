@@ -80,6 +80,8 @@ public final class MusicScreen extends Screen {
     private String paintedAccountKey;
     private Page page = Page.NOW;
     private int scroll, settingsScroll, navScroll, originX, originY;
+    /** 当前页列表总条数，配合 scroll 给右侧滚动条用。 */
+    private int totalRows;
     private double scale, rasterScale;
     private String input = "";
     private boolean focused, selectAll, blurUnavailable;
@@ -195,6 +197,9 @@ public final class MusicScreen extends Screen {
         scroll = QQMusicIntegration.isQq() ? scroll
                 : Math.max(0, Math.min(scroll, Math.max(0, source.size() - ROWS)));
         rows = QQMusicIntegration.isQq()?List.of():List.copyOf(source.subList(scroll, Math.min(source.size(), scroll + ROWS)));
+        // rows 只是可见的一屏，滚动条还需要总条数才知道滑块该多长。
+        totalRows = QQMusicIntegration.isQq() && page == Page.QUEUE
+                ? qqPlayback.queue().size() : source.size();
         List<Track> queue = QQMusicIntegration.isQq()?List.of():state.queue();
         List<Track> next = new ArrayList<>();
         int current = queue.indexOf(state.current());
@@ -256,7 +261,7 @@ public final class MusicScreen extends Screen {
                 qq?account.nickname():session.nickname().isBlank()?"已登录":session.nickname(),input,focused,
                 focused&&System.currentTimeMillis()/500%2==0,status,playback.quality(),playback.lyricMode().label,
                 state.islandEnabled(),playback.playbackMode(),playback.favorite(),VERSION,hover,artworkRevision(),seekPreview,
-                playback.volume(),qq?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel());
+                playback.volume(),qq?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel(),scroll,totalRows);
     }
 
     private java.awt.image.BufferedImage paintMain(MusicView still,QQPlaybackController.View qqView){

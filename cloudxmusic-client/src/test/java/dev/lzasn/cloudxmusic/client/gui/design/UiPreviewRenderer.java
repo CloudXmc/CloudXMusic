@@ -121,7 +121,7 @@ public final class UiPreviewRenderer {
         MusicView view=new MusicView(page,CURRENT,rows,upcoming,lyrics,102,true,true,"CloudXMusic",
                 search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
                 dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.4.10","",0,-1,.8f,"",
-                darkMode,.8f,1f,.5f,.06f,"H");
+                darkMode,.8f,1f,.5f,.06f,"H",0,40);
         BufferedImage canvas=MusicPainter.paint(view,layout,1d,url->null);
         Graphics2D oc=canvas.createGraphics();
         if(page==Page.NOW){
