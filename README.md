@@ -106,8 +106,8 @@ Linux/macOS：
 - QQ 的 FLAC / MP3 进度跳转通过后台从头解码并按 PCM 样本数跳过，长曲目或慢速网络可能需要等待。
 - 网易云与 QQ 音乐接口为非官方接口，可能随服务端变化而失效。
 - 部分受版权、地区或账号权限限制的曲目可能无法播放。
-- 「音乐房间」页目前是 Beta 占位，只提供入口与说明，房间功能尚未接入。
-- 当前仓库只实现 Fabric 客户端，不提供 Paper / Folia 服务端插件。
+- 「音乐房间」页已进入开发阶段，但创建/加入、成员同步和同步播放尚不能作为正式功能使用。
+- 远端发行物只包含客户端；`music-protocol` 与 `music-server` 源码仅在本地开发，客户端通过 `libs/cloudxmusic-protocol.jar` 合并协议运行包。
 
 ## 开发资料
 
@@ -115,6 +115,7 @@ Linux/macOS：
 - [UI 知识点与维护约定](UI_KNOWLEDGE.md)
 - [UI 重构记录](UI_REFACTOR.md)
 - [开发状态与交接记录](DEVELOPMENT_STATUS.md)
+- [Folia 服务端与协议开发记录](docs/FOLIA_DEVELOPMENT.md)
 - [第三方组件与许可证](THIRD_PARTY_NOTICES.md)
 
 主要代码位于 `cloudxmusic-client/src/main/java/dev/lzasn/cloudxmusic/client/`：`audio/` 处理原有音频，`gui/` 绘制界面，`hud/` 绘制灵动岛，`lyric/` 解析歌词，`netease/` 保留网易云业务，`state/` 管理原有播放状态，`omni/` 提供统一音源路由与快照，`qqmusic/` 管理 QQ 登录、目录、取链、解码和独立状态。

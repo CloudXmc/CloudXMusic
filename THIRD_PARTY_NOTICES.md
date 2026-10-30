@@ -4,6 +4,8 @@
 
 CloudXMusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [LICENSE](LICENSE)。该许可不改变下列第三方组件各自的许可证；字体资源也继续遵循随文件提供的 SIL Open Font License 1.1。
 
+`libs/cloudxmusic-protocol.jar` 由本项目 `music-protocol` 源码构建，属于 CloudXMusic 自有代码的运行包；它随客户端构建合并，但对应源码目录不进入远端仓库。
+
 ## 当前状态：内置 MP3 解码、二维码库与嵌套 FLAC 解码库
 
 ## 内置代码：JLayer (MP3 解码)
@@ -89,11 +91,16 @@ FLAC 测试依赖位于 `META-INF/jars/`；界面随模组提供下列开源字�
 - 来源：https://github.com/notofonts/noto-cjk/blob/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTF/Korean/NotoSansCJKkr-Regular.otf
 - 用途：当 Inter 或 Noto Sans SC 不含目标 Unicode 字形时，供同一套 UI 测宽与绘制回退，包含韩文 Hangul 和日文假名；无需玩家安装字体或联网下载字体。
 
-这些字体只用于界面文字排版，图标由模组代码的矢量路径绘制。
+这些字体只用于界面文字排版。普通界面图标由 `gui/design/UiIcons.java` 使用矢量路径绘制；网易云音乐与 QQ 音乐品牌图标使用随模组打包的 PNG 资源。旧版本曾使用原版符号字形。
+
+### 音乐平台品牌图标
+
+- 文件：`assets/cloudxmusic/textures/gui/netease-cloud-music.png`、`assets/cloudxmusic/textures/gui/qq-music.png`。
+- SVG 源文件：`assets/cloudxmusic/textures/gui/sources/netease-cloud-music.svg`、`assets/cloudxmusic/textures/gui/sources/qq-music.svg`。
+- 用途：仅在房间音源选择等界面中标识对应音乐平台，不表示与平台存在隶属、授权或背书关系。
+- 网易云音乐、QQ 音乐名称、标识及相关商标权利归各自权利人所有。
 
 `assets/cloudxmusic/textures/gui/author.png` 是项目开发者 Lzasn 提供的个人头像，仅用于模组「关于」页面。
-
-当前界面图标由 `gui/design/UiIcons.java` 使用矢量路径绘制，不依赖 Minecraft 位图字形或第三方图标集。旧版本曾使用原版符号字形。
 
 ## 品牌
 
