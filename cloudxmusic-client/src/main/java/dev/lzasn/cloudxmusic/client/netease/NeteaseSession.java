@@ -33,8 +33,27 @@ public final class NeteaseSession {
 
     private NeteaseSession() {}
 
+    /**
+     * 网易云的配置统一放在 {@code cloudxmusic/netease/} 下，与 {@code qqmusic/} 对称。
+     *
+     * <p>老版本把文件直接放在 {@code cloudxmusic/} 根目录，这里做一次性搬迁：
+     * 新文件不存在而老文件存在时才移动，失败则继续用老路径，保证升级后不掉登录态。</p>
+     */
     private static Path file() {
-        return FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic").resolve("netease.json");
+        Path base = FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic");
+        Path target = base.resolve("netease").resolve("netease.json");
+        Path legacy = base.resolve("netease.json");
+        if (!Files.exists(target) && Files.isRegularFile(legacy)) {
+            try {
+                Files.createDirectories(target.getParent());
+                Files.move(legacy, target);
+                CloudXMusicClient.LOGGER.info("已把 netease.json 迁移到 netease/ 子目录");
+            } catch (java.io.IOException e) {
+                CloudXMusicClient.LOGGER.warn("迁移 netease.json 失败，继续使用旧路径", e);
+                return legacy;
+            }
+        }
+        return target;
     }
 
     public void load() {

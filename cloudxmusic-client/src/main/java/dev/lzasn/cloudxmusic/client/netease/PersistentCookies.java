@@ -34,8 +34,22 @@ public final class PersistentCookies implements java.net.CookieStore {
     /** key = domain|path|name */
     private final Map<String, HttpCookie> cookies = new LinkedHashMap<>();
 
+    /** Cookie 与 netease.json 一起放在 {@code cloudxmusic/netease/}；老路径一次性搬迁，避免升级后掉登录。 */
     private static Path file() {
-        return FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic").resolve("cookies.json");
+        Path base = FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic");
+        Path target = base.resolve("netease").resolve("cookies.json");
+        Path legacy = base.resolve("cookies.json");
+        if (!Files.exists(target) && Files.isRegularFile(legacy)) {
+            try {
+                Files.createDirectories(target.getParent());
+                Files.move(legacy, target);
+                CloudXMusicClient.LOGGER.info("已把 cookies.json 迁移到 netease/ 子目录");
+            } catch (java.io.IOException e) {
+                CloudXMusicClient.LOGGER.warn("迁移 cookies.json 失败，继续使用旧路径", e);
+                return legacy;
+            }
+        }
+        return target;
     }
 
     public PersistentCookies() {

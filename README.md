@@ -92,7 +92,8 @@ Linux/macOS：
 | 文件 | 内容 |
 | --- | --- |
 | `cookies.json` | 网易云登录 Cookie 与游客会话 Cookie，未加密保存 |
-| `netease.json` | 昵称、UID、音质与歌词偏好 |
+| `netease/netease.json` | 昵称、UID、音质与歌词偏好 |
+| `netease/cookies.json` | 网易云登录 Cookie，明文保存 |
 | `state.json` | 当前歌曲与播放队列 |
 | `qqmusic/account.json` | QQ 账号票据，明文存储并由操作系统用户权限保护 |
 | `qqmusic/config.json` | QQ 音质、音量、歌词与协议确认等独立偏好 |

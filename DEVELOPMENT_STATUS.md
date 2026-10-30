@@ -206,7 +206,7 @@ client/netease/
   NeteaseHttp.java      JDK HttpClient + 手写 Cookie(MUSIC_U/__csrf)
   NeteaseApi.java       登录 / 搜索 / 歌单 / 歌曲详情 / 播放地址 / 歌词
   NeteaseQuality.java   standard 128K / higher 192K / exhigh 320K
-  NeteaseSession.java   账号与偏好的落盘（config/cloudxmusic/netease.json）
+  NeteaseSession.java   账号与偏好的落盘（config/cloudxmusic/netease/netease.json）
 client/lyric/Lyric.java  LRC 解析（多时间戳、原文+翻译按毫秒合并）
 client/audio/Mp3Player.java  在线播放：HTTP 流 → JLayer 解码 → SourceDataLine
 client/command/CloudXMusicCommand.java  /cxm 命令

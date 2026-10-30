@@ -21,7 +21,7 @@ public final class FirstRunNoticePainter {
             y=paragraph(c,"1. CloudXMusic（云朵音乐盒）是非官方第三方 Fabric 模组，不隶属、未获网易云音乐运营方授权或背书。",y);
             y=paragraph(c,"2. 登录、搜索、歌单、歌词和播放会由客户端直接连接网易云音乐相关服务及音频 CDN；接口可能调整或不可用。",y+8);
             y=paragraph(c,"3. 登录凭据会发送给网易云音乐服务；本模组不会保存你的密码。",y+8);
-            y=paragraph(c,"   登录 Cookie 以明文保存在 config/cloudxmusic/cookies.json，请勿分享。",y+3);
+            y=paragraph(c,"   登录 Cookie 以明文保存在 config/cloudxmusic/netease/cookies.json，请勿分享。",y+3);
             paragraph(c,"4. 请遵守当地法律法规、网易云音乐服务条款及作品版权要求；不得传播或公开播放未经授权的内容。",y+8);
             c.g.setColor(new Color(135,90,115,35));c.g.drawLine(32,385,748,385);
             int bx=35,by=407;
