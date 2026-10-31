@@ -39,7 +39,7 @@ public final class DynamicIslandHud {
     private static boolean musicUiOpen;
     private static boolean visible;
     private static boolean adjustCached;
-    private static final dev.lzasn.cloudxmusic.client.gui.design.MarqueeClock MARQUEE=new dev.lzasn.cloudxmusic.client.gui.design.MarqueeClock();
+
     private static final IslandLyricsRenderer TEXT=new IslandLyricsRenderer();
 
     private DynamicIslandHud() {}
@@ -64,7 +64,8 @@ public final class DynamicIslandHud {
         boolean musicUi = (client.screen instanceof MusicScreen && !MusicScreen.panelClosing())
                 || client.screen instanceof FirstRunNoticeScreen;
 
-        if (!eligible(client, state)) {
+        var playback=QQMusicIntegration.snapshot();
+        if (!eligible(client, state, playback)) {
             if (musicUi) {
                 musicUiOpen = true;
                 beginTransition(now, 0, 0);
@@ -80,7 +81,7 @@ public final class DynamicIslandHud {
             musicUiOpen = true;
             if (client.screen instanceof MusicScreen) {
                 double progress = animationProgress(now);
-                if (progress > 0.01) renderIsland(graphics, progress);
+                if (progress > 0.01) renderIsland(graphics, progress, playback);
             }
             return;
         }
@@ -93,7 +94,7 @@ public final class DynamicIslandHud {
             beginTransition(now, 0, 1);
         }
         visible = true;
-        renderIsland(graphics, animationProgress(now));
+        renderIsland(graphics, animationProgress(now), playback);
     }
 
     /** 调整模式：遮罩、灵动岛与底部提示；鼠标事件由 IslandPositionScreen 接管。 */
@@ -110,8 +111,8 @@ public final class DynamicIslandHud {
         renderAdjustIsland(graphics, state);
     }
 
-    private static boolean eligible(net.minecraft.client.Minecraft client, MusicState state) {
-        return client.level != null && !client.options.hideGui && state.islandEnabled() && QQMusicIntegration.snapshot().hasTrack();
+    private static boolean eligible(net.minecraft.client.Minecraft client, MusicState state, dev.lzasn.cloudxmusic.client.omni.PlaybackSnapshot playback) {
+        return client.level != null && !client.options.hideGui && state.islandEnabled() && playback.hasTrack();
     }
 
     private static void beginTransition(long now, double from, double to) {
@@ -143,11 +144,10 @@ public final class DynamicIslandHud {
     }
 
     /** @param p 过渡进度：1 完全展开、0 完全收起。 */
-    private static void renderIsland(GuiGraphics graphics, double p) {
+    private static void renderIsland(GuiGraphics graphics, double p, dev.lzasn.cloudxmusic.client.omni.PlaybackSnapshot playback) {
         var client = CloudXMusicClient.client();
         MusicState state = CloudXMusicClient.STATE;
         dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas.setDark(state.darkMode());
-        var playback=QQMusicIntegration.snapshot();
         LyricMode mode = playback.lyricMode();
         Lyric.Line line = mode == LyricMode.OFF ? null : playback.lineAt((int) (playback.position() * 1000));
         boolean hasLine = line != null && !line.text().isBlank();
@@ -174,8 +174,7 @@ public final class DynamicIslandHud {
         double raster = Math.max(.75, Math.min(2, display * client.getWindow().getGuiScale()));
         long now = System.nanoTime();
         String artwork=playback.source()+"|"+playback.song().coverUrl()+"|"+(QQMusicIntegration.isQq()?QQMusicIntegration.artwork().revision():CoverCache.revision());
-        String lineKey=playback.source()+"|"+playback.song().platformId()+"|"+(hasLine?line.timeMs():-1)+"|"+title+"\u0000"+subtitle;
-        double scrollSeconds=MARQUEE.elapsed(lineKey,now);
+        double scrollSeconds=Math.max(0,playback.position()-(hasLine?line.timeMs()/1000.0:0));
         // 背景/时间低频更新；文字每帧走矩阵，切句立即替换，不再重绘整岛来模拟滚动。
         if ((!view.equals(previous)||raster!=previousScale||previousDark!=state.darkMode()||!artwork.equals(previousArtwork))
                 && (previous==null||now-lastPaint>=100_000_000L)) {
@@ -188,7 +187,7 @@ public final class DynamicIslandHud {
         double x = state.islandX() * (graphics.guiWidth() - w);
         double y = state.islandY() * (graphics.guiHeight() - h);
         if (p >= 0.999) {
-            drawLayers(graphics,x,y,display,view,raster,scrollSeconds);
+            drawLayers(graphics,x,y,display,view,raster,scrollSeconds,playback);
             return;
         }
         if (zoomMode(state)) {
@@ -199,7 +198,7 @@ public final class DynamicIslandHud {
             graphics.pose().translate(cx, cy);
             graphics.pose().scale(s, s);
             graphics.pose().translate(-cx, -cy);
-            drawLayers(graphics,x,y,display,view,raster,scrollSeconds);
+            drawLayers(graphics,x,y,display,view,raster,scrollSeconds,playback);
             graphics.pose().popMatrix();
         } else {
             // 靠边：朝最近的那条边飞入/飞出。位移距离按「岛到该边缘的实际距离」算，
@@ -212,18 +211,20 @@ public final class DynamicIslandHud {
                 travel = dir[1] < 0 ? y + h : graphics.guiHeight() - y;
             }
             double off = (1 - p) * travel;
-            drawLayers(graphics,x+dir[0]*off,y+dir[1]*off,display,view,raster,scrollSeconds);
+            drawLayers(graphics,x+dir[0]*off,y+dir[1]*off,display,view,raster,scrollSeconds,playback);
         }
     }
 
-    private static void drawLayers(GuiGraphics graphics,double x,double y,double display,IslandPainter.View view,double raster,double seconds){
+    private static void drawLayers(GuiGraphics graphics,double x,double y,double display,IslandPainter.View view,double raster,double seconds,dev.lzasn.cloudxmusic.client.omni.PlaybackSnapshot playback){
         graphics.pose().pushMatrix();
         try{
             graphics.pose().translate((float)x,(float)y);
             graphics.pose().scale((float)display,(float)display);
             SURFACE.draw(graphics,0,0,IslandPainter.WIDTH+2*IslandPainter.PAD,IslandPainter.HEIGHT+2*IslandPainter.PAD);
             graphics.pose().translate(IslandPainter.PAD,IslandPainter.PAD);
-            TEXT.draw(graphics,view,raster,seconds);
+            TEXT.draw(graphics,view,raster,seconds,playback);
+            graphics.pose().pushMatrix();
+            try{graphics.pose().translate(57,52);graphics.pose().scale((float)Math.max(0,Math.min(1,playback.position()/Math.max(1,playback.duration()))),1);graphics.fill(0,0,281,2,dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas.PINK.getRGB());}finally{graphics.pose().popMatrix();}
         }finally{graphics.pose().popMatrix();}
     }
 
@@ -258,6 +259,6 @@ public final class DynamicIslandHud {
         lastPaint = 0;
         adjustCached = false;
         visible = false;
-        MARQUEE.reset();TEXT.close();
+        TEXT.close();
     }
 }

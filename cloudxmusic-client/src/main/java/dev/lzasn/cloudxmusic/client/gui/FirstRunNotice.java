@@ -1,7 +1,7 @@
 package dev.lzasn.cloudxmusic.client.gui;
 
 import dev.lzasn.cloudxmusic.client.gui.design.FirstRunNoticeScreen;
-import net.fabricmc.loader.api.FabricLoader;
+import dev.lzasn.cloudxmusic.client.CloudHome;
 import net.minecraft.client.Minecraft;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,7 +28,7 @@ public final class FirstRunNotice {
         } catch(Exception e) { throw new IllegalStateException("无法保存免责声明确认，请检查 config/cloudxmusic 权限",e); }
     }
 
-    private static Path file() { return FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic").resolve("disclaimer.txt"); }
+    private static Path file() { return CloudHome.resolve("disclaimer.txt"); }
 
     /** API 可从后台线程被调用；只把打开界面的动作排回客户端线程。 */
     public static void requireAccepted() {

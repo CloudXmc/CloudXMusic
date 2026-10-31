@@ -16,7 +16,7 @@ class QQPlaybackProbeControllerTest {
             assertNotEquals(caller,Thread.currentThread());return HOST+"F000Media456.flac?vkey=opaque";
         })){
             assertTrue(probe.start(SONG));await(()->!probe.view().loading());
-            assertFalse(probe.view().error());assertTrue(probe.view().status().contains("SQ FLAC"));assertNotNull(logged.get());
+            assertFalse(probe.view().error());assertTrue(probe.view().status().contains("SQ 无损"));assertNotNull(logged.get());
         }
     }
     @Test void canceledQueuedCompletionCannotLogOrUpdate() throws Exception {
@@ -37,7 +37,7 @@ class QQPlaybackProbeControllerTest {
         CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);AtomicInteger calls=new AtomicInteger();
         try(var probe=new QQPlaybackProbeController(Runnable::run,()->1,(s,u)->{},s->{calls.incrementAndGet();entered.countDown();release.await();return HOST+"M800Media456.mp3";})){
             assertTrue(probe.start(SONG));assertTrue(entered.await(3,TimeUnit.SECONDS));assertFalse(probe.start(SONG));
-            release.countDown();await(()->!probe.view().loading());assertEquals(1,calls.get());assertTrue(probe.view().status().contains("HQ 320k"));
+            release.countDown();await(()->!probe.view().loading());assertEquals(1,calls.get());assertTrue(probe.view().status().contains("HQ 高品质"));
         }finally{release.countDown();}
     }
     @Test void failureAndNoResourceAreVisibleAndNeverLog() throws Exception {

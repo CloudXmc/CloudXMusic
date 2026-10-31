@@ -16,7 +16,7 @@ Thumbs.db
 
 # Runtime data
 run/
-config/
+/config/
 logs/
 *.log
 

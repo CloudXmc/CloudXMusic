@@ -16,6 +16,7 @@ import java.util.concurrent.Flow;
 
 /** 登录专用 HTTPS 传输，每次调用使用独立 QQ Cookie 容器，绝不复用网易云客户端。 */
 final class QQAuthHttp {
+    static final String USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
     static final class HttpFailure extends IOException {
         private final int statusCode;
         HttpFailure(int statusCode){super("QQ 登录 HTTP 状态码："+statusCode);this.statusCode=statusCode;}
@@ -38,12 +39,13 @@ final class QQAuthHttp {
         try {
             HttpRequest request = HttpRequest.newBuilder(endpoint).timeout(timeout)
                     .header("Content-Type", "application/json; charset=utf-8").header("Accept", "application/json")
-                    .header("Accept-Encoding", "identity").header("User-Agent", "Mozilla/5.0")
+                    .header("Accept-Encoding", "identity").header("User-Agent", USER_AGENT)
                     .header("Referer", "https://y.qq.com/").header("Origin", "https://y.qq.com")
                     .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
             CompletableFuture<HttpResponse<byte[]>> pending = client.sendAsync(request, info -> new LimitedBody());
             try {
                 HttpResponse<byte[]> response = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                QQRequestDiagnostics.response(endpoint,body,response.statusCode(),response.body());
                 if (response.statusCode() != 200) throw new HttpFailure(response.statusCode());
                 return parse(response.body());
             } catch (TimeoutException e) { throw new HttpTimeoutException("QQ 登录请求超时"); }

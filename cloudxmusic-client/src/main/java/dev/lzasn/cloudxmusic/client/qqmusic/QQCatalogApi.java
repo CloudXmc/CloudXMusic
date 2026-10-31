@@ -9,8 +9,10 @@ import java.util.*;
 public final class QQCatalogApi {
     @FunctionalInterface interface Call {JsonObject call(String module,String method,JsonObject params)throws IOException,InterruptedException;}
     @FunctionalInterface interface ProfileId {String load()throws IOException,InterruptedException;}
-    public record Playlist(String id,int dir,String owner,String title,int count,String cover) {
-        public String key(){return dir==201?"liked:"+owner:"playlist:"+id;}
+    public enum Kind {PLAYLIST,LIKED,CHART}
+    public record Playlist(String id,int dir,String owner,String title,int count,String cover,Kind kind,String period) {
+        public Playlist(String id,int dir,String owner,String title,int count,String cover){this(id,dir,owner,title,count,cover,dir==201?Kind.LIKED:Kind.PLAYLIST,"");}
+        public String key(){return kind==Kind.CHART?"chart:"+id+":"+period:dir==201?"liked:"+owner:"playlist:"+id;}
     }
     public record Track(UnifiedSong song,SongView display,long songId) {}
     public record Page<T>(List<T> items,int nextOffset,boolean hasMore) {public Page{items=List.copyOf(items);}}
@@ -18,12 +20,7 @@ public final class QQCatalogApi {
     private final String owner;
     private final ProfileId profile;
     QQCatalogApi(Call call,String owner,ProfileId profile){this.call=call;this.owner=owner;this.profile=profile;}
-    public Page<Playlist> recommend(int offset)throws IOException,InterruptedException{
-        checkOffset(offset);JsonObject data=call.call("music.playlist.PlaylistSquare","GetRecommendFeed",params("From",offset,"Size",20));
-        JsonArray rows=array(data,"List");Map<String,Playlist> playlists=new LinkedHashMap<>();
-        for(var row:rows){JsonObject basic=object(object(row,"歌单条目"),"Playlist");basic=object(basic,"basic");Playlist p=playlist(basic,false);if(p!=null)playlists.putIfAbsent(p.key(),p);}
-        return new Page<>(List.copyOf(playlists.values()),offset+rows.size(),rows.size()>0&&flag(data,"HasMore",rows.size()==20));
-    }
+    public Page<Playlist> charts()throws IOException,InterruptedException{return new QQChartsApi(call).all();}
     public Playlist liked()throws IOException,InterruptedException{
         requireAccount();JsonObject data=call.call("music.musicasset.PlaylistBaseRead","GetPlaylistByUin",params("uin",owner));
         for(var row:array(data,"v_playlist")){Playlist p=playlist(object(row,"私人歌单"),true);if(p!=null&&p.dir()==201)return p;}
@@ -31,6 +28,7 @@ public final class QQCatalogApi {
         return new Playlist("0",201,owner,"我喜欢",0,"");
     }
     public Page<Track> tracks(Playlist playlist,int offset)throws IOException,InterruptedException{
+        if(playlist.kind()==Kind.CHART)return new QQChartsApi(call).tracks(playlist,offset);
         checkOffset(offset);if(playlist.dir()==201&&(!owner.equals(playlist.owner())||owner.isBlank()))throw new IOException("QQ 私人歌单账号已变化");
         if(!playlist.id().matches("[0-9]{1,19}"))throw new IOException("QQ 歌单 ID 无效");
         JsonObject p=params("disstid",Long.parseLong(playlist.id()),"dirid",playlist.dir(),"song_begin",offset,"song_num",100,"userinfo",true,"tag",true,"orderlist",true);

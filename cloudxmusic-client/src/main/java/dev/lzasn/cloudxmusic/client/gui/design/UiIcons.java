@@ -37,6 +37,7 @@ public final class UiIcons {
         switch (name) {
             case "play" -> { Path2D p = new Path2D.Double(); p.moveTo(-4, -8); p.lineTo(8, 0); p.lineTo(-4, 8); p.closePath(); g.fill(p); }
             case "pause" -> { g.fill(new RoundRectangle2D.Double(-6, -7, 4, 14, 2, 2)); g.fill(new RoundRectangle2D.Double(2, -7, 4, 14, 2, 2)); }
+            case "stop" -> g.fill(new RoundRectangle2D.Double(-7, -7, 14, 14, 2, 2));
             case "prev", "next" -> {
                 if (name.equals("next")) g.scale(-1, 1);
                 g.drawLine(-7, -6, -7, 6);

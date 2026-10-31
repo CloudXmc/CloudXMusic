@@ -19,9 +19,9 @@ class QQQualityFeedbackTest {
         now.addAndGet(TimeUnit.SECONDS.toNanos(3));feedback.fallback(QQQuality.HQ,QQQuality.STANDARD);assertEquals(3,messages.size());assertTrue(messages.getLast().contains("暂无 HQ 高品质音源"));
     }
     @Test void exactMenuBarLabelsAndSharedGeometry(){
-        assertEquals(List.of("SQ 无损 (24bit/48kHz)","HQ 高品质 (320kbps)","标准品质 (128kbps)"),Arrays.stream(QQQuality.values()).map(QQQuality::menuLabel).toList());
-        assertEquals(List.of("SQ FLAC","HQ 320k","标准 128k"),Arrays.stream(QQQuality.values()).map(QQQuality::barLabel).toList());
-        assertEquals(260,QQQualityMenu.region().w());assertEquals(111,QQQualityMenu.region().h());
-        for(int i=0;i<3;i++){var row=QQQualityMenu.row(i);assertTrue(row.contains(row.cx(),row.cy()));assertEquals(QQQualityMenu.region().x(),row.x());}
+        assertEquals(List.of("臻品母带 (FLAC)","SQ 无损 (24bit/48kHz)","HQ 高品质 (320kbps)","标准品质 (128kbps)"),Arrays.stream(QQQuality.values()).map(QQQuality::menuLabel).toList());
+        assertEquals(List.of("臻品母带","SQ 无损","HQ 高品质","标准品质"),Arrays.stream(QQQuality.values()).map(QQQuality::barLabel).toList());
+        assertEquals(332,QQQualityMenu.region().w());assertEquals(148,QQQualityMenu.region().h());
+        for(int i=0;i<4;i++){var row=QQQualityMenu.row(i);assertTrue(row.contains(row.cx(),row.cy()));assertEquals(QQQualityMenu.region().x(),row.x());}
     }
 }

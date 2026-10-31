@@ -21,13 +21,6 @@ class QQCatalogApiTest {
     }
     static JsonObject json(String value){return JsonParser.parseString(value).getAsJsonObject();}
     static String track(String mid){return "{\"mid\":\""+mid+"\",\"title\":\"歌\",\"interval\":180,\"album\":{\"mid\":\"Album\",\"name\":\"专辑\"},\"singer\":[{\"name\":\"歌手\"}],\"pay\":{\"pay_play\":1}}";}
-    @Test void recommendUsesDangoSchemaAndRawOffset()throws Exception{
-        var api=new QQCatalogApi((module,method,param)->{
-            assertEquals("music.playlist.PlaylistSquare",module);assertEquals(20,param.get("From").getAsInt());
-            return json("{\"List\":[{\"Playlist\":{\"basic\":{\"tid\":123,\"title\":\"推荐\",\"song_cnt\":30,\"cover\":{\"default_url\":\"https://y.gtimg.cn/cover.jpg\"}}}}],\"HasMore\":1}");
-        },"12345",()->"encrypted");
-        var page=api.recommend(20);assertEquals("123",page.items().getFirst().id());assertEquals(21,page.nextOffset());assertTrue(page.hasMore());
-    }
     @Test void privateLikedDirectoryWorksWithoutPublicTid()throws Exception{
         var api=new QQCatalogApi((module,method,param)->{
             if(method.equals("GetPlaylistByUin"))return json("{\"v_playlist\":[{\"dirid\":201,\"dirName\":\"我喜欢\"}]}");
@@ -47,7 +40,7 @@ class QQCatalogApiTest {
     }
     @Test void malformedSuccessIsAnErrorRatherThanEmptyData() {
         var api=new QQCatalogApi((m,n,p)->new JsonObject(),"12345",()->"encrypted");
-        assertThrows(java.io.IOException.class,()->api.recommend(0));
+        assertThrows(java.io.IOException.class,()->api.charts());
         assertThrows(java.io.IOException.class,()->api.tracks(new QQCatalogApi.Playlist("123",0,"","测试",0,""),0));
     }
 }

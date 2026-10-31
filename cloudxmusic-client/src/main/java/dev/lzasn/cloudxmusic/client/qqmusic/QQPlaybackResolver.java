@@ -48,7 +48,7 @@ public final class QQPlaybackResolver {
         String mediaMid=info.mediaMid();metadata.accept(info);
         String guid = Long.toString(ThreadLocalRandom.current().nextLong(1_000_000_000L, 10_000_000_000L));
         IOException failure = null;
-        for (QQQuality quality : Arrays.asList(QQQuality.values()).subList(preferred.ordinal(),QQQuality.values().length)) {
+        for (QQQuality quality : QQQualityPolicy.chain(preferred)) {
             for (boolean desktop : new boolean[]{true, false}) {
                 String filename = quality.prefix() + mediaMid + quality.extension();
                 JsonObject params = new JsonObject(); params.addProperty("guid", guid); params.addProperty("uin", session.credentials().userId()); params.addProperty("ctx", 0);
@@ -106,6 +106,7 @@ public final class QQPlaybackResolver {
             }
         }
         hosts.sort(Comparator.comparingInt(host -> host.startsWith("https://") ? 0 : 1));
+        if(hosts.isEmpty())hosts.add("https://isure.stream.qqmusic.qq.com/");
         LinkedHashSet<URI> result = new LinkedHashSet<>();
         for (JsonElement item : rows.getAsJsonArray()) {
             if (!item.isJsonObject()) throw new IOException("QQ VKey 条目必须是对象");
@@ -115,8 +116,12 @@ public final class QQPlaybackResolver {
                 if(!rejected.songUnavailable())throw rejected;
                 continue;
             }
-            if (row.has("filename") && !QQAuthHttp.string(row, "filename").equals(filename)) throw new IOException("QQ VKey 返回了其他文件");
             if (row.has("songmid") && !QQAuthHttp.string(row, "songmid").equals(songMid)) throw new IOException("QQ VKey 返回了其他歌曲");
+            String canonical=filename;
+            // 母带可使用服务端映射的独立文件 MID；必须同时匹配原歌曲身份。
+            if(filename.startsWith("AI00")&&songMid.equals(QQAuthHttp.text(row,"songmid"))&&QQTrackMetadata.validMid(QQAuthHttp.text(row,"mid")))
+                canonical="AI00"+QQAuthHttp.text(row,"mid")+".flac";
+            if(row.has("filename")&&!QQAuthHttp.string(row,"filename").equals(filename)&&!QQAuthHttp.string(row,"filename").equals(canonical))throw new IOException("QQ VKey 返回了其他文件");
             String purl = QQAuthHttp.string(row, "purl");
             if (purl.isBlank()) continue;
             if (purl.length() > 16384) throw new IOException("QQ VKey 音频地址过长");
@@ -128,7 +133,7 @@ public final class QQPlaybackResolver {
                 boolean valid = false;
                 for (URI url : urls) {
                     if (QQAudioUrlVerifier.allowed(url) && QQAudioUrlVerifier.extension(url, flac)
-                            && url.getPath().substring(url.getPath().lastIndexOf('/') + 1).equals(filename)) {
+                            && (url.getPath().substring(url.getPath().lastIndexOf('/') + 1).equals(filename)||url.getPath().substring(url.getPath().lastIndexOf('/') + 1).equals(canonical))) {
                         result.add(url); valid = true;
                         if (result.size() > 8) throw new IOException("QQ VKey 候选 CDN 地址过多");
                     }

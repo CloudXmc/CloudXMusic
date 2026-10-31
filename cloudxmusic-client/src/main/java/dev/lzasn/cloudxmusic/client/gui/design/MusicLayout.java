@@ -57,6 +57,13 @@ public final class MusicLayout {
     public static Box roomQueueRowBox(int index) { return new Box(MAIN_X + 22, 376 + Math.max(0, Math.min(4, index)) * ROOM_QUEUE_STEP, 452, 45); }
     public static Box roomMembersBox() { return new Box(820, 112, 250, 520); }
     public static Box roomExitButtonBox() { return new Box(840, 574, 210, 40); }
+    /** 成员列表：20 人上限，可视 6 行，右侧一条细滚动条。 */
+    public static final int ROOM_MEMBER_VISIBLE = 6, ROOM_MEMBER_STEP = 50;
+    public static Box roomMemberRowBox(int index) {
+        return new Box(840, 264 + Math.max(0, Math.min(ROOM_MEMBER_VISIBLE - 1, index)) * ROOM_MEMBER_STEP, 210, 44);
+    }
+    public static Box roomMemberScrollBar() { return new Box(1052, 262, 6, 300); }
+    /** 房间内没有任何额外控件：队列来自创建房间时带上的个人队列，播放控制都在「正在播放」页。 */
 
     public MusicLayout(MusicView.Page page, int rowCount, int queueCount) {
         this(page, rowCount, queueCount, 0, 0);
@@ -72,6 +79,11 @@ public final class MusicLayout {
 
     public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll, int navScroll,
                        boolean roomJoined) {
+        this(page, rowCount, queueCount, settingsScroll, navScroll, roomJoined, false);
+    }
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll, int navScroll,
+                       boolean roomJoined, boolean roomOwner) {
         for (int i = 0; i < NAV_COUNT; i++) {
             int y = NAV_TOP + i * NAV_STEP - navScroll;
             // 完全滚出可视区的项不注册命中区，否则点空白处会误切页面。

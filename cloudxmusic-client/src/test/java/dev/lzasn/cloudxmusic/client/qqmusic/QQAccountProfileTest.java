@@ -39,7 +39,7 @@ class QQAccountProfileTest {
         var profile=QQAccountProfileApi.load(account,()->true,(request,cookies,timeout)->{
             assertEquals("VipLogin.VipLoginInter",request.getAsJsonObject("req_0").get("module").getAsString());
             assertEquals("vip_login_base",request.getAsJsonObject("req_0").get("method").getAsString());
-            assertEquals(3,cookies.getCookieStore().getCookies().size());
+            assertEquals(5,cookies.getCookieStore().getCookies().size());
             return reply(0,"{\"svip\":1,\"identity\":{\"level\":6,\"vip\":1}}");
         });
         assertEquals("SVIP6",profile.badge());assertEquals(account.profile().avatarUrl(),profile.avatarUrl());assertEquals("test-key",account.musicKey());

@@ -21,7 +21,7 @@ class QQSessionVerifierTest {
         List<JsonObject> calls = new ArrayList<>();
         QQSessionVerifier verifier = new QQSessionVerifier((request, cookies) -> {
             calls.add(request);
-            assertEquals(3, cookies.getCookieStore().getCookies().size());
+            assertEquals(5, cookies.getCookieStore().getCookies().size());
             assertEquals("GetLoginUserInfo", request.getAsJsonObject("req_0").get("method").getAsString());
             assertEquals(19, request.getAsJsonObject("comm").get("ct").getAsInt());
             return reply(0, "{\"musicid\":123456,\"info\":{\"base\":{\"nick\":\"测试昵称\"}}}");

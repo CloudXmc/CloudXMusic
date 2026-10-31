@@ -47,10 +47,11 @@ public final class MusicScreen extends Screen {
     private final QQNowLyricsRenderer qqLyrics=new QQNowLyricsRenderer();
     private final QQPlaybackController qqPlayback=QQMusicIntegration.playback();
     private final QQCatalogController qqCatalog=QQMusicIntegration.createCatalog();
+    private final QQPlaylistSearchController playlistSearch=new QQPlaylistSearchController(Async::main,()->painted=null,QQMusicIntegration::accountRevision);
     private MusicPainter.PlaybackBarView paintedQqBar;
     private int lastBarArtwork=-1;
     private PlaybackMode paintedQqMode;
-    private boolean paintedQqDark;
+    private boolean paintedQqDark,paintedQqFavorite;
     private String paintedQqStatus="";
     private boolean overlayQq,qqVolumeDrag;
     private boolean sourceMenuOpen;
@@ -81,7 +82,7 @@ public final class MusicScreen extends Screen {
     private String paintedQualityKey;
     private String paintedAccountKey;
     private Page page = Page.NOW;
-    private int scroll, settingsScroll, navScroll, roomQueueScroll, originX, originY;
+    private int scroll, settingsScroll, navScroll, roomQueueScroll, roomMemberScroll, originX, originY;
     private String roomCodeInput = "";
     private boolean roomCodeFocused, roomCodeSelectAll;
     /** 当前页列表总条数，配合 scroll 给右侧滚动条用。 */
@@ -188,7 +189,12 @@ public final class MusicScreen extends Screen {
         if(QQMusicIntegration.isQq())return List.of();
         return switch (page) {
             case DISCOVER -> state.library(); case SEARCH -> search.isQq() ? List.of() : search.neteaseTracks();
-            case FAVORITES -> state.favorites(); case QUEUE -> state.queue(); default -> List.of();
+            case FAVORITES -> state.favorites();
+            // 房间里：房主看到的仍是自己的播放队列（加歌/叉号照常可点，房间队列实时跟随）；
+            // 成员看到的是房间队列，只读。
+            case QUEUE -> MusicRoomClient.INSTANCE.joined() && !MusicRoomClient.INSTANCE.owner()
+                    ? MusicRoomClient.INSTANCE.queueTracks() : state.queue();
+            default -> List.of();
         };
     }
 
@@ -213,7 +219,7 @@ public final class MusicScreen extends Screen {
             if (!track.equals(state.current())) next.add(track);
         }
         upcoming = List.copyOf(next);
-        layout = new MusicLayout(page, QQMusicIntegration.isQq()?qqRows.size():rows.size(), upcoming.size(), settingsScroll, navScroll, MusicRoomClient.INSTANCE.joined());
+        layout = new MusicLayout(page, QQMusicIntegration.isQq()?qqRows.size():rows.size(), upcoming.size(), settingsScroll, navScroll, MusicRoomClient.INSTANCE.joined(), MusicRoomClient.INSTANCE.owner());
     }
 
     /** 音源提交后只替换展示会话，不重建 Screen，不触碰另一音源队列。 */
@@ -238,9 +244,9 @@ public final class MusicScreen extends Screen {
         if(!FirstRunNotice.accepted())return null;
         return QQMusicIntegration.isQq()?QQMusicIntegration.artwork().image(url):CoverCache.image(url);
     }
-    private MusicView snapshot(String hover) {
+    private MusicView snapshot(String hover,PlaybackSnapshot playback) {
         NeteaseSession session=NeteaseSession.INSTANCE;
-        PlaybackSnapshot playback=QQMusicIntegration.snapshot();
+
         List<MusicView.LyricRow> lines=new ArrayList<>();
         var lyrics=playback.lyrics();
         if(!lyrics.isEmpty()){
@@ -267,18 +273,30 @@ public final class MusicScreen extends Screen {
         boolean roomPage=page==Page.ROOM;
         String activeInput=roomPage?roomCodeInput:input;
         boolean activeFocused=roomPage?roomCodeFocused:focused;
-        return new MusicView(page,playback.song(),displayRows,qq?List.of():upcoming.stream().map(SongView::from).toList(),List.copyOf(lines),
-                (int)(playback.position()*10),playback.playing(),qq?account.loggedIn():session.loggedIn(),
+        // 在房间里「正在播放」页展示和操作的都是房间时间轴，退出房间才回到自己的队列。
+        SongView roomSong=MusicRoomClient.INSTANCE.nowSong();
+        boolean inRoom=roomSong!=null;
+        SongView nowSong=inRoom?roomSong:playback.song();
+        int nowPositionTenths=inRoom?MusicRoomClient.INSTANCE.positionTenths():(int)(playback.position()*10);
+        boolean nowPlaying=inRoom?MusicRoomClient.INSTANCE.playing():playback.playing();
+        PlaybackMode nowMode=inRoom?MusicRoomClient.INSTANCE.playbackMode():playback.playbackMode();
+        boolean nowFavorite=inRoom?MusicRoomClient.INSTANCE.favoriteCurrent():playback.favorite();
+        // 房间跟播会真的解码出声，歌词跟着本地解码走，不需要再留白。
+        List<MusicView.LyricRow> shownLyrics=List.copyOf(lines);
+        return new MusicView(page,nowSong,displayRows,qq?List.of():upcoming.stream().map(SongView::from).toList(),shownLyrics,
+                nowPositionTenths,nowPlaying,qq?account.loggedIn():session.loggedIn(),
                 qq?account.nickname():session.nickname().isBlank()?"已登录":session.nickname(),activeInput,activeFocused,
                 activeFocused&&System.currentTimeMillis()/500%2==0,status,playback.quality(),playback.lyricMode().label,
-                state.islandEnabled(),playback.playbackMode(),playback.favorite(),VERSION,hover,artworkRevision(),seekPreview,
+                state.islandEnabled(),nowMode,nowFavorite,VERSION,hover,artworkRevision(),seekPreview,
                 playback.volume(),qq?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel(),scroll,totalRows,
-                MusicRoomClient.INSTANCE.view().withQueueScroll(roomQueueScroll));
+                MusicRoomClient.INSTANCE.view().withQueueScroll(roomQueueScroll).withMemberScroll(roomMemberScroll));
     }
 
     private java.awt.image.BufferedImage paintMain(MusicView still,QQPlaybackController.View qqView){
         var image=QQSearchPainter.decoratePlayback(MusicPainter.paint(still,layout,rasterScale,this::artwork,
                 qqLogin.sidebarPainter(still,QQMusicIntegration.isQq()),QQMusicIntegration.isQq()&&catalogPage()?canvas->QQCatalogPainter.paint(canvas,qqCatalog.view(),this::artwork,qqView.song()):null),rasterScale,still,search.view(),qqView,searchMetadata::song,this::artwork);
+        if(QQMusicIntegration.isQq()&&page==Page.SEARCH&&!qqCatalog.searchDetail())image=QQPlaylistSearchPainter.decorate(image,rasterScale,still,playlistSearch.playlists(),playlistSearch.view(),this::artwork);
+        if(QQMusicIntegration.isQq()&&page==Page.SEARCH&&qqCatalog.searchDetail())image=QQSearchPainter.panel(image,rasterScale,canvas->QQCatalogPainter.paint(canvas,qqCatalog.view(),this::artwork,qqView.song()));
         if(QQMusicIntegration.isQq()&&page==Page.QUEUE)image=QQQueuePainter.notice(image,rasterScale,QQMusicIntegration.queueStatus());
         if(QQMusicIntegration.isQq()&&page==Page.NOW)image=QQNowPainter.decorate(image,rasterScale,still,qqView);
         return image;
@@ -307,7 +325,8 @@ public final class MusicScreen extends Screen {
         int dim = (int) Math.round(0x19 * (1 - slide));
         graphics.fill(0, 0, width, height, (dim << 24) | 0x2C2430);
         Hit hover = layout.hit(localX(mx), localY(my));
-        MusicView view = snapshot("");
+        PlaybackSnapshot framePlayback=QQMusicIntegration.snapshot();
+        MusicView view = snapshot("",framePlayback);
         // 老版本持久化的账号可能没有头像地址，静默补一次。
         if (!QQMusicIntegration.isQq() && view.loggedIn() && NeteaseSession.INSTANCE.avatar().isBlank() && !avatarSynced) {
             avatarSynced = true;
@@ -320,6 +339,7 @@ public final class MusicScreen extends Screen {
         QQPlaybackController.View qqView=qqPlayback.view();
         boolean qqBar=sharedQqBar();
         search.visibleRows(qqBar?7:8);
+        playlistSearch.update(QQMusicIntegration.isQq()&&page==Page.SEARCH&&playlistSearch.playlists()&&!qqCatalog.searchDetail());
         String qqKey=(qqBar&&qqView.song()!=null?qqView.song().platformId():"")+"|"+qqView.loading()+"|"+qqView.playing()+"|"+qqView.status()+"|"+qqView.error();
         if (!qqKey.equals(paintedQqStatus)||qqLoginChanged) {painted=null;paintedQqStatus=qqKey;}
         if(overlayQq!=qqBar){overlayQq=qqBar;paintedDynamic=null;paintedQqBar=null;}
@@ -361,13 +381,13 @@ public final class MusicScreen extends Screen {
             paintedDynamic = view; lastOverlayPaint = now;
         }
         if(qqBar) {
-            PlaybackSnapshot pb=QQMusicIntegration.snapshot();
+            PlaybackSnapshot pb=framePlayback;
             MusicPainter.PlaybackBarView bar=new MusicPainter.PlaybackBarView(pb.song().title(),pb.song().artist(),(int)Math.ceil(pb.duration()),
                     seekPreview>=0?seekPreview:pb.position(),pb.playing(),pb.volume(),pb.quality(),true,pb.song().vip(),pb.song().coverUrl());
-            boolean styleChanged=paintedQqMode!=pb.playbackMode()||paintedQqDark!=view.darkMode()||lastBarArtwork!=artworkRevision();
+            boolean styleChanged=paintedQqMode!=pb.playbackMode()||paintedQqDark!=view.darkMode()||lastBarArtwork!=artworkRevision()||paintedQqFavorite!=pb.favorite();
             if((!bar.equals(paintedQqBar)||styleChanged)&&(paintedQqBar==null||styleChanged||now-lastOverlayPaint>=100_000_000L)) {
                 overlay.update(MusicPainter.paintPlaybackBar(view,bar,rasterScale,this::artwork));paintedQqBar=bar;lastOverlayPaint=now;
-                paintedQqMode=pb.playbackMode();paintedQqDark=view.darkMode();lastBarArtwork=artworkRevision();
+                paintedQqMode=pb.playbackMode();paintedQqDark=view.darkMode();lastBarArtwork=artworkRevision();paintedQqFavorite=pb.favorite();
             }
         }
         if (nowPage) {
@@ -443,8 +463,8 @@ public final class MusicScreen extends Screen {
                 try{
                     graphics.pose().translate((float)originX,(float)(originY+lyricOffset));
                     graphics.pose().scale((float)scale,(float)scale);
-                    var lyricPlayback=QQMusicIntegration.snapshot();
-                    qqLyrics.draw(graphics,view,rasterScale,now,lyricPlayback.lyricIndexAt((int)(lyricPlayback.position()*1000)));
+                    var lyricPlayback=framePlayback;
+                    qqLyrics.draw(graphics,view,rasterScale,lyricPlayback);
                 }finally{graphics.pose().popMatrix();}
             }
         }else qqLyrics.close();
@@ -467,7 +487,7 @@ public final class MusicScreen extends Screen {
                     (int) Math.round(originY + qm.y() * scale),
                     (int) Math.round(qm.w() * scale), (int) Math.round(qm.h() * scale));
         }
-        if(!sourceMenuOpen&&!qqLogin.isOpen())renderHover(graphics,hover);
+        if(!sourceMenuOpen&&!qqLogin.isOpen()&&!qualityMenuOpen)renderHover(graphics,hover);
         // 模态层最后绘制，封面、歌词、控制栏均不能覆盖二维码或穿透点击。
         if(sourceMenuOpen||qqLogin.isOpen()){
             var route=QQMusicIntegration.coordinator().view();var account=QQMusicIntegration.account();
@@ -538,6 +558,8 @@ public final class MusicScreen extends Screen {
             if (event.button() == 0) qqLogin.click(localX(event.x()), localY(event.y()));
             painted = null; return true;
         }
+        // 音质菜单是模态浮层，任何非左键也必须在这里消费，不能落到列表或 Screen 默认处理。
+        if (qualityMenuOpen && event.button() != 0) return true;
         if (event.button() != 0) return super.mouseClicked(event, handled);
         rebuildLayout();
         syncSource();
@@ -563,11 +585,19 @@ public final class MusicScreen extends Screen {
         if(QQMusicIntegration.isQq()&&page==Page.NOW&&QQTranslationControl.BUTTON.contains(x,y)){
             QQMusicIntegration.toggleTranslation();painted=null;paintedLyrics=null;return true;
         }
+        // 房间内：播放页底栏直接驱动房间时间轴；成员除收藏外一律不响应。
+        // 房间还没有当前曲时不要接管底栏，否则个人播放会像"按了没反应"。
+        if(page==Page.NOW&&MusicRoomClient.INSTANCE.joined()&&MusicRoomClient.INSTANCE.nowSong()!=null
+                &&MusicPainter.playbackBarRegion().contains(x,y)&&roomBarClick(x,y))return true;
+        if(page==Page.NOW&&MusicRoomClient.INSTANCE.joined()&&MusicPainter.playbackBarRegion().contains(x,y)
+                &&MusicRoomClient.INSTANCE.nowSong()==null){
+            CloudXMusicClient.LOGGER.info("[房间] 房间暂无当前曲，底栏交还个人控制");
+        }
         if(sharedQqBar()&&QQPlaybackUi.nowPlayingAt(x,y)){setPage(Page.NOW);return true;}
         if(sharedQqBar()&&MusicPainter.playbackBarRegion().contains(x,y)){
             Action action=QQPlaybackUi.actionAt(x,y);focused=false;selectAll=false;
             if(action!=null&&QQMusicIntegration.coordinator().allowsPlayback(MusicSource.QQ))switch(action){
-                case PLAY->qqPlayback.toggle();case STOP->qqPlayback.stop();case PREVIOUS->qqPlayback.previous();case NEXT->qqPlayback.next();
+                case PLAY->qqPlayback.toggle();case STOP->qqPlayback.stop();case FAVORITE->{ }case PREVIOUS->qqPlayback.previous();case NEXT->qqPlayback.next();
                 case PAGE->setPage(Page.QUEUE);case QUALITY->qualityMenuOpen=true;
                 case MODE_CYCLE->qqPlayback.cycleMode();
                 case VOLUME,SEEK->{drag=action;qqVolumeDrag=true;updateDrag(x);}
@@ -575,12 +605,23 @@ public final class MusicScreen extends Screen {
             }
             painted=null;return true;
         }
-        if((QQMusicIntegration.coordinator().view().switching()||QQMusicIntegration.coordinator().view().error())&&x>=MAIN_X)return true;
+        // 只在交接进行中吞点击；交接失败(error)要让界面继续可用，否则用户连切回音源都点不动。
+        if(QQMusicIntegration.coordinator().view().switching()&&x>=MAIN_X)return true;
         if(QQMusicIntegration.isQq()&&catalogPage()){
             syncCatalog();if(QQCatalogPainter.click(qqCatalog,x,y)){focused=false;painted=null;return true;}
         }
         if(page==Page.SEARCH&&QQMusicIntegration.isQq()){
-            var results=search.view();int row=QQPlaybackUi.rowAt(x,y,results.scroll(),results.songs().size(),sharedQqBar());
+            if(qqCatalog.searchDetail()){if(QQCatalogPainter.click(qqCatalog,x,y)){painted=null;return true;}}
+            else if(QQPlaylistSearchPainter.SONGS.contains(x,y)){playlistSearch.playlists(false);painted=null;return true;}
+            else if(QQPlaylistSearchPainter.PLAYLISTS.contains(x,y)){playlistSearch.playlists(true);playlistSearch.update(true);painted=null;return true;}
+            else if(playlistSearch.playlists()){
+                int item=QQPlaylistSearchPainter.itemAt(x,y,playlistSearch.view().scroll(),playlistSearch.view().items().size());
+                if(item>=0){qqCatalog.update(QQCatalogController.Area.SEARCH);qqCatalog.open(playlistSearch.view().items().get(item).playlist(),false);painted=null;return true;}
+                if(new Box(950,116,100,36).contains(x,y)){playlistSearch.submit(input);focused=false;painted=null;return true;}
+                if(new Box(292,116,634,36).contains(x,y)){focused=true;selectAll=true;return true;}
+                if(x>=282&&x<1060&&y>=190&&y<580)return true;
+            }
+            var results=search.view();int row=QQSearchPainter.rowAt(x,y,results.scroll(),results.songs().size());
             if(row>=0){qqPlayback.play(results.songs(),row);focused=false;selectAll=false;painted=null;return true;}
             if(QQSearchPainter.blocksQqClick(x,y)){focused=false;selectAll=false;return true;}
         }
@@ -604,7 +645,8 @@ public final class MusicScreen extends Screen {
                 case ROW->{if(page==Page.QUEUE&&hit.index()<qqRows.size())qqPlayback.play(qqPlayback.queue(),scroll+hit.index());painted=null;return;}
                 case ADD->{if(page==Page.QUEUE)qqPlayback.remove(scroll+hit.index());painted=null;return;}
                 case CLEAR->{qqPlayback.clearQueue();painted=null;return;}
-                case REFRESH,FAVORITE->{return;}
+                case REFRESH->{return;}
+                case FAVORITE->{return;}
                 case LYRIC->{QQMusicIntegration.cycleLyrics();painted=null;return;}
                 case STOP->{qqPlayback.stop();painted=null;return;}
                 case PREVIOUS,PLAY,NEXT,SEEK,VOLUME,QUALITY,PLAYBACK_MODE,MODE_CYCLE->{return;}
@@ -612,13 +654,28 @@ public final class MusicScreen extends Screen {
             }
         }
         NeteaseSession session = NeteaseSession.INSTANCE;
+        // 房间里的队列由服务端权威持有：成员只能看，房主的改动会随个人队列同步过去。
+        if (MusicRoomClient.INSTANCE.joined() && !MusicRoomClient.INSTANCE.owner() && page == Page.QUEUE
+                && (hit.action() == Action.ROW || hit.action() == Action.ADD || hit.action() == Action.CLEAR)) {
+            return;
+        }
         switch (hit.action()) {
             case PAGE -> setPage(Page.values()[hit.index()]);
             case ACCOUNT -> {sourceMenuOpen=true;focused=false;drag=null;seekPreview=-1;paintedModalKey=null;}
             case CLOSE -> onClose();
             case PREVIOUS -> state.previous(); case PLAY -> state.togglePlaying(); case NEXT -> state.next();
             case SEARCH_FIELD -> focused = true; case SEARCH -> submit();
-            case ROW -> state.select((page == Page.NOW ? upcoming : rows).get(hit.index()));
+            case ROW -> {
+                // 房主在房间的队列页点行 = 跳播房间里的那一首；两边长度一致才按下标对齐，
+                // 混源过滤导致错位时宁可不响应，也不要播错歌。
+                var room = MusicRoomClient.INSTANCE;
+                if (room.joined() && room.owner() && page == Page.QUEUE
+                        && room.queueSize() == state.queue().size()) {
+                    room.jump(scroll + hit.index());
+                } else {
+                    state.select((page == Page.NOW ? upcoming : rows).get(hit.index()));
+                }
+            }
             case ADD -> { Track t = rows.get(hit.index()); if (page == Page.QUEUE) state.removeFromQueue(t); else state.enqueue(t); }
             case CLEAR -> state.clearQueue();
             case REFRESH -> { if (page == Page.FAVORITES) state.loadFavorites(); else state.refreshLibrary(); }
@@ -644,7 +701,8 @@ public final class MusicScreen extends Screen {
                     hit.index() == 1 ? MusicSourceType.QQ : MusicSourceType.NETEASE);
             case ROOM_CREATE -> {
                 MusicSourceType source = MusicRoomClient.INSTANCE.selectedSource();
-                MusicRoomClient.INSTANCE.createRoom(source, loggedInFor(source));
+                // 创建房间时把当前个人队列直接变成房间队列，不需要再手动导入。
+                MusicRoomClient.INSTANCE.createRoom(source, loggedInFor(source), roomSourceQueue());
             }
             case ROOM_JOIN_FIELD -> { roomCodeFocused = true; roomCodeSelectAll = true; }
             case ROOM_JOIN -> submitRoomJoin();
@@ -655,8 +713,60 @@ public final class MusicScreen extends Screen {
         painted = null;
     }
 
-    /** 播放页只有一个模式按钮，点击在三种循环策略间轮换。 */
-    private static PlaybackMode nextMode() {
+    /**
+     * 房间内播放页底栏：房主可用播放/暂停、上下首、循环三档、进度跳转；
+     * 成员的上下一首、队列按钮、循环按钮全部置灰，只能收藏（QQ 曲目暂不支持）。
+     * 返回 true 表示事件已被房间消费，不再走个人播放逻辑。
+     */
+    private boolean roomBarClick(double x, double y) {
+        var room = MusicRoomClient.INSTANCE;
+        var hit = layout.hit(x, y);
+        if (hit == null) {
+            CloudXMusicClient.LOGGER.info("[房间] 底栏点击未命中任何控件 ({}, {})", (int) x, (int) y);
+            return false;
+        }
+        boolean owner = room.owner();
+        CloudXMusicClient.LOGGER.info("[房间] 底栏点击 {} owner={} queue={} index={}",
+                hit.action(), owner, room.queueSize(), room.currentRoomTrack() == null ? -1 : 0);
+        switch (hit.action()) {
+            // 播放/暂停两边都能点：房主下发给服务端，成员只切换自己的「暂停跟听」。
+            // 之前这里写成 if(owner) 才处理，导致成员按播放完全没反应，看起来像只能被房主控制。
+            case PLAY -> room.togglePlay();
+            case PREVIOUS -> { if (owner) room.previous(); }
+            case NEXT -> { if (owner) room.next(); }
+            case MODE_CYCLE -> { if (owner) room.cycleRepeat(); }
+            case SEEK -> {
+                // 房间进度不支持拖动预览，点哪里就跳到哪里的比例位置。
+                if (owner) {
+                    MusicLayout.Box bar = hit.box();
+                    room.seek((float) ((x - bar.x()) / (double) bar.w()));
+                }
+            }
+            case FAVORITE -> room.toggleFavorite();
+            case PAGE -> { return !owner; } // 成员不能进队列页；房主可以只读查看房间队列
+            default -> { return false; } // 音量、音质仍走个人偏好
+        }
+        painted = null;
+        return true;
+    }
+
+    /**
+     * 房间队列的来源：网易云用个人播放队列，QQ 用 QQ 播放器队列。
+     * 不能用页面上的 upcoming（那只是 3 首预告），否则房间队列会缺歌甚至为空。
+     */
+    private List<SongView> roomSourceQueue() {
+        List<SongView> songs = QQMusicIntegration.isQq()
+                ? qqPlayback.queue().stream().map(QQMusicIntegration::queueSong).toList()
+                : state.queue().stream().map(SongView::from).toList();
+        if (!songs.isEmpty()) return songs;
+        // 队列空但正在放某一首时，至少把这一首带进房间。
+        SongView current = QQMusicIntegration.isQq()
+                ? (qqPlayback.hasTrack() ? QQMusicIntegration.queueSong(qqPlayback.view().song()) : null)
+                : (state.hasCurrentTrack() ? SongView.from(state.current()) : null);
+        return current == null ? songs : List.of(current);
+    }
+
+    /** 播放页只有一个模式按钮，点击在三种循环策略间轮换。 */    private static PlaybackMode nextMode() {
         PlaybackMode[] all = PlaybackMode.values();
         return all[(CloudXMusicClient.STATE.playbackMode().ordinal() + 1) % all.length];
     }
@@ -698,9 +808,10 @@ public final class MusicScreen extends Screen {
         syncCatalog();
         rebuildLayout(); painted = null;
     }
-    private boolean catalogPage(){return page==Page.DISCOVER||page==Page.FAVORITES;}
+    private boolean catalogPage(){return page==Page.DISCOVER||page==Page.FAVORITES||page==Page.SEARCH&&qqCatalog.searchDetail();}
     private void syncCatalog(){
-        if(qqCatalog.update(QQMusicIntegration.isQq()&&catalogPage()?page==Page.DISCOVER?QQCatalogController.Area.DISCOVER:QQCatalogController.Area.FAVORITES:QQCatalogController.Area.NONE))painted=null;
+        var area=!QQMusicIntegration.isQq()?QQCatalogController.Area.NONE:page==Page.DISCOVER?QQCatalogController.Area.DISCOVER:page==Page.FAVORITES?QQCatalogController.Area.FAVORITES:page==Page.SEARCH?QQCatalogController.Area.SEARCH:QQCatalogController.Area.NONE;
+        if(qqCatalog.update(area))painted=null;
     }
 
     private void updateDrag(double x) {
@@ -715,12 +826,12 @@ public final class MusicScreen extends Screen {
         seekPreview = ratio * (float)QQMusicIntegration.snapshot().duration();
     }
     @Override public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        if (qqLogin.isOpen() || sourceMenuOpen) return true;
+        if (qqLogin.isOpen() || sourceMenuOpen || qualityMenuOpen) return true;
         if (drag != null) { updateDrag(localX(event.x())); return true; }
         return super.mouseDragged(event, dx, dy);
     }
     @Override public boolean mouseReleased(MouseButtonEvent event) {
-        if (qqLogin.isOpen() || sourceMenuOpen) return true;
+        if (qqLogin.isOpen() || sourceMenuOpen || qualityMenuOpen) return true;
         if (drag != null) {
             updateDrag(localX(event.x()));
             // 拖动只更新预览，松开再跳转，避免每次鼠标移动都重启解码。
@@ -729,10 +840,17 @@ public final class MusicScreen extends Screen {
         }
         return super.mouseReleased(event);
     }
+
+    @Override public void mouseMoved(double mx, double my) {
+        // 不让底层列表更新 hover；菜单自己的 hover 在 render 中按同一几何计算。
+        if (qualityMenuOpen || qqLogin.isOpen() || sourceMenuOpen) return;
+        super.mouseMoved(mx, my);
+    }
     @Override public boolean mouseScrolled(double mx, double my, double sx, double sy) {
         if(qqLogin.isOpen()){qqLogin.scroll(localX(mx),localY(my),sy);return true;}
-        if(sourceMenuOpen)return true;
+        if(sourceMenuOpen || qualityMenuOpen)return true;
         if (closing) return true;
+        if(page==Page.SEARCH&&QQMusicIntegration.isQq()&&playlistSearch.playlists()&&!qqCatalog.searchDetail()&&sy!=0&&new Box(282,190,778,390).contains(localX(mx),localY(my))){playlistSearch.scroll(sy>0?-1:1);painted=null;return true;}
         if(QQMusicIntegration.isQq()&&catalogPage()&&QQCatalogPainter.scroll(qqCatalog,localX(mx),localY(my),sx,sy)){painted=null;return true;}
         // 导航区滚动：项目多于可视高度时才生效，避免压到下面的账号组。
         int navMax = MusicLayout.navMaxScroll();
@@ -757,7 +875,17 @@ public final class MusicScreen extends Screen {
                     roomQueueScroll + (sy > 0 ? -1 : 1)));
             painted = null; return true;
         }
-        if (page != Page.NOW && page != Page.SETTINGS && localX(mx) >= MAIN_X && localX(mx) <= 1050
+        // 成员列表：20 人上限，超出 6 行后靠滚轮查看。
+        if (page == Page.ROOM && MusicRoomClient.INSTANCE.joined() && sy != 0
+                && MusicLayout.roomMembersBox().contains(localX(mx), localY(my))) {
+            int max = Math.max(0, MusicRoomClient.INSTANCE.view().members().size()
+                    - MusicLayout.ROOM_MEMBER_VISIBLE);
+            roomMemberScroll = Math.max(0, Math.min(max,
+                    roomMemberScroll + (sy > 0 ? -1 : 1)));
+            painted = null; return true;
+        }
+        if (page != Page.NOW && page != Page.SETTINGS && !(page == Page.SEARCH && search.isQq())
+                && localX(mx) >= MAIN_X && localX(mx) <= 1050
                 && localY(my) >= ROW_TOP && localY(my) < 620 && sy != 0) {
             scroll += sy > 0 ? -1 : 1; rebuildLayout(); painted = null; return true;
         }
@@ -770,6 +898,11 @@ public final class MusicScreen extends Screen {
         }
         if (sourceMenuOpen){if(event.isEscape())sourceMenuOpen=false;return true;}
         if (closing) return true;
+        // 房间页：空格切换播放/暂停，直接下发给服务端，由房主独占。
+        if (page == Page.ROOM && MusicRoomClient.INSTANCE.joined() && event.key() == GLFW.GLFW_KEY_SPACE) {
+            MusicRoomClient.INSTANCE.togglePlay();
+            return true;
+        }
         if (page == Page.ACCOUNT && accountFocus >= 0) {
             if (event.isEscape()) { accountFocus = -1; accountSelectAll = false; return true; }
             if (event.key() == GLFW.GLFW_KEY_TAB) {
@@ -1085,11 +1218,13 @@ public final class MusicScreen extends Screen {
         input += clean.substring(0, end);
     }
     private void submit() {
+        if(page==Page.SEARCH&&QQMusicIntegration.isQq()&&playlistSearch.playlists()){if(playlistSearch.submit(input)){focused=false;selectAll=false;painted=null;}return;}
         if (page != Page.SEARCH || !search.submit(input)) return;
         scroll = 0; focused = false; selectAll = false; painted = null;
     }
     @Override public void removed() {
         qqCatalog.close();
+        playlistSearch.close();
         qqLogin.close();
         search.close();
         searchMetadata.close();

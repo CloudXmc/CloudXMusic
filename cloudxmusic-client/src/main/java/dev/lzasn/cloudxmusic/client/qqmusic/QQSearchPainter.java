@@ -20,6 +20,11 @@ public final class QQSearchPainter {
     private static final Box CONTENT = new Box(272, 98, 798, 562);
     private static final Box FIELD = new Box(292, 116, 634, 36);
     private static final Box SEARCH = new Box(950, 116, 100, 36);
+    /** 搜索结果绘制、滚轮和点击共享的垂直几何。Tab 与表头之间至少保留 14px。 */
+    public static final int HEADER_TOP = 234;
+    public static final int ROW_TOP = 264;
+    public static final int ROW_H = 48;
+    public static final int VISIBLE_ROWS = 7;
     private static BufferedImage background;
     private static String backgroundKey;
     private QQSearchPainter() {}
@@ -28,7 +33,15 @@ public final class QQSearchPainter {
         return null; // 顶部 Tab 已移除；搜索会话仅跟随全局选择。
     }
     public static boolean resultArea(double x, double y) {
-        return x >= MAIN_X && x < 1070 && y >= ROW_TOP && y < 620;
+        return x >= MAIN_X && x < 1070 && y >= ROW_TOP && y < ROW_TOP + VISIBLE_ROWS * ROW_H;
+    }
+    public static Box rowBox(int index, int scroll) {
+        return new Box(MAIN_X, ROW_TOP + (index - scroll) * ROW_H, 696, 46);
+    }
+    public static int rowAt(double x, double y, int scroll, int count) {
+        if (x < MAIN_X || x >= MAIN_X + 696 || y < ROW_TOP || y >= ROW_TOP + VISIBLE_ROWS * ROW_H) return -1;
+        int row = scroll + (int)((y - ROW_TOP) / ROW_H);
+        return row >= 0 && row < count ? row : -1;
     }
     public static boolean blocksQqClick(double x, double y) {
         // 输入框和搜索按钮继续复用 MusicScreen 输入事件，其他内容区不透传到网易云行。
@@ -80,8 +93,8 @@ public final class QQSearchPainter {
             boolean playing=search.source()==Source.QQ&&playback!=null&&!playback.status().isEmpty();
             boolean playbackError=playing&&playback.error();
             String status=search.loading()||search.error()?search.status():playbackError?playback.status():testing?probe.status():search.status();
-            c.text(status, 292, 174, 11, false,
-                    (playbackError||search.error()||(testing&&probe.error())) ? errorColor() : MUTED, 758);
+            c.text(status, search.source()==Source.QQ?464:292, 174, 11, false,
+                    (playbackError||search.error()||(testing&&probe.error())) ? errorColor() : MUTED, search.source()==Source.QQ?586:758);
         }
         return image;
     }
@@ -103,6 +116,13 @@ public final class QQSearchPainter {
         return background;
     }
     static void clear() { background = null; backgroundKey = null; }
+    public static BufferedImage panel(BufferedImage base,double scale,java.util.function.Consumer<FrostCanvas> painter){
+        var image=new BufferedImage(base.getWidth(),base.getHeight(),BufferedImage.TYPE_INT_ARGB);
+        try(var c=new FrostCanvas(image,scale)){var transform=c.g.getTransform();c.g.setTransform(new AffineTransform());c.g.drawImage(base,0,0,null);c.g.setTransform(transform);c.g.translate(PAD,PAD);
+            c.g.clip(new Rectangle2D.Double(CONTENT.x(),CONTENT.y(),CONTENT.w(),CONTENT.h()));c.g.setComposite(AlphaComposite.Src);
+            var body=c.g.getTransform();c.g.setTransform(new AffineTransform());c.g.drawImage(background(base.getWidth(),base.getHeight(),scale),0,0,null);c.g.setTransform(body);c.g.setComposite(AlphaComposite.SrcOver);painter.accept(c);
+        }return image;
+    }
     private static void qqContent(FrostCanvas c, MusicView music, QQSearchController.View search,QQPlaybackController.View playback,java.util.function.Function<UnifiedSong,dev.lzasn.cloudxmusic.client.omni.SongView> metadata,java.util.function.Function<String,BufferedImage> covers) {
         c.card(FIELD.x(), FIELD.y(), FIELD.w(), FIELD.h(), 24);
         UiIcons.draw(c, "search", FIELD.x() + 24, FIELD.cy(), 19, PINK);
@@ -116,9 +136,9 @@ public final class QQSearchPainter {
         }
         c.round(SEARCH.x(), SEARCH.y(), SEARCH.w(), SEARCH.h(), 18, search.loading() ? TRACK : SOFT);
         c.center(search.loading() ? "搜索中…" : "搜索", SEARCH.cx(), SEARCH.cy() + 5, 13, true, DEEP, 90);
-        c.text("歌曲 / 歌手", 354, 194, 11, false, MUTED, 400);
-        c.text("专辑", 748, 194, 11, false, MUTED, 280);
-        int visible=7;
+        c.text("歌曲 / 歌手", 354, HEADER_TOP, 11, false, MUTED, 400);
+        c.text("专辑", 748, HEADER_TOP, 11, false, MUTED, 280);
+        int visible=VISIBLE_ROWS;
         int end = Math.min(search.songs().size(), search.scroll() + visible);
         for (int index = search.scroll(); index < end; index++) {
             UnifiedSong song = search.songs().get(index);

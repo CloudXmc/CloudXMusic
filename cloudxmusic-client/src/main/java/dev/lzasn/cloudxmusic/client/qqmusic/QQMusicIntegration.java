@@ -4,7 +4,7 @@ import dev.lzasn.cloudxmusic.client.omni.OmniRouter;
 import dev.lzasn.cloudxmusic.client.omni.*;
 import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
-import net.fabricmc.loader.api.FabricLoader;
+import dev.lzasn.cloudxmusic.client.CloudHome;
 import dev.lzasn.cloudxmusic.client.util.Async;
 
 /** QQ 搜索和独立账号服务的生命周期入口；恢复过程全部在后台执行。 */
@@ -26,8 +26,7 @@ public final class QQMusicIntegration {
     public static synchronized void register() {
         if (registered) return;
         OmniRouter.register(new NeteaseSearchAdapter());
-        accounts = new QQAccountManager(new QQCredentialStore(FabricLoader.getInstance().getConfigDir()
-                .resolve("cloudxmusic/qqmusic/account.json")), new QQSessionVerifier(),QQAccountProfileApi::load);
+        accounts = new QQAccountManager(new QQCredentialStore(CloudHome.resolve("qqmusic/account.json")), new QQSessionVerifier(),QQAccountProfileApi::load);
         QQProvider provider=new QQProvider(new QQPlaybackResolver(accounts));
         OmniRouter.register(provider);
         login = new QQLoginService(accounts, Async::main);
@@ -42,7 +41,10 @@ public final class QQMusicIntegration {
         QQPlaybackNotice notices=new QQPlaybackNotice(System::nanoTime,QQQualityToast::playback);
         playback.notice(notices::show);
         coordinator=new MusicSourceCoordinator(MusicSource.NETEASE,
-                source->source==MusicSource.NETEASE?CloudXMusicClient.STATE.pauseForExternalPlayback():playback.suspend(),Async::main,
+                source->{
+                    if(source==MusicSource.NETEASE)return CloudXMusicClient.STATE.pauseForExternalPlayback();
+                    return playback.suspend();
+                },Async::main,
                 source->{if(source==MusicSource.NETEASE)CloudXMusicClient.STATE.refreshLibraryIfNeeded();});
         lifecycle=new PlaybackLifecycle(()->{
             try{playback.stop();}finally{CloudXMusicClient.STATE.stopAll();}
@@ -106,6 +108,7 @@ public final class QQMusicIntegration {
     public static SongView queueSong(UnifiedSong song){return queueMetadata.song(song);}
     public static String queueStatus(){return queueMetadata.status();}
     public static QQAccountManager.View account(){return accounts.view();}
+    public static long accountRevision(){return accounts.revision();}
     public static void quality(QQQuality value){playback.quality(value);savePreferences();}
     public static void volume(float value){
         if(!Float.isFinite(value))return;

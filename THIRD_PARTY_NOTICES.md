@@ -52,13 +52,13 @@ CloudXMusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 - 原项目许可为 GPL-3.0，本项目保留其来源及许可说明；未作为运行依赖打包。
 - 参考范围：CreateQRCode 参数、MQTT 5 登录订阅与状态、候选票据验证/换票顺序、QQ Cookie 与 hash33。
 - Java 21 HttpClient/WebSocket 传输、凭证权限与原子存储、会话取消和 CloudXMusic 界面接线由本项目实现。
-- 此阶段使用服务端返回的二维码图片，不增加二维码或网络依赖；不实现 QQ 音乐播放地址。
+- 扫码登录阶段使用服务端返回的二维码图片，不增加二维码或网络依赖；播放地址、解码和播放由后续阶段另行接入。
 
 ## 参考实现：DangoMusic QQ 元数据与取链
 
 - 参考本地 DangoMusic 的 `common/core/src/main/kotlin/me/sorihiko/dango/music/QqPlayback.kt` 与 `QqMusicSource.kt`，保留 GPL-3.0 来源说明，不作为运行依赖打包。
 - 参考范围：get_song_detail_yqq 的 media_mid 补齐、桌面 UrlGetVkey/Web CgiGetVkey 参数、purl/sip 解析及无资源时的只读账号校验。
-- 本项目新增 F000 优先、M800 降级、账号代次隔离、URL 域名/文件匹配和无凭证 Range 音频头检查；不实现 QQ 解码、播放或队列接线。
+- 本项目新增 F000 优先、M800 降级、账号代次隔离、URL 域名/文件匹配和无凭证 Range 音频头检查；取链接入后，QQ 解码、播放与队列已在后续版本完成接线。
 - 不增加依赖，不自动安装 Node.js 或外部 API 服务，不向音频 CDN 发送 QQ 登录 Cookie。
 
 ## 界面资源
@@ -128,6 +128,12 @@ FLAC 测试依赖位于 `META-INF/jars/`；界面随模组提供下列开源字�
 
 - 接口名称与响应字段参考 QQMusicApi 的公开文档/模型说明（https://github.com/l-1124/QQMusicApi，PyPI qqmusic-api-python 0.8.2）。
 - 仅核对 `VipLogin.VipLoginInter / vip_login_base`、`svip`、`identity.vip`、`identity.HugeVip` 与 `identity.level` 字段；未复制其 Python 实现或加入运行依赖。Java 请求和隔离展示逻辑由本项目实现。
+
+## 2.5.0-alpha.2：QQ 母带、收藏与排行榜协议参考
+
+- QQMusicApi（https://github.com/l-1124/QQMusicApi，GPL-3.0），参考 `qqmusic_api/modules/song.py`、`songlist.py`、`top.py` 的公开协议字段：母带可解码 FLAC 文件前缀 `AI00`，`AddSonglist` / `DelSonglist` 的真实 songId 与 dirId=201，以及 `music.musicToplist.Toplist` 的 `GetAll` / `GetDetail`。
+- 本项目独立实现 Java 请求、格式探测与降级、账号/音源代次隔离、固定期次分页及测试；未复制 Python 运行代码、未加入 Python 依赖。母带实际可用性受账号权益、歌曲及服务端返回限制，不把其他编码格式标记为已支持。
+- QQ 收藏写入已因腾讯风控停用；当前只保留 `GetPlaylistByUin` / `CgiGetDiss` 的“我的收藏”读取。
 
 ## 2.13.0：QRC 解码与目录接口参考
 

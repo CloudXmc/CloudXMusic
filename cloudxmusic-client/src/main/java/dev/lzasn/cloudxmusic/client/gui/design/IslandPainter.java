@@ -51,7 +51,7 @@ public final class IslandPainter {
             c.right(view.time(),338,35,11,true,INK);
             // 轨道与文字栏对齐（标题左缘 57、时间右缘 338），不再横贯整条药丸。
             c.round(57,52,281,2,1,new Color(230,204,217,170));
-            c.round(57,52,281*Math.max(0,Math.min(1000,view.progress()))/1000.0,2,1,PINK);
+            if(text)c.round(57,52,281*Math.max(0,Math.min(1000,view.progress()))/1000.0,2,1,PINK);
         }
         return image;
     }

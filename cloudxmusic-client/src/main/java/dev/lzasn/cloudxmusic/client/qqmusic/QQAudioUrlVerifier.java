@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.Flow;
 
-/** 无账号的 CDN 小包检查：只保留前 16 字节，绝不解码或输出到声卡。 */
+/** 无账号的 CDN 小包检查：42 字节足够检查 FLAC STREAMINFO，不预下载整首。 */
 final class QQAudioUrlVerifier {
     private QQAudioUrlVerifier() {}
     static boolean allowed(URI uri) {
@@ -33,8 +33,8 @@ final class QQAudioUrlVerifier {
                 if (!allowed.test(uri) || !extension(uri, flac)) throw new IOException("QQ 音频地址的域名或格式不受支持");
                 long left = deadline - System.nanoTime(); if (left <= 0) throw new HttpTimeoutException("QQ 音频地址检查超时");
                 HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofNanos(left))
-                        .header("Range", "bytes=0-15").header("Accept-Encoding", "identity")
-                        .header("Referer", "https://y.qq.com/").header("User-Agent", "Mozilla/5.0").GET().build();
+                        .header("Range", "bytes=0-41").header("Accept-Encoding", "identity")
+                        .header("Referer", "https://y.qq.com/").header("User-Agent", QQAuthHttp.USER_AGENT).header("Accept","audio/flac,audio/mpeg,application/octet-stream;q=0.9,*/*;q=0.5").GET().build();
                 CompletableFuture<HttpResponse<byte[]>> pending = client.sendAsync(request, info -> new PrefixBody());
                 HttpResponse<byte[]> response;
                 try { response = pending.get(left, TimeUnit.NANOSECONDS); }
@@ -42,6 +42,7 @@ final class QQAudioUrlVerifier {
                 catch (ExecutionException e) { throw new IOException("QQ 音频 CDN 请求失败"); }
                 finally { pending.cancel(true); }
                 int status = response.statusCode();
+                QQRequestDiagnostics.audio(uri,status,response.body());
                 if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
                     String location = response.headers().firstValue("Location").orElseThrow(() -> new IOException("QQ CDN 重定向缺少目标"));
                     try { uri = uri.resolve(location); } catch (IllegalArgumentException e) { throw new IOException("QQ CDN 重定向目标无效"); }
@@ -51,7 +52,7 @@ final class QQAudioUrlVerifier {
                 if (status == 206 && !response.headers().firstValue("Content-Range").orElse("").matches("(?i)bytes 0-[0-9]+/(?:[0-9]+|\\*)"))
                     throw new IOException("QQ CDN 返回的 Range 起点无效");
                 if (!response.headers().firstValue("Content-Encoding").orElse("identity").equalsIgnoreCase("identity")) return null;
-                return audioHeader(response.body(), flac) ? uri : null;
+                return (flac?decodableFlac(response.body()):audioHeader(response.body(), false)) ? uri : null;
             }
             throw new IOException("QQ 音频地址重定向次数超限");
         } finally { client.shutdownNow(); }
@@ -67,16 +68,23 @@ final class QQAudioUrlVerifier {
         return (bytes[0] & 255) == 255 && (b1 & 224) == 224 && (b1 & 24) != 8 && (b1 & 6) != 0
                 && (b2 & 240) != 0 && (b2 & 240) != 240 && (b2 & 12) != 12;
     }
+    static boolean decodableFlac(byte[] bytes){
+        if(!audioHeader(bytes,true)||bytes.length<42||(bytes[4]&127)!=0||bytes[5]!=0||bytes[6]!=0||bytes[7]!=34)return false;
+        try{
+            var info=new io.nayuki.flac.common.StreamInfo(Arrays.copyOfRange(bytes,8,42));info.checkValues();
+            return info.numChannels>=1&&info.numChannels<=2&&info.sampleDepth>=8&&info.sampleDepth<=32&&info.sampleRate>=8000&&info.sampleRate<=192000;
+        }catch(RuntimeException e){return false;}
+    }
     private static final class PrefixBody implements HttpResponse.BodySubscriber<byte[]> {
         private final CompletableFuture<byte[]> body = new CompletableFuture<>();
-        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream(16);
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream(42);
         private Flow.Subscription subscription;
         public CompletionStage<byte[]> getBody() { return body; }
         public void onSubscribe(Flow.Subscription value) { subscription = value; value.request(1); }
         public void onNext(List<ByteBuffer> buffers) {
             for (ByteBuffer buffer : buffers) {
-                byte[] part = new byte[Math.min(16 - bytes.size(), buffer.remaining())]; buffer.get(part); bytes.writeBytes(part);
-                if (bytes.size() == 16) { body.complete(bytes.toByteArray()); subscription.cancel(); return; }
+                byte[] part = new byte[Math.min(42 - bytes.size(), buffer.remaining())]; buffer.get(part); bytes.writeBytes(part);
+                if (bytes.size() == 42) { body.complete(bytes.toByteArray()); subscription.cancel(); return; }
             }
             subscription.request(1);
         }

@@ -8,7 +8,7 @@ import java.util.function.*;
 /** 每个界面的 QQ 目录会话。页面、账号、音源三重代次验证后才在客户端线程提交。 */
 public final class QQCatalogController implements AutoCloseable {
     private static final Set<QQCatalogController> ACTIVE=ConcurrentHashMap.newKeySet();
-    public enum Area {NONE,DISCOVER,FAVORITES}
+    public enum Area {NONE,DISCOVER,FAVORITES,SEARCH}
     public enum Mode {HOME,PLAYLIST,DAILY,LIKED}
     public record View(Mode mode,String title,List<QQCatalogApi.Playlist> playlists,List<QQCatalogApi.Track> tracks,
                        boolean loading,boolean hasMore,boolean error,String status,int scroll,int cardOffset) {
@@ -34,6 +34,8 @@ public final class QQCatalogController implements AutoCloseable {
     private static View empty(){return new View(Mode.HOME,"QQ 音乐",List.of(),List.of(),false,false,false,"",0,0);}
     QQCatalogController(Factory factory,Consumer<Runnable> main,LongSupplier account,BooleanSupplier source,QQPlaybackController playback){this.factory=factory;this.main=main;this.account=account;this.source=source;this.playback=playback;ACTIVE.add(this);}
     public View view(){return view;}
+    public boolean searchDetail(){return area==Area.SEARCH&&view.mode()==Mode.PLAYLIST;}
+    public void back(){if(area==Area.SEARCH){cancel();selected=null;offset=0;view=empty();}else home();}
     public boolean update(Area requested){
         if(!source.getAsBoolean())requested=Area.NONE;
         long rev=account.getAsLong();
@@ -44,7 +46,7 @@ public final class QQCatalogController implements AutoCloseable {
         boolean changed=!observed.equals(view);observed=view;return changed;
     }
     public void home(){
-        cancel();selected=null;offset=0;view=new View(Mode.HOME,"QQ 音乐推荐",List.of(),List.of(),false,true,false,"",0,0);loadMore();
+        cancel();selected=null;offset=0;view=new View(Mode.HOME,"QQ 音乐排行榜",List.of(),List.of(),false,true,false,"",0,0);loadMore();
     }
     public void favorites(){
         cancel();selected=null;offset=0;view=new View(Mode.LIKED,"我喜欢",List.of(),List.of(),false,true,false,"",0,0);loadMore();
@@ -65,7 +67,7 @@ public final class QQCatalogController implements AutoCloseable {
         try{pending=io.submit(()->{
             try{
                 DataSource session=factory.open(()->current(token,rev));QQCatalogApi api=session.api();Loaded loaded;
-                if(mode==Mode.HOME)loaded=new Loaded(null,api.recommend(from),null);
+                if(mode==Mode.HOME)loaded=new Loaded(null,api.charts(),null);
                 else{QQCatalogApi.Playlist ref=target;
                     if(ref==null)ref=mode==Mode.DAILY?session.daily():api.liked();
                     loaded=new Loaded(ref,null,api.tracks(ref,from));}
@@ -74,7 +76,7 @@ public final class QQCatalogController implements AutoCloseable {
                     if(loaded.lists()!=null){
                         var all=new LinkedHashMap<String,QQCatalogApi.Playlist>();view.playlists().forEach(p->all.put(p.key(),p));loaded.lists().items().forEach(p->all.putIfAbsent(p.key(),p));
                         boolean stuck=loaded.lists().hasMore()&&all.size()==view.playlists().size();offset=loaded.lists().nextOffset();
-                        view=new View(mode,view.title(),List.copyOf(all.values()),List.of(),false,!stuck&&loaded.lists().hasMore(),stuck,stuck?"QQ 重复返回同一页，请刷新重试":"推荐歌单 · "+all.size()+" 个",view.scroll(),view.cardOffset());
+                        view=new View(mode,view.title(),List.copyOf(all.values()),List.of(),false,!stuck&&loaded.lists().hasMore(),stuck,stuck?"QQ 重复返回同一页，请刷新重试":"官方排行榜 · "+all.size()+" 个",view.scroll(),view.cardOffset());
                     }else{
                         var all=new LinkedHashMap<String,QQCatalogApi.Track>();view.tracks().forEach(t->all.put(t.song().platformId(),t));loaded.songs().items().forEach(t->all.putIfAbsent(t.song().platformId(),t));
                         boolean stuck=loaded.songs().hasMore()&&all.size()==view.tracks().size();offset=loaded.songs().nextOffset();
@@ -87,7 +89,7 @@ public final class QQCatalogController implements AutoCloseable {
         });}catch(RejectedExecutionException e){view=new View(mode,view.title(),view.playlists(),view.tracks(),false,true,true,"目录任务正在取消，请稍后刷新",view.scroll(),view.cardOffset());}
     }
     public void scroll(int delta){
-        int rows=view.mode()==Mode.HOME?(view.playlists().size()+QQCatalogLayout.COLUMNS-1)/QQCatalogLayout.COLUMNS:view.tracks().size(),visible=view.mode()==Mode.HOME?QQCatalogLayout.VISIBLE_ROWS:7;
+        int rows=view.mode()==Mode.HOME?view.playlists().size():view.tracks().size(),visible=view.mode()==Mode.HOME?QQCatalogLayout.COLUMNS:7;
         int next=Math.clamp(view.scroll()+delta,0,Math.max(0,rows-visible));
         view=new View(view.mode(),view.title(),view.playlists(),view.tracks(),view.loading(),view.hasMore(),view.error(),view.status(),next,view.cardOffset());
         if(delta>0&&next>=Math.max(0,rows-visible-1)&&view.hasMore())loadMore();

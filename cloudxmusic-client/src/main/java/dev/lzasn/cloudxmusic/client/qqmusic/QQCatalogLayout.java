@@ -13,7 +13,7 @@ final class QQCatalogLayout {
     static Box dailyPlay(){var box=dailyCard();return new Box(box.x()+18,box.y()+96,86,25);}
     static int playlistAt(double x,double y,int scroll,int count){
         for(int local=0;local<COLUMNS*VISIBLE_ROWS;local++){
-            int index=scroll*COLUMNS+local;
+            int index=scroll+local;
             if(index<count&&tile(local).contains(x,y))return index;
         }
         return -1;

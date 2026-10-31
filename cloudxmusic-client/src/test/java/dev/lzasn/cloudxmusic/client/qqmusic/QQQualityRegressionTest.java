@@ -19,7 +19,7 @@ class QQQualityRegressionTest {
         }
     }
     @Test void threeDistinctPreferencesAreAvailable() {
-        assertEquals(List.of("SQ", "HQ", "STANDARD"), Arrays.stream(QQQuality.values()).map(Enum::name).toList());
+        assertEquals(List.of("MASTER", "SQ", "HQ", "STANDARD"), Arrays.stream(QQQuality.values()).map(Enum::name).toList());
     }
     @Test void missingSqAndHqReachStandardInsteadOfReturningNoResource() throws Exception {
         List<String> files = new ArrayList<>();

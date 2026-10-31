@@ -10,6 +10,20 @@ import java.util.function.BooleanSupplier;
 import static org.junit.jupiter.api.Assertions.*;
 
 class QQPlaybackControllerTest {
+    @Test void stopReleasesAudioResetsProgressAndKeepsQueueAvailable()throws Exception{
+        Audio audio=new Audio();Queue<Runnable> main=new ConcurrentLinkedQueue<>();
+        try(var c=new QQPlaybackController(audio,()->CompletableFuture.completedFuture(null),main::add,
+                song->new QQPlaybackController.Resolved("https://a.qq.com/A.flac",180),()->1)){
+            c.play(List.of(A,B),0);pump(main,()->c.view().playing());
+            assertTrue(audio.allowed.getAsBoolean());
+            c.stop();
+            assertFalse(audio.allowed.getAsBoolean());
+            assertEquals(QQPlaybackAudio.Status.STOPPED,audio.view().status());
+            assertNull(c.view().song());assertFalse(c.view().playing());assertFalse(c.view().paused());
+            assertFalse(c.view().loading());assertEquals(0,c.view().position());assertEquals(0,c.view().duration());
+            assertFalse(c.view().error());assertEquals(List.of(A,B),c.queue());
+        }
+    }
     @Test void qualityCheckmarkFollowsFallbackThenRecoversSqOnNextTrackWithoutChangingPreference()throws Exception{
         Audio a=new Audio();Queue<Runnable> main=new ConcurrentLinkedQueue<>();List<QQQuality> requests=new CopyOnWriteArrayList<>();
         try(var c=new QQPlaybackController(a,()->CompletableFuture.completedFuture(null),main::add,(song,q)->{
@@ -122,7 +136,7 @@ class QQPlaybackControllerTest {
         Audio a=new Audio();Queue<Runnable> main=new ConcurrentLinkedQueue<>();List<QQQuality> requests=new CopyOnWriteArrayList<>();List<String> feedback=new ArrayList<>();
         try(var c=new QQPlaybackController(a,()->CompletableFuture.completedFuture(null),main::add,(s,q)->{requests.add(q);return new QQPlaybackController.Resolved("https://a.qq.com/"+s.platformId()+".mp3",100,QQQuality.STANDARD);},()->1)){
             c.qualityFeedback((requested,actual)->feedback.add(requested+":"+actual));
-            c.play(List.of(A,B),0);pump(main,()->!c.view().loading());assertEquals("标准 128k",c.view().quality());assertEquals(QQQuality.SQ,c.preferredQuality());
+            c.play(List.of(A,B),0);pump(main,()->!c.view().loading());assertEquals("标准品质",c.view().quality());assertEquals(QQQuality.SQ,c.preferredQuality());
             c.next();pump(main,()->a.played.size()==2&&!c.view().loading());c.previous();pump(main,()->a.played.size()==3&&!c.view().loading());
             assertEquals(List.of(QQQuality.SQ,QQQuality.SQ,QQQuality.SQ),requests);assertEquals(List.of("SQ:STANDARD","SQ:STANDARD","SQ:STANDARD"),feedback);
         }

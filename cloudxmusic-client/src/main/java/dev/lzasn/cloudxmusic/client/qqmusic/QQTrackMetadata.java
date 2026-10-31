@@ -9,6 +9,14 @@ final class QQTrackMetadata {
         Info(String mediaMid,int durationSeconds,String albumMid,String coverUrl){this(mediaMid,durationSeconds,albumMid,coverUrl,false);}
     }
     private QQTrackMetadata() {}
+    record Identity(long id,int type) {}
+    static Identity identity(String mid,JsonObject data)throws IOException{
+        JsonObject track=QQAuthHttp.object(data,"track_info");
+        if(!mid.equals(QQAuthHttp.text(track,"mid")))throw new IOException("QQ 歌曲详情身份不一致");
+        long id=QQCatalogApi.number(track,"id",0),type=QQCatalogApi.number(track,"type",0);
+        if(id<=0||type<0||type>Integer.MAX_VALUE)throw new IOException("QQ 歌曲缺少有效收藏标识");
+        return new Identity(id,(int)type);
+    }
     static String load(String songMid, QQPlaybackApi api) throws IOException, InterruptedException {
         return loadInfo(songMid,api).mediaMid();
     }

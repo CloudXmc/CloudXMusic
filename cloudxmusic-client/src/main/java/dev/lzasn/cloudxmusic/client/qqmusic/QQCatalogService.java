@@ -20,7 +20,7 @@ final class QQCatalogService implements QQCatalogController.DataSource {
         authenticated=credentials==null?null:new QQPlaybackApi(credentials,QQAuthHttp::post,active,Duration.ofSeconds(45));
     }
     public QQCatalogApi api(){return new QQCatalogApi(this::call,credentials==null?"":credentials.userId(),this::profileId);}
-    private JsonObject call(String module,String method,JsonObject p)throws IOException,InterruptedException{
+    JsonObject call(String module,String method,JsonObject p)throws IOException,InterruptedException{
         check();if(authenticated!=null)return QQPlaybackApi.requireData(authenticated.call(module,method,p,false));
         JsonObject root=QQAuthHttp.post(QQAuthHttp.request(module,method,p),QQAuthHttp.emptyCookies(),Duration.ofSeconds(15));check();
         if(QQAuthHttp.integer(root,"code")!=0)throw new IOException("QQ 推荐服务拒绝请求");

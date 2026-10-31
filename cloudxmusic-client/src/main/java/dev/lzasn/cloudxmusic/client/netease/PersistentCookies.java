@@ -7,7 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
-import net.fabricmc.loader.api.FabricLoader;
+import dev.lzasn.cloudxmusic.client.CloudHome;
 
 import java.net.HttpCookie;
 import java.net.URI;
@@ -36,7 +36,7 @@ public final class PersistentCookies implements java.net.CookieStore {
 
     /** Cookie 与 netease.json 一起放在 {@code cloudxmusic/netease/}；老路径一次性搬迁，避免升级后掉登录。 */
     private static Path file() {
-        Path base = FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic");
+        Path base = CloudHome.dir();
         Path target = base.resolve("netease").resolve("cookies.json");
         Path legacy = base.resolve("cookies.json");
         if (!Files.exists(target) && Files.isRegularFile(legacy)) {

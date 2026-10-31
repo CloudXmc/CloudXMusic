@@ -15,6 +15,7 @@ public final class QQPlaybackUi {
     }
     public static boolean nowPlayingAt(double x,double y){return MusicPainter.playbackInfoRegion().contains(x,y);}
     public static Action actionAt(double x,double y){
+        if(qualityBox().contains(x,y))return Action.QUALITY;
         Hit hit=CONTROLS.hit(x,y);if(hit==null)return null;
         return switch(hit.action()){
             case FAVORITE -> Action.STOP;
@@ -23,6 +24,7 @@ public final class QQPlaybackUi {
         };
     }
     public static Box volumeBox(){return CONTROLS.box("volume");}
+    public static Box qualityBox(){return new Box(858,605,92,28);}
     public static Box seekBox(){return CONTROLS.box("seek");}
     public static MusicPainter.PlaybackBarView barView(QQPlaybackController.View v){
         return new MusicPainter.PlaybackBarView(v.song().title(),v.song().artist(),(int)Math.ceil(v.duration()),v.position(),v.playing(),v.volume(),v.quality(),true);

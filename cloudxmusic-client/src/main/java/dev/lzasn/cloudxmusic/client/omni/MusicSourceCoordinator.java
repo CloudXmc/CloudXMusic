@@ -25,7 +25,10 @@ public final class MusicSourceCoordinator implements AutoCloseable {
     public void select(MusicSource target){
         Objects.requireNonNull(target);if(closed||(!view.switching()&&!view.error()&&view.source()==target))return;
         long token=++generation;view=new View(view.source(),target,token,true,false,"正在切换到"+target.label()+"…");
-        barrier=CompletableFuture.allOf(barrier,quiet(MusicSource.NETEASE),quiet(MusicSource.QQ));
+        // 交接必须有上限：任何一边的暂停迟迟不回调时，switching 会永久为 true，
+        // 结果就是两边都放不了、主面板点击被全部吞掉。超时按失败处理，至少把界面解锁。
+        barrier=CompletableFuture.allOf(barrier,quiet(MusicSource.NETEASE),quiet(MusicSource.QQ))
+                .orTimeout(8,TimeUnit.SECONDS);
         barrier.whenComplete((v,failure)->main.accept(()->{
             if(closed||token!=generation)return;
             if(failure!=null){view=new View(view.source(),target,token,false,true,"声卡交接失败，未切换音源；请重启游戏");return;}

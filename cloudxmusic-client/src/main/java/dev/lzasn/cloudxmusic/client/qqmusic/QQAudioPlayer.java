@@ -7,6 +7,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
+import dev.lzasn.cloudxmusic.client.audio.PcmPlaybackClock;
 
 /** 正式 QQ 流式播放器：网络、解码、声卡控制均在后台，不保存完整音频。 */
 public final class QQAudioPlayer implements QQPlaybackAudio {
@@ -45,7 +46,7 @@ public final class QQAudioPlayer implements QQPlaybackAudio {
             haltCurrent();
             if(!permitted.getAsBoolean()) return;
             Session s=new Session(uri,Math.max(0,duration),permitted);s.finished=finished;s.startPosition=Double.isFinite(position)?Math.max(0,position):0;
-            s.position=s.startPosition;s.paused=paused;current=s;publish(s,Status.LOADING,"");
+            s.position=s.startPosition;s.pcmClock.reset(s.startPosition);s.paused=paused;current=s;publish(s,Status.LOADING,"");
             s.worker=Thread.ofVirtual().name("CloudXMusic-QQ-Decode").start(()->decode(s));
         });
     }
@@ -68,7 +69,10 @@ public final class QQAudioPlayer implements QQPlaybackAudio {
     }
     @Override public CompletableFuture<Void> stop(){return command(()->{haltCurrent();view=new View(Status.STOPPED,0,0,volume,"");});}
     @Override public void volume(float value){if(Float.isFinite(value))volume=Math.max(0,Math.min(1,value));}
-    @Override public View view(){return view;}
+    @Override public synchronized View view(){
+        View result=view;Session s=current;
+        return s==null?result:new View(result.status(),s.pcmClock.snapshot().seconds(),result.duration(),volume,result.error());
+    }
     private void haltCurrent() {
         Session s=current;if(s==null)return;s.cancelled=true;
         try{synchronized(s.output){quiet(s,true);}}
@@ -85,8 +89,8 @@ public final class QQAudioPlayer implements QQPlaybackAudio {
                 long target=s.submitted-s.baseFrames+s.injected,until=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(180);
                 while(line.isRunning()&&line.getLongFramePosition()<target&&System.nanoTime()<until)LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(2));
             }
-            if(s.rate>0)s.position=Math.max(s.position,Math.min(s.submitted,s.baseFrames+Math.max(0,line.getLongFramePosition()-s.injected))/(double)s.rate);
-            line.stop();line.flush();if(close){line.close();if(line.isOpen())throw new IllegalStateException("QQ 声卡未能关闭");s.line=null;}
+            line.stop();s.pcmClock.freeze();s.position=s.pcmClock.snapshot().seconds();
+            line.flush();if(close){line.close();if(line.isOpen())throw new IllegalStateException("QQ 声卡未能关闭");s.line=null;}
             else if(line.isRunning())throw new IllegalStateException("QQ 声卡未能暂停");
         } catch(RuntimeException e){throw new IllegalStateException("QQ 声卡交接失败，未启动另一音源",e);}
     }
@@ -112,6 +116,7 @@ public final class QQAudioPlayer implements QQPlaybackAudio {
                         synchronized(s.output) {
                             check(s);if(s.paused||!s.permitted.getAsBoolean())continue;
                             byte[] bytes=s.gain.encode(pcm,offset,size,channels,volume,s.rate);int written=0;
+                            s.pcmClock.submitted(size);
                             try{while(written<bytes.length){check(s);int n=s.line.write(bytes,written,bytes.length-written);
                                 if(n<=0||n%(channels*2)!=0)throw new IOException("QQ 声卡拒绝 PCM 帧");written+=n;}}
                             catch(InterruptedException e){throw e;}catch(Exception e){throw new QQAudioFailure.Output(e);}
@@ -149,6 +154,7 @@ public final class QQAudioPlayer implements QQPlaybackAudio {
         check(s);AudioFormat format=new AudioFormat(rate,16,channels,true,false);
         SourceDataLine line=lines.create(format);s.line=line;s.baseFrames=s.submitted;s.injected=0;s.last=new short[channels];
         line.open(format,Math.max(1024,rate/25*channels*2));
+        s.pcmClock.open(line,s.submitted);
     }
     private static void check(Session s) throws InterruptedException {if(s.cancelled||Thread.currentThread().isInterrupted())throw new InterruptedException("QQ 播放已取消");}
     private static void await(Session s) throws InterruptedException {
@@ -170,14 +176,13 @@ public final class QQAudioPlayer implements QQPlaybackAudio {
     private synchronized void publish(Session s,Status status,String error) {
         if(current!=s)return;
         if(s.paused&&(status==Status.PLAYING||status==Status.LOADING))status=Status.PAUSED;
-        SourceDataLine line=s.line;
-        if(line!=null&&s.rate>0)s.position=Math.max(s.position,Math.min(s.submitted,s.baseFrames+Math.max(0,line.getLongFramePosition()-s.injected))/(double)s.rate);
-        if(status==Status.FINISHED)s.position=s.rate>0?s.submitted/(double)s.rate:s.position;
+        s.position=s.pcmClock.snapshot().seconds();
         view=new View(status,s.position,s.duration,volume,error);
     }
     private static void closeInput(Session s){synchronized(s.resources){InputStream in=s.input;s.input=null;if(in!=null)try{in.close();}catch(IOException ignored){}}}
     @Override public void close(){if(closed)return;CompletableFuture<Void> done=stop();closed=true;done.whenComplete((v,e)->{clock.shutdownNow();http.close();control.shutdown();});}
     static final class Session {
+        final PcmPlaybackClock pcmClock=new PcmPlaybackClock();
         final URI uri;final Object output=new Object(),resources=new Object();final QQPcm.Gain gain=new QQPcm.Gain();final AtomicBoolean timeout=new AtomicBoolean();
         volatile BooleanSupplier permitted;volatile boolean cancelled,paused;volatile SourceDataLine line;volatile InputStream input;
         volatile CompletableFuture<?> pending;volatile Thread worker;volatile int rate,channels;volatile long networkBytes,submitted,injected,baseFrames,lastIo=System.nanoTime(),lastOutput=System.nanoTime();

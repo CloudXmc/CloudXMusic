@@ -62,9 +62,13 @@ final class QQSessionVerifier {
         JsonObject request = QQAuthHttp.request("music.UserInfo.userInfoServer", "GetLoginUserInfo", new JsonObject());
         JsonObject comm = request.getAsJsonObject("comm");
         comm.addProperty("uin", value.userId()); comm.addProperty("authst", value.musicKey());
-        comm.addProperty("g_tk", hash33(value.musicKey())); comm.addProperty("tmeLoginType", value.loginType());
+        int csrf = hash33(value.musicKey());
+        comm.addProperty("g_tk", csrf);
+        comm.addProperty("g_tk_new_20200303", csrf);
+        comm.addProperty("tmeLoginType", value.loginType());
         if (cookies == null) cookies = QQAuthHttp.emptyCookies();
         for (String[] pair : new String[][]{{"qqmusic_uin", value.userId()}, {"qqmusic_key", value.musicKey()},
+                {"uin",value.userId()},{"qm_keyst",value.musicKey()},
                 {"login_type", value.loginType() == 1 ? "2" : "1"}}) {
             HttpCookie cookie = new HttpCookie(pair[0], pair[1]);
             cookie.setDomain(".qq.com"); cookie.setPath("/"); cookie.setSecure(true); cookie.setVersion(0);

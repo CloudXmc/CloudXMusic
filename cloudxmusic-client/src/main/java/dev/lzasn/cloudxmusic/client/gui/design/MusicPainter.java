@@ -282,13 +282,18 @@ public final class MusicPainter {
         int currentSeconds = Math.max(0, room.positionTenths() / 10);
         c.text(roomTime(currentSeconds), 468, 265, 9, false, MUTED, 60);
         c.right(roomTime(room.durationSeconds()), 778, 265, 9, false, MUTED);
+        if (room.owner()) {
+            c.text("在「正在播放」页控制播放、切歌与循环", 468, 292, 9, false, MUTED, 330);
+        } else {
+            c.text("跟随房主播放 · 可暂停跟听，进度会重新对齐", 468, 292, 9, false, MUTED, 330);
+        }
 
         Box queue = roomQueueBox();
         roomCard(c, queue, 22);
         c.text("房间队列", queue.x() + 22, queue.y() + 34, 15, true, INK, 220);
         c.right(room.queue().size() + " 首", queue.x() + queue.w() - 22, queue.y() + 34, 10, false, MUTED);
         if (room.queue().isEmpty()) {
-            c.center("队列还是空的，等房主添加歌曲", queue.cx(), queue.y() + 146, 12, false, MUTED, 360);
+            c.center("房间队列为空", queue.cx(), queue.y() + 146, 12, false, MUTED, 360);
         } else {
             int total = room.queue().size();
             int maxScroll = Math.max(0, total - ROOM_QUEUE_VISIBLE);
@@ -298,11 +303,17 @@ public final class MusicPainter {
                 int index = start + i;
                 MusicView.RoomTrack track = room.queue().get(index);
                 int rowY = queue.y() + 50 + i * ROOM_QUEUE_STEP;
+                // 当前曲目高亮，成员据此确认自己跟的是哪一首。
+                boolean current = index == room.currentIndex();
+                if (current) {
+                    c.round(queue.x() + 14, rowY - 3, queue.w() - 28, ROOM_QUEUE_STEP - 3, 10, SOFT);
+                }
                 c.text(String.format(java.util.Locale.ROOT, "%02d", index + 1),
-                        queue.x() + 22, rowY + 26, 10, true, PINK, 32);
-                albumPlaceholder(c, queue.x() + 42, rowY + 12, 20, 5);
-                c.text(track.title(), queue.x() + 76, rowY + 20, 12, true, INK, 278);
-                c.text(track.artist(), queue.x() + 76, rowY + 36, 10, false, MUTED, 278);
+                        queue.x() + 22, rowY + 26, 10, true, current ? DEEP : PINK, 32);
+                // 缩略图 30px：行高 45 里上下各留 7px，标题/歌手跟着右移保持 14px 间距。
+                coverArt(c, track.coverUrl(), queue.x() + 42, rowY + 7, 30, 7, covers);
+                c.text(track.title(), queue.x() + 86, rowY + 20, 12, true, INK, 268);
+                c.text(track.artist(), queue.x() + 86, rowY + 37, 10, false, MUTED, 268);
                 c.right(track.duration(), queue.x() + queue.w() - 22, rowY + 24, 10, false, MUTED);
                 if (i < shown - 1) {
                     c.g.setColor(LINE);
@@ -315,7 +326,7 @@ public final class MusicPainter {
         Box members = roomMembersBox();
         roomCard(c, members, 22);
         c.text("房间成员", members.x() + 20, members.y() + 37, 15, true, INK, 140);
-        c.right(room.members().size() + "/8", members.x() + members.w() - 20, members.y() + 37, 10, false, MUTED);
+        c.right(room.members().size() + "/" + room.capacity(), members.x() + members.w() - 20, members.y() + 37, 10, false, MUTED);
         Box code = new Box(840, 164, 210, 54);
         c.round(code.x(), code.y(), code.w(), code.h(), 14, SOFT);
         c.text("房间码", code.x() + 14, code.y() + 20, 9, false, MUTED, 80);
@@ -325,22 +336,47 @@ public final class MusicPainter {
 
         Color ok = dark ? new Color(117, 210, 167) : new Color(76, 152, 116);
         Color warn = dark ? new Color(242, 172, 104) : new Color(194, 112, 49);
-        for (int i = 0; i < Math.min(4, room.members().size()); i++) {
-            MusicView.RoomMember member = room.members().get(i);
-            int rowY = members.y() + 152 + i * 50;
+        // 20 人上限、可视 6 行：超出部分靠滚动查看，右侧给一条细滚动条。
+        int memberMax = Math.max(0, room.members().size() - MusicLayout.ROOM_MEMBER_VISIBLE);
+        int memberStart = Math.max(0, Math.min(room.memberScroll(), memberMax));
+        int memberShown = Math.min(MusicLayout.ROOM_MEMBER_VISIBLE, room.members().size() - memberStart);
+        for (int i = 0; i < memberShown; i++) {
+            MusicView.RoomMember member = room.members().get(memberStart + i);
+            int rowY = members.y() + 152 + i * MusicLayout.ROOM_MEMBER_STEP;
             roomMojangAvatar(c, 854, rowY + 8, 28, member.name());
             c.text(member.name(), 890, rowY + 20, 12, true, INK, 90);
-            c.text(member.detail(), 890, rowY + 36, 9, false, member.canPlay() ? MUTED : warn, 120);
+            c.text(member.detail(), 890, rowY + 36, 9, false,
+                    member.tone() == MusicView.MemberTone.UNAVAILABLE ? warn : MUTED, 120);
             if (member.owner()) {
                 c.round(1007, rowY + 10, 42, 18, 9, SOFT);
                 c.center("房主", 1028, rowY + 23, 9, true, DEEP, 36);
             } else {
-                c.round(1027, rowY + 18, 6, 6, 3, member.canPlay() ? ok : warn);
+                // 状态灯跟着上报的状态走：在听绿色、暂停跟听琥珀、播不了用警示色。
+                Color dot = switch (member.tone()) {
+                    case ACTIVE -> ok;
+                    case PAUSED -> warn;
+                    case UNAVAILABLE -> warn;
+                };
+                // 10px 圆点，与 28px 头像垂直居中对齐。
+                c.round(1022, rowY + 17, 10, 10, 5, dot);
             }
             c.g.setColor(LINE);
             c.g.drawLine(840, rowY + 44, 1050, rowY + 44);
         }
-        c.center("分享房间码即可邀请朋友", members.cx(), members.y() + 410, 10, false, MUTED, 200);
+        if (memberMax > 0) {
+            Box track = MusicLayout.roomMemberScrollBar();
+            c.round(track.x(), track.y(), track.w(), track.h(), 3, SOFT);
+            int thumbH = Math.max(28,
+                    (int) (track.h() * (MusicLayout.ROOM_MEMBER_VISIBLE / (float) room.members().size())));
+            int thumbY = track.y() + (int) ((track.h() - thumbH) * (memberStart / (float) memberMax));
+            c.round(track.x(), thumbY, track.w(), thumbH, 3, new Color(214, 143, 170, 190));
+        }
+        // 邀请提示跟在最后一行后面，不压列表也不压退出按钮。
+        if (memberShown < MusicLayout.ROOM_MEMBER_VISIBLE) {
+            c.center("分享房间码即可邀请朋友", members.cx(),
+                    members.y() + 152 + Math.max(1, memberShown) * MusicLayout.ROOM_MEMBER_STEP + 26,
+                    10, false, MUTED, 200);
+        }
         roomSecondaryButton(c, roomExitButtonBox(), "退出房间");
     }
 
@@ -412,8 +448,7 @@ public final class MusicPainter {
         c.center(label, b.cx(), b.cy() + 4, 12, true, Color.WHITE, b.w() - 20);
     }
 
-    private static void roomSecondaryButton(FrostCanvas c, Box b, String label) {
-        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2, CARD_BG);
+    private static void roomSecondaryButton(FrostCanvas c, Box b, String label) {        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2, CARD_BG);
         c.g.setColor(dark ? new Color(150, 130, 140, 90) : new Color(190, 150, 170, 75));
         c.g.setStroke(new BasicStroke(1f));
         c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, b.h() / 2));
@@ -547,6 +582,9 @@ public final class MusicPainter {
     private static void playerBar(FrostCanvas c,MusicView v,MusicLayout l,PlaybackBarView bar,BufferedImage artwork) {
         c.g.setColor(LINE);
         c.g.drawLine(292, 586, 1050, 586);
+        // 房间里成员只能跟听：上下首、队列、循环三档全部置灰，仅留收藏。
+        boolean roomLocked = v.room().joined() && !v.room().owner();
+        Color disabled = new Color(MUTED.getRed(), MUTED.getGreen(), MUTED.getBlue(), 120);
 
         if(bar.qq()){
             if(artwork==null){c.round(296,599,36,36,8,SOFT);UiIcons.draw(c,"note",314,617,20,PINK);}
@@ -562,25 +600,26 @@ public final class MusicPainter {
         c.text(bar.artist(),textX,630,10,false,MUTED,textWidth);
 
         Box favorite = l.box("favorite");
-        if(bar.qq()) { c.g.setColor(DEEP);c.g.draw(new RoundRectangle2D.Double(favorite.cx()-6,favorite.cy()-6,12,12,2,2)); }
-        else UiIcons.draw(c, v.favorite() ? "heartFill" : "heart", favorite.cx(), favorite.cy(), 18,
-                v.favorite() ? DEEP : PINK);
+        UiIcons.draw(c, bar.qq() ? "stop" : v.favorite() ? "heartFill" : "heart", favorite.cx(), favorite.cy(), 18,
+                bar.qq() ? MUTED : v.favorite() ? DEEP : PINK);
         Box queued = l.box("queueBtn");
-        UiIcons.draw(c, "list", queued.cx(), queued.cy(), 18, MUTED);
+        UiIcons.draw(c, "list", queued.cx(), queued.cy(), 18, roomLocked ? disabled : MUTED);
 
         Box mode = l.box("mode");
-        UiIcons.draw(c, v.playbackMode().icon, mode.cx(), mode.cy(), 18, bar.qq()?MUTED:DEEP);
-        // 没有歌曲时传输键置灰，避免看起来像能点。
+        UiIcons.draw(c, v.playbackMode().icon, mode.cx(), mode.cy(), 18,
+                roomLocked ? disabled : (bar.qq()?MUTED:DEEP));
+        // 没有歌曲时传输键置灰，避免看起来像能点。房间里成员仍可暂停跟听，中间的播放键不变灰。
         boolean idle = !bar.qq() && bar.duration() <= 0;
-        Color primary = idle ? MUTED : INK;
+        Color transport = roomLocked ? disabled : (idle ? MUTED : INK);
+        Color playTint = idle ? MUTED : INK;
         Box prev = l.box("prev");
-        UiIcons.draw(c, "prev", prev.cx(), prev.cy(), 24, primary);
+        UiIcons.draw(c, "prev", prev.cx(), prev.cy(), 24, transport);
         Box play = l.box("play");
-        UiIcons.draw(c, bar.playing() ? "pause" : "play", play.cx(), play.cy(), 30, primary);
+        UiIcons.draw(c, bar.playing() ? "pause" : "play", play.cx(), play.cy(), 30, playTint);
         Box next = l.box("next");
-        UiIcons.draw(c, "next", next.cx(), next.cy(), 24, primary);
+        UiIcons.draw(c, "next", next.cx(), next.cy(), 24, transport);
 
-        Box quality = l.box("quality");
+        Box quality = bar.qq()?dev.lzasn.cloudxmusic.client.qqmusic.QQPlaybackUi.qualityBox():l.box("quality");
         c.round(quality.x(), quality.y(), quality.w(), quality.h(), 10, SOFT);
         c.center(bar.quality(), quality.cx(), quality.cy() + 4, 10, true, DEEP, quality.w() - 8);
 
@@ -597,6 +636,7 @@ public final class MusicPainter {
     public static Box qualityRow(int index,int count){Box menu=qualityMenuRegion(count);return new Box(menu.x(),menu.y()+index*37,menu.w(),37);}
     public static Box qualityMenuRegion(int count,int width){return new Box(950-width,594-count*37,width,count*37);}
     public static Box qualityRow(int index,int count,int width){Box menu=qualityMenuRegion(count,width);return new Box(menu.x(),menu.y()+index*37,menu.w(),37);}
+    public static int qualityCheckmarkCenterX(Box row){return row.x()+row.w()-18;}
 
 
     /** 音质选择浮层：圆角面板 + 纯列表（文字、分隔线、勾选），不套卡片阴影。 */
@@ -629,7 +669,7 @@ public final class MusicPainter {
                 Color ink = i == selected ? DEEP : INK;
                 c.text(names[i], b.x() + 14, b.cy() + 4, 12, i == selected, ink, b.w() - 40);
                 if (i == selected) {
-                    int cx = b.x() + b.w() - 18, cy = b.cy() - 1;
+                    int cx = qualityCheckmarkCenterX(b), cy = b.cy() - 1;
                     c.g.setColor(PINK);
                     c.g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                     c.g.drawLine(cx - 5, cy, cx - 1, cy + 4);
@@ -753,8 +793,12 @@ public final class MusicPainter {
         int aboutY = l.box("panelScale").y() + 88;
         sectionTitle(c, aboutY - 34, "关于");
         c.text("CloudXMusic", 318, aboutY, 23, true, DEEP, 620);
-        c.round(946, aboutY - 24, 76, 24, 12, SOFT);
-        c.center("v" + v.version(), 984, aboutY - 8, 10, true, DEEP, 68);
+        // 版本号宽度按实际文本量算：写死 76px 时 "v2.5.0-alpha.2" 会被挤成 v2.5.0-alp…
+        String versionText = "v" + v.version();
+        int versionBadgeW = (int) Math.ceil(c.width(versionText, 10, true)) + 28;
+        int versionBadgeX = 1022 - versionBadgeW;
+        c.round(versionBadgeX, aboutY - 24, versionBadgeW, 24, 12, SOFT);
+        c.center(versionText, versionBadgeX + versionBadgeW / 2f, aboutY - 8, 10, true, DEEP, versionBadgeW - 12);
         c.g.setColor(LINE);
         c.g.drawLine(318, aboutY + 24, 1022, aboutY + 24);
         c.text("开发者", 318, aboutY + 46, 12, false, MUTED, 704);
@@ -994,12 +1038,27 @@ public final class MusicPainter {
     }
 
     /** 无封面时复用的专辑占位图：渐变底 + 同心唱片纹路。 */
-    private static void albumPlaceholder(FrostCanvas c, int x, int y, int size, int radius) {
-        c.round(x, y, size, size, radius,
+    private static void albumPlaceholder(FrostCanvas c, int x, int y, int size, int radius) {        c.round(x, y, size, size, radius,
                 new GradientPaint(x, y, new Color(178, 216, 207), x + size, y + size, new Color(226, 137, 168)));
         c.round(x + size * .17, y + size * .17, size * .66, size * .66, size * .33, new Color(255, 236, 244, 100));
         c.round(x + size * .27, y + size * .27, size * .46, size * .46, size * .23, new Color(229, 147, 174, 120));
         c.round(x + size * .42, y + size * .42, size * .16, size * .16, size * .08, new Color(255, 248, 244, 220));
+    }
+
+    /** 按 URL 画一张等比裁剪的圆角缩略图；没有图时回落到唱片占位图。 */
+    private static void coverArt(FrostCanvas c, String url, int x, int y, int size, int radius,
+                                 Function<String, BufferedImage> covers) {
+        Shape previous = c.g.getClip();
+        c.g.clip(shape(x, y, size, size, radius));
+        BufferedImage image = url == null || url.isBlank() ? null : covers.apply(url);
+        if (image != null) {
+            double zoom = (double) size / Math.min(image.getWidth(), image.getHeight());
+            int w = (int) Math.ceil(image.getWidth() * zoom), h = (int) Math.ceil(image.getHeight() * zoom);
+            c.g.drawImage(image, x + (size - w) / 2, y + (size - h) / 2, w, h, null);
+        } else {
+            albumPlaceholder(c, x, y, size, radius);
+        }
+        c.g.setClip(previous);
     }
 
     public static void cover(FrostCanvas c,SongView track,int x,int y,int size,int radius,Function<String,BufferedImage> covers) {

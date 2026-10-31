@@ -9,7 +9,7 @@ import dev.lzasn.cloudxmusic.client.gui.design.FirstRunNoticeScreen;
 import dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas;
 import dev.lzasn.cloudxmusic.client.netease.QrLogin;
 import dev.lzasn.cloudxmusic.client.room.MusicRoomClient;
-import dev.lzasn.cloudxmusic.client.hud.DynamicIslandHud;
+import dev.lzasn.cloudxmusic.client.room.RoomAudioFollower;import dev.lzasn.cloudxmusic.client.hud.DynamicIslandHud;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseSession;
 import dev.lzasn.cloudxmusic.client.state.MusicState;
 import net.fabricmc.api.ClientModInitializer;
@@ -58,6 +58,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
                 }
             }
             if(dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.neteaseActive()) STATE.tick(client);
+            RoomAudioFollower.INSTANCE.tick();
         });
 
         // 退出世界/回主菜单就停播，否则音乐会在菜单里继续放
@@ -69,6 +70,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             QrLogin.cancel();
             MusicRoomClient.INSTANCE.disconnected();
+            RoomAudioFollower.INSTANCE.shutdown();
             CoverCache.clear();
             MojangAvatarCache.clear();
             // 播放状态和纹理清理统一回客户端线程，避免断开回调跨线程修改会话。

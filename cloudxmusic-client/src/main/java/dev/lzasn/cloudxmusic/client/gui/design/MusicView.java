@@ -19,17 +19,25 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
                         int scroll, int total, RoomView room) {
     public enum Page { NOW, DISCOVER, SEARCH, FAVORITES, QUEUE, ROOM, SETTINGS, ACCOUNT }
     public record LyricRow(String text, String translation, boolean active) {}
-    public record RoomMember(String name, String detail, boolean owner, boolean canPlay) {
+    /** 成员状态灯：绿灯在听、琥珀暂停跟听、警示色表示这首播不了。 */
+    public enum MemberTone { ACTIVE, PAUSED, UNAVAILABLE }
+    public record RoomMember(String name, String detail, boolean owner, MemberTone tone) {
         public RoomMember {
             name = name == null || name.isBlank() ? "成员" : name;
             detail = detail == null ? "" : detail;
+            if (tone == null) tone = MemberTone.ACTIVE;
         }
     }
-    public record RoomTrack(String title, String artist, String duration) {
+    public record RoomTrack(String title, String artist, String duration, String coverUrl) {
         public RoomTrack {
             title = title == null || title.isBlank() ? "等待添加歌曲" : title;
             artist = artist == null ? "" : artist;
             duration = duration == null ? "" : duration;
+            coverUrl = coverUrl == null ? "" : coverUrl;
+        }
+        /** 没有封面时留空，绘制层回落到唱片占位图。 */
+        public RoomTrack(String title, String artist, String duration) {
+            this(title, artist, duration, "");
         }
     }
     public record RoomSummary(String roomCode, String playerId, String source, int members, String status) {
@@ -42,11 +50,17 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
         }
     }
 
-    /** 房间页只读取不可变展示快照；网络会话接入前由空快照显示未加入状态。 */
+    /**
+     * 房间页只读取不可变展示快照。
+     *
+     * @param owner        当前玩家是否是房主；只有房主能改队列和播放时间轴
+     * @param currentIndex 房间队列中正在播放的下标，-1 表示还没开始
+     */
     public record RoomView(boolean joined, String roomCode, String source, String roomStatus,
                            String nowTitle, String nowArtist, int positionTenths, int durationSeconds,
-                           boolean playing, List<RoomMember> members, List<RoomTrack> queue,
-                           List<RoomSummary> publicRooms, int queueScroll) {
+                           boolean playing, boolean owner, List<RoomMember> members, List<RoomTrack> queue,
+                           List<RoomSummary> publicRooms, int queueScroll, int currentIndex, String repeatLabel,
+                           int capacity, int memberScroll) {
         public RoomView {
             roomCode = roomCode == null || roomCode.isBlank() ? "------" : roomCode;
             source = source == null || source.isBlank() ? "网易云音乐" : source;
@@ -57,14 +71,24 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
             queue = queue == null ? List.of() : List.copyOf(queue);
             publicRooms = publicRooms == null ? List.of() : List.copyOf(publicRooms);
             queueScroll = Math.max(0, queueScroll);
+            currentIndex = currentIndex < queue.size() ? currentIndex : -1;
+            repeatLabel = repeatLabel == null || repeatLabel.isBlank() ? "列表循环" : repeatLabel;
+            capacity = Math.max(members.size(), Math.min(32, capacity <= 0 ? 20 : capacity));
+            memberScroll = Math.max(0, memberScroll);
         }
         public static RoomView empty() {
-            return new RoomView(false, "------", "网易云音乐", "", "", "", 0, 0, false,
-                    List.of(), List.of(), List.of(), 0);
+            return new RoomView(false, "------", "网易云音乐", "", "", "", 0, 0, false, false,
+                    List.of(), List.of(), List.of(), 0, -1, "列表循环", 20, 0);
         }
         public RoomView withQueueScroll(int value) {
             return new RoomView(joined, roomCode, source, roomStatus, nowTitle, nowArtist,
-                    positionTenths, durationSeconds, playing, members, queue, publicRooms, value);
+                    positionTenths, durationSeconds, playing, owner, members, queue, publicRooms, value,
+                    currentIndex, repeatLabel, capacity, memberScroll);
+        }
+        public RoomView withMemberScroll(int value) {
+            return new RoomView(joined, roomCode, source, roomStatus, nowTitle, nowArtist,
+                    positionTenths, durationSeconds, playing, owner, members, queue, publicRooms, queueScroll,
+                    currentIndex, repeatLabel, capacity, value);
         }
     }
 

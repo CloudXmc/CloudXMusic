@@ -41,7 +41,7 @@ public final class QQLoginPainter {
             c.g.setColor(color);c.g.draw(shape(bx,462,badgeWidth,16,5));
             c.center(badge,bx+badgeWidth/2,474,9,true,color,badgeWidth-6);
         }
-        c.text(account.loggedIn() ? "QQ音乐 · 切换音源 / 管理" : account.error() ? "QQ音乐 · 登录异常" : "QQ音乐 · 切换 / 登录",
+        dev.lzasn.cloudxmusic.client.gui.design.SidebarTextLayout.draw(c,account.loggedIn() ? "QQ 音乐 · 切换音源 / 管理" : account.error() ? "QQ 音乐 · 登录异常" : "QQ 音乐 · 切换 / 登录",
                 82, 495, 11, false, account.error() ? QQSearchPainter.errorColor() : MUTED, 151);
     }
     public static BufferedImage decorate(BufferedImage base, double scale, boolean open,

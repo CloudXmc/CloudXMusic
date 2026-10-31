@@ -83,11 +83,11 @@ class QQSearchPainterTest {
             var search=new QQSearchController.View(QQ,List.of(song),0,true,false,"正在加载更多…");
             var result=QQSearchPainter.decoratePlayback(base,1,music,search,null,
                 s->dev.lzasn.cloudxmusic.client.omni.SongView.from(s,240,"cover",true),url->cover);
-            assertEquals(cover.getRGB(20,20),result.getRGB(MusicLayout.PAD+322,MusicLayout.PAD+MusicLayout.ROW_TOP+23));
+            assertEquals(cover.getRGB(20,20),result.getRGB(MusicLayout.PAD+322,MusicLayout.PAD+QQSearchPainter.ROW_TOP+23));
             var without=QQSearchPainter.decoratePlayback(base,1,music,search,null,
                 s->dev.lzasn.cloudxmusic.client.omni.SongView.from(s,240,"cover",false),url->cover);
             int different=0;
-            for(int y=MusicLayout.ROW_TOP;y<MusicLayout.ROW_TOP+32;y++)for(int x=354;x<714;x++)
+            for(int y=QQSearchPainter.ROW_TOP;y<QQSearchPainter.ROW_TOP+32;y++)for(int x=354;x<714;x++)
                 if(result.getRGB(MusicLayout.PAD+x,MusicLayout.PAD+y)!=without.getRGB(MusicLayout.PAD+x,MusicLayout.PAD+y))different++;
             assertTrue(different>20,"VIP 必须实际绘制，不能只存在于元数据中");
             ImageIO.write(result,"png",out.resolve((dark?"dark":"light")+"-search-cover-vip.png").toFile());

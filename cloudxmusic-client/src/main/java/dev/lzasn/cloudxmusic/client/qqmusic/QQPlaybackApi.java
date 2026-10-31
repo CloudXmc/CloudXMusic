@@ -29,6 +29,7 @@ final class QQPlaybackApi {
         this.credentials = credentials; this.transport = transport; this.active = active;
         deadline = System.nanoTime() + budget.toNanos();
         for (String[] pair : new String[][]{{"qqmusic_uin", credentials.userId()}, {"qqmusic_key", credentials.musicKey()},
+                {"uin",credentials.userId()},{"qm_keyst",credentials.musicKey()},
                 {"login_type", credentials.loginType() == 1 ? "2" : "1"}}) {
             HttpCookie cookie = new HttpCookie(pair[0], pair[1]);
             cookie.setDomain(".qq.com"); cookie.setPath("/"); cookie.setSecure(true); cookie.setVersion(0);
@@ -46,9 +47,15 @@ final class QQPlaybackApi {
         Duration timeout = remaining();
         JsonObject request = QQAuthHttp.request(module, method, params);
         JsonObject comm = request.getAsJsonObject("comm");
-        comm.addProperty("ct", desktop ? 19 : 24); comm.addProperty("cv", desktop ? 2201 : 0);
+        comm.addProperty("ct", desktop ? 19 : 24); comm.addProperty("cv", desktop ? 2201 : 4747474);
+        if(!desktop){comm.addProperty("platform","yqq.json");comm.addProperty("g_tk_new_20200303",QQSessionVerifier.hash33(credentials.musicKey()));
+            comm.addProperty("format","json");comm.addProperty("inCharset","utf-8");comm.addProperty("outCharset","utf-8");comm.addProperty("notice",0);comm.addProperty("need_new_code",1);}
         comm.addProperty("uin", credentials.userId()); comm.addProperty("authst", credentials.musicKey());
-        comm.addProperty("g_tk", QQSessionVerifier.hash33(credentials.musicKey())); comm.addProperty("tmeLoginType", credentials.loginType());
+        int csrf = csrfToken(cookies, credentials.musicKey());
+        // Web 端同时读取两个字段；当扫码票据没有 p_skey 时，musicKey 是兼容回退值。
+        comm.addProperty("g_tk", csrf);
+        comm.addProperty("g_tk_new_20200303", csrf);
+        comm.addProperty("tmeLoginType", credentials.loginType());
         JsonObject root = transport.post(request, cookies, timeout);
         remaining();
         long code = QQAuthHttp.integer(root, "code");
@@ -57,10 +64,23 @@ final class QQPlaybackApi {
         code = QQAuthHttp.integer(block, "code");
         if (code != 0) return rejected(code);
         JsonObject data = QQAuthHttp.object(block, "data");
-        if (data.has("code")) {
-            code = QQAuthHttp.integer(data, "code"); if (code != 0) return rejected(code);
+        if (data.has("code") || data.has("retCode")) {
+            String field = data.has("code") ? "code" : "retCode";
+            code = QQAuthHttp.integer(data, field); if (code != 0) return rejected(code);
         }
         return new Reply(0, data);
+    }
+
+    static int csrfToken(CookieManager cookies, String fallback) {
+        String value = null;
+        if (cookies != null) {
+            for (HttpCookie cookie : cookies.getCookieStore().getCookies()) {
+                if (cookie.getName().equals("p_skey") || cookie.getName().equals("skey")) {
+                    if (!cookie.getValue().isBlank()) { value = cookie.getValue(); break; }
+                }
+            }
+        }
+        return QQSessionVerifier.hash33(value == null ? fallback : value);
     }
     private static Reply rejected(long code) throws IOException {
         if (QQSessionVerifier.authExpired(code) || code == 20279 || code == 104604) throw new QQSessionVerifier.Rejected(code);

@@ -14,7 +14,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.lzasn.cloudxmusic.client.util.Async;
 import dev.lzasn.cloudxmusic.client.gui.FirstRunNotice;
-import net.fabricmc.loader.api.FabricLoader;
+import dev.lzasn.cloudxmusic.client.CloudHome;
 import net.minecraft.client.Minecraft;
 
 import java.nio.charset.StandardCharsets;
@@ -60,6 +60,10 @@ public final class MusicState {
 
     private Track current = NOTHING;
     private boolean playing;
+    /** 房间跟播期间为 true：曲末不自动切到个人队列的下一首。 */
+    private boolean roomMode;
+    /** 最近一次取链失败的歌曲 ID，房间跟播用它判断"真的播不了"。 */
+    private String lastFailureTrackId = "";
     private long lastTickNanos = System.nanoTime();
     private String roomName = "尚未加入房间";
     private int memberCount;
@@ -103,6 +107,13 @@ public final class MusicState {
         if (player.finished() && playing) {
             // 先吃掉 finished：取播放地址是异步的，否则同一首放完会被连续触发好几次 next()。
             player.clearFinished();
+            if (roomMode) {
+                // 房间跟播：曲末由服务端统一切歌，个人播放器不能自己往下走，
+                // 否则会切到个人队列的下一首（和房间的下一首不是一个）。
+                playing = false;
+                statusLine = "等待房间切歌";
+                return;
+            }
             if (playbackMode == PlaybackMode.REPEAT_ONE) select(current);
             else next();
             return;
@@ -243,7 +254,8 @@ public final class MusicState {
         toggleFavorite(track);
     }
 
-    private void toggleFavorite(Track track) {
+    /** 收藏任意网易云曲目；房间跟播时由房间当前曲直接调用。 */
+    public void toggleFavorite(Track track) {
         if (!NeteaseSession.INSTANCE.loggedIn()) {
             pendingFavoriteTrack = null;
             statusLine = "请先登录网易云再收藏歌曲";
@@ -306,7 +318,7 @@ public final class MusicState {
     // ------------------------------------------------------------ 持久化
 
     private static Path stateFile() {
-        return FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic").resolve("state.json");
+        return CloudHome.resolve("state.json");
     }
 
     /** 恢复上次的队列和当前歌曲；只恢复为暂停态，不自动播放。 */
@@ -515,13 +527,25 @@ public final class MusicState {
             try {
                 NeteaseQuality wanted = NeteaseSession.INSTANCE.quality();
                 NeteaseApi.Playable playable = NeteaseApi.playable(track.id(), wanted);
-                if (playable == null) failure = "没有可用播放地址（版权受限/需要会员，或 CDN 拒绝）";
+                if (playable == null) {
+                    // 会话过期和版权受限表现完全一样，先按已知状态给更准确的提示。
+                    failure = NeteaseSession.INSTANCE.sessionInvalid()
+                            ? "网易云登录已失效，请在账号页重新登录"
+                            : "没有可用播放地址（版权受限/需要会员，或 CDN 拒绝）";
+                }
                 else {
                     url = playable.url();
                     actualQuality = playable.quality();
                 }
             } catch (Exception e) {
                 failure = "取播放地址失败：" + e.getMessage();
+            }
+            if (!failure.isEmpty()) {
+                // 顺手校验一次账号状态：Cookie 还在但服务端不认时，会把登录态标成失效并提示重登。
+                if (NeteaseSession.INSTANCE.loggedIn()) NeteaseSession.INSTANCE.refreshAccountAsync();
+                // VIP/版权问题的第一现场：把歌名、ID、当前音质和失败原因打进日志。
+                CloudXMusicClient.LOGGER.warn("[网易云] 取链失败 {}（id={}，偏好音质={}）：{}",
+                        track.title(), track.id(), NeteaseSession.INSTANCE.quality(), failure);
             }
             Lyric parsed = Lyric.EMPTY;
             try {
@@ -540,11 +564,13 @@ public final class MusicState {
                 if (finalUrl == null) {
                     consecutiveFailures++;
                     playing = false;
+                    lastFailureTrackId = track.id();
                     statusLine = "《" + track.title() + "》播不了：" + finalFailure;
-                    if (consecutiveFailures <= 3 && queue.size() > 1) {
+                    // 房间里不能自动跳过：个人队列的下一首和房间的不是同一首，会直接播错。
+                    if (consecutiveFailures <= 3 && queue.size() > 1 && !roomMode) {
                         statusLine += "（自动跳过）";
                         next();
-                    } else if (consecutiveFailures > 3) {
+                    } else if (consecutiveFailures > 3 && !roomMode) {
                         statusLine = "连续 " + consecutiveFailures + " 首都播不了，请检查登录状态";
                     }
                     return;
@@ -571,6 +597,51 @@ public final class MusicState {
         player.stop();
         lyric = Lyric.EMPTY;
         statusLine = "";
+    }
+
+    /**
+     * 房间跟播：以指定进度播放这首歌。不改个人队列、不写 state.json，
+     * 因为房间队列由服务端权威持有，本地队列要在退出房间后才恢复。
+     *
+     * @param startMs 起播位置，来自房间时间轴
+     * @return false 表示当前不是网易云曲目（QQ 侧由 QQPlaybackController 负责）
+     */
+    public boolean playRoomTrack(Track track, long startMs) {
+        if (track == null || !track.netease()) return false;
+        current = track;
+        playing = true;
+        lastFailureTrackId = "";
+        lyric = Lyric.EMPTY;
+        startNetease(track, Math.max(0, startMs));
+        return true;
+    }
+
+    /** 房间暂停或成员暂停跟听：只停声卡，不动队列与持久化。 */
+    public void pauseRoomPlayback() {
+        playbackRequest.incrementAndGet();
+        playing = false;
+        player.pause();
+    }
+
+    /** 房间跟播是否正在出声，用于漂移校正与失败判定。 */
+    public boolean roomAudioActive() {
+        return playing && current.netease();
+    }
+
+    /** 最近一次取链失败落在哪首（房间跟播据此判定"真的播不了"，不用猜时间）。 */
+    public String lastFailureTrackId() {
+        return lastFailureTrackId;
+    }
+
+    /** 房间跟播期间关掉个人队列的曲末自动切歌，由服务端统一切歌。 */
+    public void roomMode(boolean value) {
+        roomMode = value;
+    }
+
+    /** 退出房间：停掉房间音频并清空房间曲目占位，别让个人界面还显示房主的歌。 */
+    public void clearRoomPlayback() {
+        stopAll();
+        current = NOTHING;
     }
 
     /** 退出登录：停止播放，并清空账号相关的推荐、收藏和播放队列。 */

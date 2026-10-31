@@ -13,6 +13,7 @@ import static dev.lzasn.cloudxmusic.client.gui.design.MusicLayout.Box;
 public final class QQCatalogPainter {
     public static final Box REFRESH=new Box(970,104,80,28),BACK=new Box(292,104,68,28),PLAY=new Box(866,104,92,28),
             MORE=new Box(292,552,758,26);
+    private static final Box CHART_PREV=new Box(982,286,30,26),CHART_NEXT=new Box(1020,286,30,26);
     private QQCatalogPainter(){}
     public static void paint(FrostCanvas c,QQCatalogController.View view,Function<String,BufferedImage> images,UnifiedSong current){
         Shape clip=c.g.getClip();c.g.clip(new Rectangle2D.Double(282,98,778,482));
@@ -25,19 +26,19 @@ public final class QQCatalogPainter {
     private static void home(FrostCanvas c,QQCatalogController.View v,Function<String,BufferedImage> images){
         c.text(v.status(),292,123,11,false,v.error()?QQSearchPainter.errorColor():MUTED,588);
         dailyEntry(c);
-        Shape saved=c.g.getClip();c.text("为你推荐歌单",292,308,15,true,INK,400);
-        if(v.playlists().isEmpty()&&!v.loading())c.text("暂无推荐歌单，请登录或点击刷新",292,362,13,false,MUTED,700);
+        Shape saved=c.g.getClip();c.text("QQ 音乐排行榜",292,308,15,true,INK,400);button(c,CHART_PREV,"‹");button(c,CHART_NEXT,"›");
+        if(v.playlists().isEmpty()&&!v.loading())c.text("暂无排行榜，请点击刷新",292,362,13,false,MUTED,700);
         c.g.clip(new Rectangle2D.Double(282,314,778,242));
-        for(int n=v.scroll()*QQCatalogLayout.COLUMNS;n<Math.min(v.playlists().size(),(v.scroll()+QQCatalogLayout.VISIBLE_ROWS)*QQCatalogLayout.COLUMNS);n++){
-            Box tile=QQCatalogLayout.tile(n-v.scroll()*QQCatalogLayout.COLUMNS);int x=tile.x(),y=tile.y();var p=v.playlists().get(n);
+        for(int n=v.scroll();n<Math.min(v.playlists().size(),v.scroll()+QQCatalogLayout.COLUMNS);n++){
+            Box tile=QQCatalogLayout.tile(n-v.scroll());int x=tile.x(),y=tile.y();var p=v.playlists().get(n);
             c.shadow(x,y,178,224,14,7,0,3,new Color(24,16,24,dark?48:18));c.round(x,y,178,224,14,CARD_BG);
             BufferedImage image=images.apply(p.cover());cover(c,image,x,y,178,178,14);
             if(image==null)UiIcons.draw(c,"note",x+89,y+89,30,PINK);
             c.text(p.title(),x+10,y+199,12,true,INK,158);
-            c.text(p.count()>0?p.count()+" 首歌曲":"精选歌单",x+10,y+216,10,false,MUTED,158);
+            c.text(p.count()>0?p.count()+" 首歌曲":"官方榜单",x+10,y+216,10,false,MUTED,158);
             c.round(x+134,y+134,32,32,16,new Color(255,255,255,185));UiIcons.draw(c,"play",x+151,y+150,14,new Color(55,37,50,230));
         }
-        c.g.setClip(saved);c.text(v.loading()?"正在加载推荐…":v.hasMore()?"向下滚动加载更多歌单":"已显示全部推荐",292,574,10,false,MUTED,758);
+        c.g.setClip(saved);c.text(v.loading()?"正在加载排行榜…":"横向滚动或点击箭头浏览榜单",292,574,10,false,MUTED,758);
     }
     private static void dailyEntry(FrostCanvas c){
         Box box=QQCatalogLayout.dailyCard();int x=box.x(),y=box.y(),w=box.w(),h=box.h();
@@ -97,13 +98,13 @@ public final class QQCatalogPainter {
         if(x<282||x>1060||y<98||y>=582)return false;var v=controller.view();
         if(REFRESH.contains(x,y)){controller.refresh();return true;}
         if(v.mode()==QQCatalogController.Mode.HOME){
-            if(QQCatalogLayout.dailyCard().contains(x,y))controller.daily(QQCatalogLayout.dailyPlay().contains(x,y));
+            if(CHART_PREV.contains(x,y))controller.scroll(-1);else if(CHART_NEXT.contains(x,y))controller.scroll(1);else if(QQCatalogLayout.dailyCard().contains(x,y))controller.daily(QQCatalogLayout.dailyPlay().contains(x,y));
             else{
                 int n=QQCatalogLayout.playlistAt(x,y,v.scroll(),v.playlists().size());
-                if(n>=0){Box tile=QQCatalogLayout.tile(n-v.scroll()*QQCatalogLayout.COLUMNS);controller.open(v.playlists().get(n),new Box(tile.x()+134,tile.y()+134,32,32).contains(x,y));}
+                if(n>=0){Box tile=QQCatalogLayout.tile(n-v.scroll());controller.open(v.playlists().get(n),new Box(tile.x()+134,tile.y()+134,32,32).contains(x,y));}
             }
         }else{
-            if(BACK.contains(x,y)&&v.mode()!=QQCatalogController.Mode.LIKED)controller.home();
+            if(BACK.contains(x,y)&&v.mode()!=QQCatalogController.Mode.LIKED)controller.back();
             else if(PLAY.contains(x,y))controller.play(0);
             else if(MORE.contains(x,y))controller.loadMore();
             else if(x>=292&&x<1050&&y>=182&&y<546)controller.play(v.scroll()+(int)((y-182)/52));
@@ -113,6 +114,6 @@ public final class QQCatalogPainter {
     public static boolean scroll(QQCatalogController controller,double x,double y,double horizontal,double vertical){
         if(x<282||x>1060||y<98||y>=582)return false;
         if(controller.view().mode()==QQCatalogController.Mode.HOME&&y>=138&&y<279)return true;
-        else if(vertical!=0)controller.scroll(vertical>0?-1:1);return true;
+        else if(controller.view().mode()==QQCatalogController.Mode.HOME){double delta=horizontal!=0?horizontal:vertical;if(delta!=0)controller.scroll(delta>0?-1:1);}else if(vertical!=0)controller.scroll(vertical>0?-1:1);return true;
     }
 }

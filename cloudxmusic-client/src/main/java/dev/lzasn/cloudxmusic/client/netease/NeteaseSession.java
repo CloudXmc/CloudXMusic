@@ -7,7 +7,7 @@ import com.google.gson.JsonParser;
 import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
 import dev.lzasn.cloudxmusic.client.state.LyricMode;
 import dev.lzasn.cloudxmusic.client.util.Async;
-import net.fabricmc.loader.api.FabricLoader;
+import dev.lzasn.cloudxmusic.client.CloudHome;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,6 +25,8 @@ public final class NeteaseSession {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private boolean loggedIn;
+    /** Cookie 仍在但服务端已判定未登录（需要重新扫码）。 */
+    private volatile boolean sessionInvalid;
     private String uid = "";
     private String nickname = "";
     private String avatar = "";
@@ -42,7 +44,7 @@ public final class NeteaseSession {
      * 新文件不存在而老文件存在时才移动，失败则继续用老路径，保证升级后不掉登录态。</p>
      */
     private static Path file() {
-        Path base = FabricLoader.getInstance().getConfigDir().resolve("cloudxmusic");
+        Path base = CloudHome.dir();
         Path target = base.resolve("netease").resolve("netease.json");
         Path legacy = base.resolve("netease.json");
         if (!Files.exists(target) && Files.isRegularFile(legacy)) {
@@ -148,6 +150,7 @@ public final class NeteaseSession {
             return;
         }
         loggedIn = true;
+        sessionInvalid = false;
         if (result.uid() != null && !result.uid().isBlank()) uid = result.uid();
         if (result.nickname() != null && !result.nickname().isBlank()) nickname = result.nickname();
         if (result.avatarUrl() != null && !result.avatarUrl().isBlank()) avatar = result.avatarUrl();
@@ -162,6 +165,15 @@ public final class NeteaseSession {
                 NeteaseApi.LoginResult result = NeteaseApi.account();
                 if (result.ok()) {
                     Async.main(() -> applyLogin(result));
+                } else if (result.code() == 301 || result.code() == 302) {
+                    // Cookie 还在、但服务端已经不认了：必须显式提示重新登录，
+                    // 否则取链失败只会显示成"没有可用播放地址"，看起来像 VIP/版权问题。
+                    CloudXMusicClient.LOGGER.warn("网易云登录已失效（code={}），需要重新登录", result.code());
+                    Async.main(() -> {
+                        sessionInvalid = true;
+                        CloudXMusicClient.STATE.statusLine("网易云登录已失效，请重新登录");
+                        NeteaseQualityToast.playback("登录已失效，请在账号页重新登录网易云");
+                    });
                 } else {
                     CloudXMusicClient.LOGGER.info("现有 Cookie 暂未通过账号校验：code={}", result.code());
                 }
@@ -171,8 +183,14 @@ public final class NeteaseSession {
         });
     }
 
+    /** Cookie 还在但服务端已判定未登录。 */
+    public boolean sessionInvalid() {
+        return sessionInvalid;
+    }
+
     public void logout() {
         loggedIn = false;
+        sessionInvalid = false;
         uid = "";
         nickname = "";
         avatar = "";

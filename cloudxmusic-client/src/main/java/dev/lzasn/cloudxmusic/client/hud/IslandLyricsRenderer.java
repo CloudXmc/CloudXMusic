@@ -9,9 +9,9 @@ import static dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas.*;
 final class IslandLyricsRenderer implements AutoCloseable {
     private final BilingualTextRenderer text=new BilingualTextRenderer(true);
     private String time="";private float available;
-    void draw(GuiGraphics graphics,IslandPainter.View view,double raster,double seconds){
+    void draw(GuiGraphics graphics,IslandPainter.View view,double raster,double seconds,dev.lzasn.cloudxmusic.client.omni.PlaybackSnapshot playback){
         if(!time.equals(view.time())){time=view.time();available=IslandPainter.availableTextWidth(view);}
-        var playback=dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.snapshot();
+
         text.draw(graphics,view.title(),view.subtitle(),13,11,INK,MUTED,57,26,44,available,5,51,true,raster,seconds,playback.timedLine(),playback.position()*1000);
     }
     @Override public void close(){text.close();time="";}

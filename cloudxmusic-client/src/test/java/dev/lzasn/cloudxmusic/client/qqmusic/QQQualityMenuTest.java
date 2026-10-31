@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class QQQualityMenuTest {
     @Test void everyActualQualityHasItsOwnCheckmarkAndPendingTracksDoNotShowTheOldOne()throws Exception{
-        var out=Path.of("../outputs/qq-upgrade-2.13.2/previews");Files.createDirectories(out);
+        var out=Path.of("../outputs/integration/previews");Files.createDirectories(out);
         try{
             for(boolean dark:new boolean[]{false,true}){
                 FrostCanvas.setDark(dark);

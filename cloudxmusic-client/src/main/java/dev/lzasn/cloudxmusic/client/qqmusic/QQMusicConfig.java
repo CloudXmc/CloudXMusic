@@ -4,7 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonObject;
-import net.fabricmc.loader.api.FabricLoader;
+import dev.lzasn.cloudxmusic.client.CloudHome;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -23,8 +23,7 @@ public final class QQMusicConfig {
         this.file = Objects.requireNonNull(file, "file").toAbsolutePath().normalize();
     }
     public static QQMusicConfig forCurrentInstance() {
-        return new QQMusicConfig(FabricLoader.getInstance().getConfigDir()
-                .resolve("cloudxmusic").resolve("qqmusic").resolve("config.json"));
+        return new QQMusicConfig(CloudHome.resolve("qqmusic/config.json"));
     }
     /** 只生成缺失文件，旧配置及未知字段原样保留；须在后台线程调用。 */
     public synchronized JsonObject load() throws IOException {

@@ -27,7 +27,7 @@ public final class UiPreviewRenderer {
             new Track("夜色慢慢降落", "木棉", 198, "1008", "灯火温柔", ""),
             new Track("候鸟与信", "南屿", 236, "1009", "远行", ""));
     private static final MusicView.RoomView ROOM_LOBBY = new MusicView.RoomView(
-            false, "", "网易云音乐", "", "", "", 0, 0, false, List.of(), List.of(),
+            false, "", "网易云音乐", "", "", "", 0, 0, false, false, List.of(), List.of(),
             List.of(
                     new MusicView.RoomSummary("CXM7Q2", "xWtree", "网易云音乐", 4, "播放中"),
                     new MusicView.RoomSummary("QQM3A8", "jeb_", "QQ 音乐", 2, "等待加入"),
@@ -35,15 +35,19 @@ public final class UiPreviewRenderer {
                     new MusicView.RoomSummary("LOFI42", "Notch", "网易云音乐", 3, "播放中"),
                     new MusicView.RoomSummary("QQP7X1", "Grumm", "QQ 音乐", 5, "等待加入"),
                     new MusicView.RoomSummary("CXM9R4", "Searge", "网易云音乐", 2, "播放中")),
-            0);
+            0, -1, "列表循环", 20, 0);
     private static final MusicView.RoomView ROOM_ACTIVE = new MusicView.RoomView(
             true, "CXM7Q2", "网易云音乐", "已同步 · 房间播放中",
-            "春日序曲", "雲與微光", 1020, 258, true,
+            "春日序曲", "雲與微光", 1020, 258, true, true,
             List.of(
-                    new MusicView.RoomMember("Lzasn", "房主 · 正在跟听", true, true),
-                    new MusicView.RoomMember("xWtree", "正在跟听", false, true),
-                    new MusicView.RoomMember("xiaota888", "缓冲中", false, true),
-                    new MusicView.RoomMember("阿岚", "本曲不可播放", false, false)),
+                    new MusicView.RoomMember("Lzasn", "正在播放", true, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("xWtree", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("xiaota888", "暂停跟听", false, MusicView.MemberTone.PAUSED),
+                    new MusicView.RoomMember("阿岚", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("jeb_", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("Dinnerbone", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("Notch", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("Searge", "正在跟听", false, MusicView.MemberTone.ACTIVE)),
             List.of(
                     new MusicView.RoomTrack("雨中的花开", "雲與微光", "3:36"),
                     new MusicView.RoomTrack("安静的清晨", "星", "4:02"),
@@ -53,7 +57,11 @@ public final class UiPreviewRenderer {
                     new MusicView.RoomTrack("回家的路", "白日梦", "3:43"),
                     new MusicView.RoomTrack("夜色慢慢降落", "木棉", "3:18"),
                     new MusicView.RoomTrack("候鸟与信", "南屿", "3:56")),
-            List.of(), 1);
+            List.of(), 1, 0, "列表循环", 20, 0);
+    /** 成员视角：同一房间，owner=false，用于核对播放页底栏置灰。 */
+    private static final MusicView.RoomView ROOM_MEMBER = new MusicView.RoomView(
+            true, "CXM7Q2", "网易云音乐", "成员跟随房主播放", "春日序曲", "雲與微光", 1020, 258, true, false,
+            ROOM_ACTIVE.members(), ROOM_ACTIVE.queue(), List.of(), 1, 0, "列表循环", 20, 0);
 
     UiPreviewRenderer() {}
 
@@ -72,6 +80,9 @@ public final class UiPreviewRenderer {
         render(out,"cloudxmusic-room-lobby-dark.png",Page.ROOM,"",false,0,true,null,ROOM_LOBBY);
         render(out,"cloudxmusic-room-active.png",Page.ROOM,"",false,0,false,null,ROOM_ACTIVE);
         render(out,"cloudxmusic-room-active-dark.png",Page.ROOM,"",false,0,true,null,ROOM_ACTIVE);
+        // 房间里「正在播放」页：房主可操作，成员上下首/队列/循环置灰。
+        render(out,"cloudxmusic-now-room-owner.png",Page.NOW,"",false,0,false,null,ROOM_ACTIVE);
+        render(out,"cloudxmusic-now-room-member.png",Page.NOW,"",false,0,false,null,ROOM_MEMBER);
         render(out,"cloudxmusic-settings.png",Page.SETTINGS,"",false,0,false);
         render(out,"cloudxmusic-settings-dark.png",Page.SETTINGS,"",false,0,true);
         render(out,"cloudxmusic-account.png",Page.ACCOUNT,"",false,0,false);

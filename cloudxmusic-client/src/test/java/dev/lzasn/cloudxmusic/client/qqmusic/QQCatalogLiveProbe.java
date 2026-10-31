@@ -32,7 +32,7 @@ public final class QQCatalogLiveProbe {
             }
             return info;
         });
-        check("recommend",()->{var page=new QQCatalogService(account,()->true).api().recommend(0);JsonObject info=new JsonObject();info.addProperty("count",page.items().size());
+        check("charts",()->{var page=new QQCatalogService(account,()->true).api().charts();JsonObject info=new JsonObject();info.addProperty("count",page.items().size());
             if(!page.items().isEmpty()){var api=new QQCatalogService(account,()->true).api();var songs=api.tracks(page.items().getFirst(),0);info.addProperty("playlistSongs",songs.items().size());info.addProperty("hasMore",songs.hasMore());
                 if(songs.hasMore()){var next=api.tracks(page.items().getFirst(),songs.nextOffset());var ids=new HashSet<String>();songs.items().forEach(t->ids.add(t.song().platformId()));int before=ids.size();next.items().forEach(t->ids.add(t.song().platformId()));info.addProperty("pageTwoNewSongs",ids.size()-before);info.addProperty("pageTwoOffset",next.nextOffset());}}return info;});
         check("daily",()->{var session=new QQCatalogService(account,()->true);var daily=session.daily();var songs=session.api().tracks(daily,0);JsonObject info=new JsonObject();info.addProperty("songs",songs.items().size());return info;});

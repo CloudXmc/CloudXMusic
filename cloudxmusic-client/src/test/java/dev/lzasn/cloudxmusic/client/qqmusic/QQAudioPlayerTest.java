@@ -12,6 +12,25 @@ import java.util.concurrent.locks.LockSupport;
 import static org.junit.jupiter.api.Assertions.*;
 
 class QQAudioPlayerTest {
+    @Test void viewSamplesHardwareDuringBlockedWriteWithoutWaitingForClockTick()throws Exception{
+        AtomicLong played=new AtomicLong();AtomicReference<AudioFormat> format=new AtomicReference<>();
+        AtomicBoolean running=new AtomicBoolean();CountDownLatch writing=new CountDownLatch(1),release=new CountDownLatch(1);
+        SourceDataLine line=(SourceDataLine)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{SourceDataLine.class},(p,m,a)->switch(m.getName()){
+            case "open"->{format.set((AudioFormat)a[0]);yield null;}
+            case "getFormat"->format.get();case "getLongFramePosition"->played.get();
+            case "start"->{running.set(true);yield null;}case "stop","close"->{running.set(false);release.countDown();yield null;}
+            case "isRunning","isActive"->running.get();case "isOpen","isControlSupported"->false;
+            case "write"->{writing.countDown();release.await(2,TimeUnit.SECONDS);yield (Integer)a[2];}
+            case "getBufferSize","available"->8192;default->null;
+        });
+        try(var player=new QQAudioPlayer(f->line,(u,s)->fixture())){
+            player.play(URI.create("https://a.qq.com/clock.flac"),22,()->true).get(1,TimeUnit.SECONDS);
+            assertTrue(writing.await(1,TimeUnit.SECONDS));assertEquals(0,player.view().position(),1e-9);
+            played.set(100);assertEquals(100.0/format.get().getSampleRate(),player.view().position(),1e-9);
+            Thread.sleep(25);assertEquals(100.0/format.get().getSampleRate(),player.view().position(),1e-9);
+            release.countDown();player.stop().get(1,TimeUnit.SECONDS);
+        }finally{release.countDown();}
+    }
     @Test void returningToTitleClosesDecodedAudioAndReenteringWorldDoesNotResumeIt()throws Exception{
         AtomicInteger running=new AtomicInteger(),maximum=new AtomicInteger();Device device=new Device(running,maximum);
         AtomicReference<CompletableFuture<Void>> stopped=new AtomicReference<>();

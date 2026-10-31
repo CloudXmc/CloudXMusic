@@ -74,7 +74,9 @@ public final class Mp3Player {
     private static final class Engine {
         final long gen;
         HttpURLConnection connection;
-        SourceDataLine line;
+        volatile SourceDataLine line;
+        final PcmPlaybackClock clock=new PcmPlaybackClock();
+        long clockBaseMs;
         long streamBytes;
 
         Engine(long gen) {
@@ -87,6 +89,7 @@ public final class Mp3Player {
             if (current != null) {
                 try {
                     current.stop();
+                    clock.freeze();
                     current.close();
                     if (!current.isOpen()) line = null;
                 } catch (RuntimeException ignored) {
@@ -105,6 +108,7 @@ public final class Mp3Player {
                     for(int i=1;i<=5;i++){gain.setValue(from+(to-from)*i/5);java.util.concurrent.locks.LockSupport.parkNanos(2_000_000);}
                 }
                 current.stop();
+                clock.freeze();
                 current.flush();
                 current.close();
                 if (current.isOpen()) throw new IllegalStateException("网易云声卡未能关闭");
@@ -139,6 +143,7 @@ public final class Mp3Player {
 
     private void spawn() {
         Engine created = new Engine(++generation);
+        created.clockBaseMs=positionMs;created.clock.reset(positionMs/1000.0);
         engine = created;
         Thread thread = new Thread(() -> runLoop(created), "CloudXmusic-Audio");
         thread.setDaemon(true);
@@ -155,16 +160,18 @@ public final class Mp3Player {
      * 暂停：只让解码线程停手，连接和声卡都保留。
      *
      * <p>以前这里是断流 + 重连 + 按字节估算位置，估偏了进度就乱跳；现在位置冻结在
-     * 最后一个解码样本上，恢复即续播。</p>
+     * 声卡最后消费的样本上，恢复即续播。</p>
      */
     public synchronized void pause() {
         if (!active || paused) return;
         paused = true;
         pausedSince = System.currentTimeMillis();
+        Engine current=engine;if(current!=null&&current.line!=null)current.line.stop();
     }
 
     /** 交接专用：立即使旧代次失效，后台停线并确认；不在游戏线程等待声卡或网络。 */
     public synchronized java.util.concurrent.CompletableFuture<Void> pauseForHandoff() {
+        positionMs=positionMs();
         generation++;
         active = false;
         paused = true;
@@ -189,11 +196,13 @@ public final class Mp3Player {
     /** 恢复：暂停太久（CDN 会掐空闲连接）才重开流，否则原地继续。 */
     public synchronized void resume() {
         if (!active || !paused) return;
+        positionMs=positionMs();
         paused = false;
         // 恢复瞬间重置计时，否则暂停期间的时间会被算进「卡住」判定。
         lastProgressAt = System.currentTimeMillis();
         if (System.currentTimeMillis() - pausedSince < IDLE_RESTART_MS
                 && worker != null && worker.isAlive()) {
+            Engine current=engine;if(current!=null&&current.line!=null)current.line.start();
             return;
         }
         // 重开一代：旧线程靠代次自增自行退出，这里只负责断开旧连接和回收旧声卡。
@@ -251,7 +260,9 @@ public final class Mp3Player {
     }
 
     public long positionMs() {
-        return positionMs;
+        Engine current=engine;
+        if(paused&&seekTargetMs>=0)return seekTargetMs;
+        return current!=null?current.clock.snapshot().milliseconds():positionMs;
     }
 
     public long totalMs() {
@@ -350,6 +361,7 @@ public final class Mp3Player {
                     Decoder decoder = new Decoder();
                     // Range 生效时直接从目标位置开始；没生效就得从头解码跳帧
                     long decodedMs = ranged ? startAt : 0;
+                    long decodedFrames=0,segmentStart=decodedMs;
                     Header header;
                     while (!stale(e.gen)) {
                         while (paused && !stale(e.gen)) {
@@ -358,9 +370,11 @@ public final class Mp3Player {
                         if (stale(e.gen)) break;
                         if ((header = bitstream.readFrame()) == null) {
                             if (stale(e.gen)) break;
+                            drainLine(e);
+                            if(stale(e.gen)){e.close();return;}
+                            e.close();
                             finished = true;
                             active = false;
-                            drainLine(e);
                             return;
                         }
                         SampleBuffer buffer = (SampleBuffer) decoder.decodeFrame(header, bitstream);
@@ -369,7 +383,8 @@ public final class Mp3Player {
                         int channels = Math.max(1, decoder.getOutputChannels());
                         int rate = decoder.getOutputFrequency() > 0 ? decoder.getOutputFrequency() : 44100;
                         int samples = buffer.getBufferLength();
-                        long frameMs = (long) ((samples / (double) channels) * 1000.0 / rate);
+                        long nextDecodedMs=segmentStart+(decodedFrames+samples/channels)*1000L/rate;
+                        long frameMs=nextDecodedMs-decodedMs;
 
                         // 和 decodedMs（解码线程的真实进度）比，不能和 positionMs 比：
                         // positionMs 已被 seek() 预写成目标值，两者相等就永远判不出需要跳转。
@@ -383,30 +398,34 @@ public final class Mp3Player {
 
                         if (!ranged && decodedMs + frameMs <= startAt) {
                             decodedMs += frameMs;
-                            positionMs = decodedMs;
+                            decodedFrames+=samples/channels;
                             lastProgressAt = System.currentTimeMillis();
                             continue;
                         }
 
+                        if(e.line==null)e.clockBaseMs=decodedMs;
                         ensureLine(e, rate, channels);
                         writeFrames(e, buffer.getBuffer(), samples);
                         if (stale(e.gen)) break;
                         decodedMs += frameMs;
-                        positionMs = decodedMs;
+                        decodedFrames+=samples/channels;
+                        positionMs = e.clock.snapshot().milliseconds();
                         lastProgressAt = System.currentTimeMillis();
                         retries = 0;
                     }
                     // 内层循环可能是「代次过期」退出的。这时 active/finished 属于新一代，
                     // 旧线程一行都不能写，否则会把正在播的新线程设成停止状态。
                     if (stale(e.gen)) break;
+                    drainLine(e);
+                    if(stale(e.gen))break;
                     finished = true;
                     active = false;
-                    drainLine(e);
                 }
                 break;
             } catch (RestartStream restart) {
                 if (stale(e.gen)) break;
                 e.close();
+                e.clock.reset(startAt/1000.0);
                 positionMs = startAt;
             } catch (Throwable t) {
                 // 旧线程被 disconnect 掉抛出的异常不是播放失败，不能污染新一代的状态。
@@ -460,7 +479,9 @@ public final class Mp3Player {
                 int[][] planes = new int[channels][65536];
                 short[] pcm = new short[65536 * channels];
                 long decodedMs = Math.max(0, startAt);
+                long segmentStart=decodedMs,decodedFrames=0;
                 track.seekToMs(decodedMs);
+                e.clockBaseMs=decodedMs;
                 ensureLine(e, rate, channels);
                 while (!stale(e.gen)) {
                     while (paused && !stale(e.gen)) sleep(40);
@@ -470,6 +491,8 @@ public final class Mp3Player {
                     if (pending >= 0 && Math.abs(pending - decodedMs) > 250) {
                         track.seekToMs(pending);
                         decodedMs = pending;
+                        segmentStart=pending;decodedFrames=0;
+                        if(e.line!=null){e.line.stop();e.line.flush();e.clock.open(e.line,pending*rate/1000L);if(!paused)e.line.start();}
                         seekTargetMs = -1;
                         continue;
                     }
@@ -477,9 +500,10 @@ public final class Mp3Player {
 
                     int frames = track.readFrame(planes);
                     if (frames == 0) {
+                        drainLine(e);
+                        if(stale(e.gen))return;
                         finished = true;
                         active = false;
-                        drainLine(e);
                         return;
                     }
                     // 跳到帧中间时，首帧的前若干个采样要丢掉，才能对得上目标时间。
@@ -492,8 +516,8 @@ public final class Mp3Player {
                         }
                     }
                     writeFrames(e, pcm, count);
-                    decodedMs += (frames - skip) * 1000L / rate;
-                    positionMs = decodedMs;
+                    decodedFrames+=frames-skip;decodedMs=segmentStart+decodedFrames*1000L/rate;
+                    positionMs = e.clock.snapshot().milliseconds();
                     lastProgressAt = System.currentTimeMillis();
                 }
             } finally {
@@ -576,7 +600,8 @@ public final class Mp3Player {
         SourceDataLine line = (SourceDataLine) AudioSystem.getLine(info);
         // 约 0.4 秒的声卡缓冲，网络抖动时不至于立刻断音
         line.open(format, Math.max(8192, (int) (rate * 0.4) * channels * 2));
-        line.start();
+        engine.clock.open(line,engine.clockBaseMs*rate/1000L);
+        if(!paused)line.start();
         engine.line = line;
         }
     }
@@ -593,7 +618,11 @@ public final class Mp3Player {
             bytes[i * 2] = (byte) (value >> 8);
             bytes[i * 2 + 1] = (byte) value;
         }
-        line.write(bytes, 0, bytes.length);
+        engine.clock.submitted(length/line.getFormat().getChannels());
+        int written=0;
+        while(written<bytes.length&&!stale(engine.gen)){
+            int n=line.write(bytes,written,bytes.length-written);if(n<=0)break;written+=n;
+        }
     }
 
     private void drainLine(Engine engine) {

@@ -72,7 +72,7 @@ class QQPlaybackResolverTest {
         var resolver=resolver((r,c,timeout)->{
             calls.add(method(r)); assertTrue(timeout.compareTo(Duration.ofSeconds(15))<=0);
             assertEquals("fake-key",r.getAsJsonObject("comm").get("authst").getAsString());
-            assertEquals(3,c.getCookieStore().getCookies().size());
+            assertEquals(5,c.getCookieStore().getCookies().size());
             if (method(r).equals("get_song_detail_yqq")) return metadata();
             assertEquals("F000Media456.flac",filename(r));
             assertEquals("Song123",r.getAsJsonObject("req_0").getAsJsonObject("param").getAsJsonArray("songmid").get(0).getAsString());

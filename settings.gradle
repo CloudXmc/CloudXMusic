@@ -8,3 +8,7 @@ pluginManagement {
 }
 rootProject.name = "CloudXMusic"
 include("cloudxmusic-client")
+
+// 协议与服务端源码只保留在本地；远端和 CI 仅有客户端时仍可独立构建。
+if (file("music-protocol").isDirectory()) include("music-protocol")
+if (file("music-server").isDirectory()) include("music-server")

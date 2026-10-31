@@ -28,9 +28,9 @@ class QQAudioUrlVerifierTest {
         HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0); ExecutorService pool=Executors.newCachedThreadPool();server.setExecutor(pool);
         List<String> failures=new CopyOnWriteArrayList<>();
         server.createContext("/ok.flac",e->{
-            if(!"bytes=0-15".equals(e.getRequestHeaders().getFirst("Range"))) failures.add("range");
+            if(!"bytes=0-41".equals(e.getRequestHeaders().getFirst("Range"))) failures.add("range");
             if(e.getRequestHeaders().getFirst("Cookie")!=null||e.getRequestHeaders().getFirst("Authorization")!=null)failures.add("credentials");
-            byte[] b=Arrays.copyOf("fLaC".getBytes(StandardCharsets.US_ASCII),16);e.getResponseHeaders().add("Content-Range","bytes 0-15/10000000");e.sendResponseHeaders(206,b.length);
+            byte[] b;try(var input=getClass().getResourceAsStream("/qq-audio/tone24.flac")){b=input.readNBytes(42);}e.getResponseHeaders().add("Content-Range","bytes 0-41/10000000");e.sendResponseHeaders(206,b.length);
             try(var out=e.getResponseBody()){out.write(b);}
         });
         server.createContext("/bad.flac",e->{byte[] b="<html>no access</html>".getBytes();e.sendResponseHeaders(200,b.length);try(var o=e.getResponseBody()){o.write(b);}});

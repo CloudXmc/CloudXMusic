@@ -29,10 +29,10 @@ class QQCoverArtTest {
     @Test void gridHitGeometryExcludesGapsAndMapsEveryVisibleTitle(){
         for(int n=0;n<4;n++){
             var box=QQCatalogLayout.tile(n);assertEquals(box.w(),QQCatalogLayout.COVER_SIZE);
-            assertEquals(8+n,QQCatalogLayout.playlistAt(box.x()+20,box.y()+box.h()-8,2,12));
-            assertEquals(-1,QQCatalogLayout.playlistAt(box.x()+box.w()+3,box.y()+20,2,12));
+            assertEquals(8+n,QQCatalogLayout.playlistAt(box.x()+20,box.y()+box.h()-8,8,12));
+            assertEquals(-1,QQCatalogLayout.playlistAt(box.x()+box.w()+3,box.y()+20,8,12));
         }
-        assertEquals(-1,QQCatalogLayout.playlistAt(300,590,2,12));
-        assertEquals(-1,QQCatalogLayout.playlistAt(QQCatalogLayout.tile(3).cx(),400,2,11));
+        assertEquals(-1,QQCatalogLayout.playlistAt(300,590,8,12));
+        assertEquals(-1,QQCatalogLayout.playlistAt(QQCatalogLayout.tile(3).cx(),400,8,11));
     }
 }
