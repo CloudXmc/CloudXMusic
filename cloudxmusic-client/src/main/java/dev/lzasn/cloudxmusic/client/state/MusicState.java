@@ -509,6 +509,19 @@ public final class MusicState {
         }
     }
 
+    /**
+     * 播放别人分享来的歌：队列置顶 + 立刻播放。
+     *
+     * <p>聊天栏点「点击播放」走这条，全程不打开面板。同一首已经在队列里就挪到最前，
+     * 不新增重复条目；随后 {@link #select} 发现队列已包含它，不会再往队尾追加。</p>
+     */
+    public void playShared(Track track) {
+        if (track == null) return;
+        queue.remove(track);
+        queue.add(0, track);
+        select(track);
+    }
+
     public void seek(float value) {
         if (current.netease()) player.seek((long) (Math.max(0, value) * 1000));
     }

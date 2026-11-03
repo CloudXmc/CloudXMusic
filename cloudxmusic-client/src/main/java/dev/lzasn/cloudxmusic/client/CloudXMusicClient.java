@@ -58,6 +58,9 @@ public final class CloudXMusicClient implements ClientModInitializer {
                 }
             }
             if(dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.neteaseActive()) STATE.tick(client);
+            // 分享点播可能正在等声卡交接，交接完成后再起播。
+            dev.lzasn.cloudxmusic.client.chat.SharePlay.tick();
+            MusicRoomClient.INSTANCE.tick();
             RoomAudioFollower.INSTANCE.tick();
         });
 
@@ -69,6 +72,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             QrLogin.cancel();
+            dev.lzasn.cloudxmusic.client.chat.SharePlay.reset();
             MusicRoomClient.INSTANCE.disconnected();
             RoomAudioFollower.INSTANCE.shutdown();
             CoverCache.clear();
@@ -92,6 +96,21 @@ public final class CloudXMusicClient implements ClientModInitializer {
 
         DynamicIslandHud.register();
         dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.register();
+        dev.lzasn.cloudxmusic.client.chat.ShareCommands.register();
+        // 分享消息：挡下原消息，自己往聊天栏放一条带 ClickEvent 的组件。
+        // Fabric 没有给玩家聊天提供 MODIFY_CHAT，只能 ALLOW_CHAT 拦下来再手动添加。
+        net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.ALLOW_CHAT.register(
+                (message, signedMessage, sender, params, receptionTimestamp) -> {
+                    var share = dev.lzasn.cloudxmusic.client.chat.ShareCodec.parse(message.getString());
+                    if (share == null) return true;
+                    dev.lzasn.cloudxmusic.client.chat.SharePlay.remember(share);
+                    var client = Minecraft.getInstance();
+                    if (client.gui != null) {
+                        client.gui.getChat().addMessage(
+                                dev.lzasn.cloudxmusic.client.chat.ShareChat.render(sender, share));
+                    }
+                    return false;
+                });
         // 正式播放由交接协调器控制；不再自动启动独立声卡测试。
     }
 

@@ -90,6 +90,18 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
                     positionTenths, durationSeconds, playing, owner, members, queue, publicRooms, queueScroll,
                     currentIndex, repeatLabel, capacity, value);
         }
+        /**
+         * 抹掉随房间时钟变化的字段，供静态画布比较用。
+         *
+         * <p>{@code positionTenths} 是本地外推的实时位置，每帧都在变；它一旦参与 record 的
+         * {@code equals}，静态层就会以 30Hz 整幅重绘（房间页关面板卡顿的根因）。
+         * 房间进度和当前时间改由动态层绘制，见 {@code MusicPainter.paintDynamic}。</p>
+         */
+        public RoomView withClock(int value) {
+            return new RoomView(joined, roomCode, source, roomStatus, nowTitle, nowArtist,
+                    value, durationSeconds, playing, owner, members, queue, publicRooms, queueScroll,
+                    currentIndex, repeatLabel, capacity, memberScroll);
+        }
     }
 
     /** 兼容原有调用：没有房间会话时固定显示未加入页面。 */
@@ -154,6 +166,6 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
         return new MusicView(page, current, tracks, queue, List.of(), 0, playing, loggedIn, nickname,
                 search, focused, cursor, status, quality, lyricMode, islandEnabled, playbackMode,
                 favorite, version, hover, coverRevision, -1f, 0f, avatarUrl, darkMode, panelScale, islandScale,
-                islandX, islandY, openKey, scroll, total, room);
+                islandX, islandY, openKey, scroll, total, room.withClock(0));
     }
 }

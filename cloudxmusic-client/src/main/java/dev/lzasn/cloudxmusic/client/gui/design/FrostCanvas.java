@@ -1,6 +1,8 @@
 package dev.lzasn.cloudxmusic.client.gui.design;
 
 import java.awt.*;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.ConvolveOp;
@@ -112,37 +114,98 @@ public final class FrostCanvas implements AutoCloseable {
     public void shadow(int x, int y, int w, int h, int r, int blur, int spread, int dy, Color color) {
         String key = w + ":" + h + ":" + r + ":" + blur + ":" + spread + ":" + color.getRGB();
         BufferedImage shadow = SHADOWS.get(key);
+        // 卷积核半径必须先算：ConvolveOp 会把「离图边不足一个核半径」的像素原样拷贝，
+        // 蒙版只有 margin 那么宽时，外侧整圈都落在拷贝带里 —— 高斯根本没生效，
+        // 阴影被切成一个硬边矩形（这就是面板/灵动岛外面那圈"直角阴影"）。
+        // 所以蒙版要额外向四周留出 radius 的卷积余量，并用 EDGE_ZERO_FILL 让边界按 0 处理。
+        int radius = Math.max(1, (int) Math.ceil(blur * 1.4));
         int margin = blur * 3 + spread;
+        int pad = margin + radius;
         if (shadow == null) {
             // 在半分辨率生成阴影并缓存，避免大半径卷积占用每帧 CPU。
-            int sw = (w + margin * 2 + 1) / 2, sh = (h + margin * 2 + 1) / 2;
+            int sw = Math.max(1, (w + pad * 2 + 1) / 2), sh = Math.max(1, (h + pad * 2 + 1) / 2);
             BufferedImage mask = new BufferedImage(sw, sh, BufferedImage.TYPE_INT_ARGB);
             Graphics2D sg = mask.createGraphics();
             sg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             sg.setColor(color);
             double spreadHalf = spread / 2.0;
-            sg.fill(shape((margin - spread) / 2.0, (margin - spread) / 2.0,
+            sg.fill(shape((pad - spread) / 2.0, (pad - spread) / 2.0,
                     w / 2.0 + spreadHalf * 2, h / 2.0 + spreadHalf * 2,
                     r / 2.0 + spreadHalf));
             sg.dispose();
-            int radius = Math.max(1, (int) Math.ceil(blur * 1.4));
             float[] weights = new float[radius * 2 + 1];
             float total = 0;
-            double sigma = Math.max(1, blur * 0.6);
+            // sigma 取 blur 的一半（半分辨率坐标），让 3σ 刚好落在调用方的透明留白内：
+            // 面板 3σ=84 < PAD 96，灵动岛 3σ=60 < PAD 72。
+            double sigma = Math.max(1, blur * 0.5);
             for (int i = -radius; i <= radius; i++) {
                 weights[i + radius] = (float) Math.exp(-(i * i) / (2 * sigma * sigma));
                 total += weights[i + radius];
             }
             for (int i = 0; i < weights.length; i++) weights[i] /= total;
-            BufferedImage horizontal = new ConvolveOp(new Kernel(weights.length, 1, weights), ConvolveOp.EDGE_NO_OP, null).filter(mask, null);
-            shadow = new ConvolveOp(new Kernel(1, weights.length, weights), ConvolveOp.EDGE_NO_OP, null).filter(horizontal, null);
+            BufferedImage horizontal = new ConvolveOp(new Kernel(weights.length, 1, weights), ConvolveOp.EDGE_ZERO_FILL, null).filter(mask, null);
+            shadow = new ConvolveOp(new Kernel(1, weights.length, weights), ConvolveOp.EDGE_ZERO_FILL, null).filter(horizontal, null);
             if (SHADOWS.size() >= 32) SHADOWS.remove(SHADOWS.keySet().iterator().next());
             SHADOWS.put(key, shadow);
         }
         // 阴影是半分辨率蒙版放大，本身已模糊；双线性足够，双三次会让每次拖尾多花一倍以上 CPU。
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g.drawImage(shadow, x - margin, y - margin + dy, w + margin * 2, h + margin * 2, null);
+        g.drawImage(shadow, x - pad, y - pad + dy, w + pad * 2, h + pad * 2, null);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+    }
+
+    /** 正方形便捷版。 */
+    public void roundImage(BufferedImage source, double x, double y, double size, double radius) {
+        roundImage(source, x, y, size, size, radius);
+    }
+
+    /**
+     * 画一张等比铺满、圆角遮罩的图片（封面、头像、缩略图）。
+     *
+     * <p>不能直接 {@code g.clip(shape)} 再 {@code drawImage}：Java2D 的 clip 是硬遮罩，
+     * 不做抗锯齿，圆边一圈必然是台阶；缩放默认又是最近邻，非整数倍时像素还会被不均匀丢弃。
+     * 这里改成离屏一张「按设备像素铺满 + 双线性缩放 + AA 圆角遮罩」的贴图，最后 1:1 贴回画布，
+     * 边缘和缩放都交给 Java2D 的抗锯齿路径处理。</p>
+     *
+     * <p>铺满语义与 {@code BackgroundImage} 的 cover 一致：短边填满、长边居中裁掉。</p>
+     *
+     * @param w 设计像素下的宽
+     * @param h 设计像素下的高
+     */
+    public void roundImage(BufferedImage source, double x, double y, double w, double h, double radius) {
+        if (source == null || w <= 0 || h <= 0) return;
+        double s = Math.sqrt(Math.abs(g.getTransform().getDeterminant()));
+        if (s <= 0) s = 1;
+        int px = Math.max(1, (int) Math.ceil(w * s)), py = Math.max(1, (int) Math.ceil(h * s));
+        // 留 1 像素余量：遮罩的 AA 边缘正好落在贴图最外圈，不留余量会被裁掉半个像素。
+        int pad = 1, tw = px + pad * 2, th = py + pad * 2;
+        BufferedImage tile = new BufferedImage(tw, th, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D t = tile.createGraphics();
+        t.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        t.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        t.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        double zoom = Math.max(w / Math.max(1, source.getWidth()), h / Math.max(1, source.getHeight()));
+        int iw = Math.max(1, (int) Math.round(source.getWidth() * zoom * s));
+        int ih = Math.max(1, (int) Math.round(source.getHeight() * zoom * s));
+        t.drawImage(source, pad + (px - iw) / 2, pad + (py - ih) / 2, iw, ih, null);
+        // 遮罩必须是一张「盖满整块贴图」的图：合成只作用在源覆盖到的像素上，
+        // 直接 fill 一个圆再 DstIn 的话圆外根本没被处理，等于没遮罩。
+        BufferedImage mask = new BufferedImage(tw, th, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D m = mask.createGraphics();
+        m.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        m.setColor(Color.WHITE);
+        m.fill(shape(pad, pad, px, py, radius * s));
+        m.dispose();
+        t.setComposite(AlphaComposite.DstIn);
+        t.drawImage(mask, 0, 0, null);
+        t.dispose();
+        AffineTransform saved = g.getTransform();
+        Composite savedComposite = g.getComposite();
+        Point2D at = saved.transform(new Point2D.Double(x, y), null);
+        g.setTransform(new AffineTransform());
+        g.drawImage(tile, (int) Math.round(at.getX()) - pad, (int) Math.round(at.getY()) - pad, null);
+        g.setTransform(saved);
+        g.setComposite(savedComposite);
     }
 
     public float width(String text, float size, boolean bold) {

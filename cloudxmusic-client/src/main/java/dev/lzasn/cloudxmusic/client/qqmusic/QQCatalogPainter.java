@@ -84,8 +84,11 @@ public final class QQCatalogPainter {
             cover(c,images.apply(song.coverUrl()),304,y+7,36,36,7);
             if(song.coverUrl().isBlank())UiIcons.draw(c,"note",322,y+25,19,PINK);
             QQVipBadge.title(c,song.title(),352,y+22,13,true,INK,372,song.vip());
-            c.text(song.artist(),352,y+40,10,false,MUTED,372);c.text(song.album(),748,y+29,11,false,MUTED,225);
+            c.text(song.artist(),352,y+40,10,false,MUTED,372);c.text(song.album(),748,y+29,11,false,MUTED,175);
             c.text(song.durationText(),1002,y+29,11,false,MUTED,48);
+            // 分享按钮：夹在专辑与时长之间，几何见 shareBox。
+            Box share=shareBox(n-v.scroll());
+            UiIcons.draw(c,"share",share.cx(),share.cy(),15,MUTED);
         }
         if(v.tracks().isEmpty()&&!v.loading())c.text(v.error()?"请检查账号后刷新重试":"歌单暂无歌曲",292,242,13,false,MUTED,758);
         c.center(v.loading()?"正在加载…":v.hasMore()?"下拉或点击加载更多":"已显示全部歌曲",671,570,10,false,MUTED,758);
@@ -93,6 +96,23 @@ public final class QQCatalogPainter {
     private static void button(FrostCanvas c,Box box,String label){c.round(box.x(),box.y(),box.w(),box.h(),box.h()/2f,SOFT);c.center(label,box.cx(),box.cy()+4,11,true,DEEP,box.w()-8);}
     private static void cover(FrostCanvas c,BufferedImage image,int x,int y,int width,int height,int radius){
         QQCoverArt.paint(c,image,x,y,width,height,radius);
+    }
+    /**
+     * 歌单/收藏列表的分享按钮：横向夹在专辑列（收到 175 宽）和时长列（1002 起）之间。
+     *
+     * <p>这一页的行几何是 {@code y = 182 + i*52}，和主列表、QQ 搜索结果都不一样，
+     * 各自算各自的。</p>
+     */
+    static Box shareBox(int visibleIndex) {
+        return new Box(936, 182 + visibleIndex * 52 + 7, 32, 36);
+    }
+    static int shareAt(double x, double y, int scroll, int count) {
+        for (int i = 0; i < 7; i++) {
+            if (!shareBox(i).contains(x, y)) continue;
+            int row = scroll + i;
+            return row >= 0 && row < count ? row : -1;
+        }
+        return -1;
     }
     public static boolean click(QQCatalogController controller,double x,double y){
         if(x<282||x>1060||y<98||y>=582)return false;var v=controller.view();
@@ -107,7 +127,15 @@ public final class QQCatalogPainter {
             if(BACK.contains(x,y)&&v.mode()!=QQCatalogController.Mode.LIKED)controller.back();
             else if(PLAY.contains(x,y))controller.play(0);
             else if(MORE.contains(x,y))controller.loadMore();
-            else if(x>=292&&x<1050&&y>=182&&y<546)controller.play(v.scroll()+(int)((y-182)/52));
+            else {
+                // 分享按钮在行内部，必须先于"点行播歌"拦下来。
+                int shareRow=shareAt(x,y,v.scroll(),v.tracks().size());
+                if(shareRow>=0){
+                    dev.lzasn.cloudxmusic.client.chat.ShareChat.send(v.tracks().get(shareRow).display());
+                    return true;
+                }
+                if(x>=292&&x<1050&&y>=182&&y<546)controller.play(v.scroll()+(int)((y-182)/52));
+            }
         }
         return true;
     }

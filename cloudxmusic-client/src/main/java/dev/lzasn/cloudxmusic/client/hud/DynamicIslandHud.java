@@ -171,7 +171,10 @@ public final class DynamicIslandHud {
         double display = Math.min(.58, Math.min(
                 (graphics.guiWidth() - 16.0) / IslandPainter.WIDTH,
                 (graphics.guiHeight() - 8.0) / IslandPainter.HEIGHT)) * state.islandScale();
-        double raster = Math.max(.75, Math.min(2, display * client.getWindow().getGuiScale()));
+        // 纹理像素要对上设备物理像素（display 是该岛的 GUI 缩放，guiScale 是 GUI→物理）。
+        // 原来硬卡 2 倍，在 2K/4K 上药丸和文字都被拉伸；岛本身只有 512×204 的设计尺寸，
+        // 3 倍也只占约 94 万像素，放宽上限的代价可以忽略。
+        double raster = Math.max(.75, Math.min(3, display * client.getWindow().getGuiScale()));
         long now = System.nanoTime();
         String artwork=playback.source()+"|"+playback.song().coverUrl()+"|"+(QQMusicIntegration.isQq()?QQMusicIntegration.artwork().revision():CoverCache.revision());
         double scrollSeconds=Math.max(0,playback.position()-(hasLine?line.timeMs()/1000.0:0));
@@ -234,7 +237,8 @@ public final class DynamicIslandHud {
         double display = Math.min(.58, Math.min(
                 (graphics.guiWidth() - 16.0) / IslandPainter.WIDTH,
                 (graphics.guiHeight() - 8.0) / IslandPainter.HEIGHT)) * state.islandScale();
-        double raster = Math.max(.75, Math.min(2, display * client.getWindow().getGuiScale()));
+        // 与播放态同一套倍率规则（见 renderIsland）：按设备物理像素取，不再硬卡 2 倍。
+        double raster = Math.max(.75, Math.min(3, display * client.getWindow().getGuiScale()));
         if (!adjustCached || raster != previousScale) {
             SURFACE.update(IslandPainter.paintAdjustment(raster));
             // 置空播放态快照，退出调整模式后普通渲染必定重绘一次，不会沿用提示药丸。

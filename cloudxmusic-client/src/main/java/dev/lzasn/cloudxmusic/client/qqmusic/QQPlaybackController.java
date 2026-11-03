@@ -85,6 +85,14 @@ public final class QQPlaybackController implements AutoCloseable {
     public void play(List<UnifiedSong> songs,int selected) {
         queueRevision++;unavailable.clear();begin(songs,selected,0,false);
     }
+    /** 队列置顶插入并立刻播放（聊天栏分享用）：同一首先去重，再插到最前。 */
+    public void prepend(UnifiedSong song) {
+        if(closed||!sourceAllowed.getAsBoolean()||song==null)return;
+        List<UnifiedSong> next=new java.util.ArrayList<>(playlist);
+        next.removeIf(item->item.platformId().equals(song.platformId()));
+        next.add(0,song);
+        play(next,0);
+    }
     private void begin(List<UnifiedSong> songs,int selected,double position,boolean paused) {
         if(closed||!sourceAllowed.getAsBoolean()||selected<0||selected>=songs.size())return;
         List<UnifiedSong> copy=List.copyOf(songs);if(copy.stream().anyMatch(s->!s.source().equals("qq")))throw new IllegalArgumentException("QQ 播放列表只能包含 QQ 歌曲");

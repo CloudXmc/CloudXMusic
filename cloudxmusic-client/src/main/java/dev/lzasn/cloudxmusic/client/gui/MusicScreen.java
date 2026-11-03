@@ -65,6 +65,10 @@ public final class MusicScreen extends Screen {
     private final UiTexture coverSurface = new UiTexture();
     private final UiTexture accountSurface = new UiTexture();
     private final UiTexture qualitySurface = new UiTexture();
+    /** 房间页的进度条带：房间时钟每帧外推，单独一张小纹理，避免整幅静态画布跟着重绘。 */
+    private final UiTexture roomSurface = new UiTexture();
+    private String paintedRoomKey;
+    private long lastRoomPaint;
     /** 账号页五个输入项：账号、密码、手机号、验证码、Cookie。 */
     private final String[] accountValues = {"", "", "", "", ""};
     /** 0 菜单，1 用户名密码，2 验证码，3 Cookie。 */
@@ -88,6 +92,19 @@ public final class MusicScreen extends Screen {
     /** 当前页列表总条数，配合 scroll 给右侧滚动条用。 */
     private int totalRows;
     private double scale, rasterScale;
+    /**
+     * 静态画布的像素预算，只用来兜住 Java2D 软件光栅化的开销。
+     *
+     * <p>光栅倍率决定清晰度：纹理像素必须对上设备物理像素（{@code scale * GUI 缩放}），
+     * 否则整块面板连字带线一起被拉伸。旧版把倍率硬卡在 1.5，而 2K/4K 上
+     * {@code scale * guiScale} 能到 2～3，等于把画布放大一倍多 —— 这就是"巨糊"的来源。
+     * 现在按设备像素取值，只用像素总量限住上限；真机上若出现切页卡顿先调这个数。</p>
+     *
+     * <p>实测（Java2D 纯 CPU 光栅化，1100×674 整窗玻璃含阴影）：1.5 倍 117ms / 2.0 倍 233ms /
+     * 2.4 倍 290ms / 2.7 倍 383ms。玻璃本身走 {@code MusicPainter.backdrop} 按尺寸缓存，
+     * 这个开销只在改尺寸、切主题、改缩放时付一次，切页不受影响，所以预算按清晰度优先取。</p>
+     */
+    private static final double RASTER_PIXEL_BUDGET = 6_500_000;
     private String input = "";
     private boolean focused, selectAll, blurUnavailable;
     private float seekPreview = -1;
@@ -177,9 +194,11 @@ public final class MusicScreen extends Screen {
         scale = Math.max(.05, Math.min((width - 28.0) / WIDTH, (height - 48.0) / HEIGHT) * state.panelScale());
         originX = (int) Math.round((width - WIDTH * scale) / 2);
         originY = (int) Math.round((height - HEIGHT * scale) / 2 + 8);
-        // 画布像素数按倍率平方增长，而 Java2D 路径填充是纯 CPU 光栅化。
-        // 1.5 倍已接近原生清晰度（原先最高 2 倍只是超采样，代价是 4 倍像素）。
-        rasterScale = Math.max(.75, Math.min(1.5, scale * minecraft.getWindow().getGuiScale()));
+        // 纹理像素要对上设备物理像素：scale 是"设计像素 → GUI 像素"，guiScale 是"GUI 像素 → 物理像素"。
+        // 只按像素总量设上限，不再固定 1.5——固定值在 2K/4K 上等于强制拉伸整张画布。
+        double ideal = scale * minecraft.getWindow().getGuiScale();
+        double budget = Math.sqrt(RASTER_PIXEL_BUDGET / ((double) (WIDTH + 2 * PAD) * (HEIGHT + 2 * PAD)));
+        rasterScale = Math.max(.75, Math.min(ideal, Math.max(1.5, budget)));
         painted = null; paintedDynamic = null; paintedQqBar = null; paintedLyrics = null; paintedCoverKey = null;
         paintedModalKey=null;paintedQualityKey=null;paintedAccountKey=null;
         lastPaint = 0; lastOverlayPaint = 0; rebuildLayout();
@@ -380,6 +399,17 @@ public final class MusicScreen extends Screen {
             overlay.update(MusicPainter.paintDynamic(view, layout, rasterScale));
             paintedDynamic = view; lastOverlayPaint = now;
         }
+        boolean roomPage = page == Page.ROOM && view.room().joined();
+        if (roomPage) {
+            // 房间时钟每帧都在外推，只能按 30Hz 单独刷这条小带；静态层不再跟着重画。
+            String roomKey = view.room().positionTenths() + "|" + view.room().durationSeconds() + "|" + rasterScale;
+            if (!roomKey.equals(paintedRoomKey) && (paintedRoomKey == null || now - lastRoomPaint >= 33_333_333L)) {
+                roomSurface.update(MusicPainter.paintDynamic(view, layout, rasterScale));
+                paintedRoomKey = roomKey; lastRoomPaint = now;
+            }
+        } else if (paintedRoomKey != null) {
+            paintedRoomKey = null;
+        }
         if(qqBar) {
             PlaybackSnapshot pb=framePlayback;
             MusicPainter.PlaybackBarView bar=new MusicPainter.PlaybackBarView(pb.song().title(),pb.song().artist(),(int)Math.ceil(pb.duration()),
@@ -471,6 +501,13 @@ public final class MusicScreen extends Screen {
         if (nowPage || qqBar) {
             Box band = qqBar?MusicPainter.playbackBarRegion():dynamicRegion(page);
             overlay.draw(graphics, (int) Math.round(originX + band.x() * scale),
+                    (int) Math.round(originY + band.y() * scale),
+                    (int) Math.round(band.w() * scale), (int) Math.round(band.h() * scale));
+        }
+        if (roomPage) {
+            // 房间进度单独一张小纹理：QQ 音源下 overlay 已经被底栏占用了。
+            Box band = dynamicRegion(Page.ROOM);
+            roomSurface.draw(graphics, (int) Math.round(originX + band.x() * scale),
                     (int) Math.round(originY + band.y() * scale),
                     (int) Math.round(band.w() * scale), (int) Math.round(band.h() * scale));
         }
@@ -622,6 +659,12 @@ public final class MusicScreen extends Screen {
                 if(x>=282&&x<1060&&y>=190&&y<580)return true;
             }
             var results=search.view();int row=QQSearchPainter.rowAt(x,y,results.scroll(),results.songs().size());
+            // 分享按钮在行内部，必须先于 rowAt 拦下来，否则点分享会直接播歌。
+            int shareRow=QQSearchPainter.shareAt(x,y,results.scroll(),results.songs().size());
+            if(shareRow>=0){
+                dev.lzasn.cloudxmusic.client.chat.ShareChat.send(searchMetadata.song(results.songs().get(shareRow)));
+                return true;
+            }
             if(row>=0){qqPlayback.play(results.songs(),row);focused=false;selectAll=false;painted=null;return true;}
             if(QQSearchPainter.blocksQqClick(x,y)){focused=false;selectAll=false;return true;}
         }
@@ -639,14 +682,31 @@ public final class MusicScreen extends Screen {
         activate(hit); return true;
     }
 
-    private void activate(Hit hit) {
-        if(QQMusicIntegration.isQq()){
+    /** 当前正在播放的曲目快照，供分享使用；两个音源各自的权威来源不同。 */
+    private SongView currentSong() {
+        if (QQMusicIntegration.isQq()) {
+            var playing = qqPlayback.view();
+            if (playing.song() == null) return SongView.empty(MusicSource.QQ);
+            return SongView.from(playing.song(), (int) Math.round(playing.duration()), "", playing.song().vip());
+        }
+        return SongView.from(state.current());
+    }
+
+    private void activate(Hit hit) {        if(QQMusicIntegration.isQq()){
             switch(hit.action()){
                 case ROW->{if(page==Page.QUEUE&&hit.index()<qqRows.size())qqPlayback.play(qqPlayback.queue(),scroll+hit.index());painted=null;return;}
                 case ADD->{if(page==Page.QUEUE)qqPlayback.remove(scroll+hit.index());painted=null;return;}
                 case CLEAR->{qqPlayback.clearQueue();painted=null;return;}
                 case REFRESH->{return;}
                 case FAVORITE->{return;}
+                // QQ 队列页的行由主列表绘制，分享按钮位置和命中盒对得上；
+                // 搜索页的行几何不同，走 QQSearchPainter.shareAt 那条独立路径。
+                case SHARE_ROW->{
+                    if(page==Page.QUEUE&&hit.index()<qqRows.size())
+                        dev.lzasn.cloudxmusic.client.chat.ShareChat.send(
+                                QQMusicIntegration.queueSong(qqRows.get(hit.index())));
+                    return;
+                }
                 case LYRIC->{QQMusicIntegration.cycleLyrics();painted=null;return;}
                 case STOP->{qqPlayback.stop();painted=null;return;}
                 case PREVIOUS,PLAY,NEXT,SEEK,VOLUME,QUALITY,PLAYBACK_MODE,MODE_CYCLE->{return;}
@@ -695,6 +755,13 @@ public final class MusicScreen extends Screen {
             case ISLAND_SCALE -> state.islandScale(cycleIslandScale(state.islandScale()));
             case ISLAND_POS -> startIslandPosAdjust();
             case FAVORITE -> state.toggleFavoriteCurrent();
+            case SHARE -> dev.lzasn.cloudxmusic.client.chat.ShareChat.send(currentSong());
+            case SHARE_ROW -> {
+                // 列表行分享：QQ 音源的行由 QQSearchPainter 自己画，这里只处理网易云列表。
+                if (hit.index() < rows.size()) {
+                    dev.lzasn.cloudxmusic.client.chat.ShareChat.send(SongView.from(rows.get(hit.index())));
+                }
+            }
             case MODE_CYCLE -> state.playbackMode(nextMode());
             case PLAYBACK_MODE -> state.playbackMode(PlaybackMode.values()[hit.index()]);
             case ROOM_SOURCE -> MusicRoomClient.INSTANCE.selectSource(
@@ -1231,8 +1298,8 @@ public final class MusicScreen extends Screen {
         qqLyrics.close();
         panelClosing = false;
         surface.close(); overlay.close(); lyricSurface.close(); coverSurface.close();
-        accountSurface.close(); qualitySurface.close();modalSurface.close();
-        painted = null; paintedDynamic = null; paintedQqBar = null; paintedLyrics = null; paintedCoverKey = null; paintedAccountKey = null;
+        accountSurface.close(); qualitySurface.close();modalSurface.close();roomSurface.close();
+        painted = null; paintedDynamic = null; paintedQqBar = null; paintedLyrics = null; paintedCoverKey = null; paintedAccountKey = null; paintedRoomKey = null;
         drag = null; seekPreview = -1; super.removed();
     }
     @Override public boolean isPauseScreen() { return false; }

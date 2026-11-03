@@ -1,7 +1,8 @@
 pluginManagement {
     repositories {
-        maven { name = "Fabric"; url = "https://maven.fabricmc.net/" }
+        // 国内优先：腾讯云镜像代理 maven-public，插件标记找不到时再回落到 Fabric 官方源。
         maven { name = "Tencent"; url = "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/" }
+        maven { name = "Fabric"; url = "https://maven.fabricmc.net/" }
         mavenCentral()
         gradlePluginPortal()
     }

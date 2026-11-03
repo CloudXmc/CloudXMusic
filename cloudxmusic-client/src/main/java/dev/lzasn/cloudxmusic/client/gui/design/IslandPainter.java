@@ -82,11 +82,6 @@ public final class IslandPainter {
             UiIcons.draw(c, "note", x + size / 2.0, y + size / 2.0, 20, PINK);
             return;
         }
-        Shape previous = c.g.getClip();
-        c.g.clip(shape(x, y, size, size, radius));
-        double zoom = (double) size / Math.min(cover.getWidth(), cover.getHeight());
-        int w = (int) Math.ceil(cover.getWidth() * zoom), h = (int) Math.ceil(cover.getHeight() * zoom);
-        c.g.drawImage(cover, x + (size - w) / 2, y + (size - h) / 2, w, h, null);
-        c.g.setClip(previous);
+        c.roundImage(cover, x, y, size, size, radius);
     }
 }

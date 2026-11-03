@@ -37,7 +37,10 @@ public final class MusicRoomClient {
             .map(container -> container.getMetadata().getVersion().getFriendlyString()).orElse("dev");
     private final AtomicLong requestIds = new AtomicLong(1L);
     private boolean registered;
+    private boolean inWorld;
     private boolean ready;
+    private boolean unadvertisedSendLogged;
+    private long lastHelloAttemptNanos;
     private String status = "未连接房间服务";
     private MusicSourceType selectedSource = MusicSourceType.NETEASE;
     private List<Packet.RoomSummary> publicRooms = List.of();
@@ -72,15 +75,19 @@ public final class MusicRoomClient {
     }
 
     public void joinedWorld() {
+        inWorld = true;
         ready = false;
         currentRoom = null;
         publicRooms = List.of();
         clearTimeline();
+        lastHelloAttemptNanos = 0L;
+        unadvertisedSendLogged = false;
         status = "正在连接房间服务";
-        sendHello();
+        tick();
     }
 
     public void disconnected() {
+        inWorld = false;
         ready = false;
         currentRoom = null;
         publicRooms = List.of();
@@ -100,6 +107,17 @@ public final class MusicRoomClient {
 
     public String status() {
         return status;
+    }
+
+    /**
+     * 代理层可能不会把服务端的通道注册转发给客户端。此时 canSend() 会是 false，
+     * 但自定义负载本身仍可被通透转发，因此未握手时绕过该探测并定时重试 HELLO。
+     */
+    public void tick() {
+        if (!inWorld || ready) return;
+        long now = System.nanoTime();
+        if (lastHelloAttemptNanos != 0L && now - lastHelloAttemptNanos < 2_000_000_000L) return;
+        sendHello();
     }
 
     public boolean joined() {
@@ -582,17 +600,26 @@ public final class MusicRoomClient {
     }
 
     private void sendHello() {
+        lastHelloAttemptNanos = System.nanoTime();
         send(new Packet.Hello(nextRequestId(), VERSION));
     }
 
     private boolean send(Packet packet) {
-        if (!ClientPlayNetworking.canSend(CloudXMusicPayload.TYPE)) return false;
+        boolean advertised = ClientPlayNetworking.canSend(CloudXMusicPayload.TYPE);
         try {
             ClientPlayNetworking.send(new CloudXMusicPayload(PacketCodec.encode(packet)));
+            if (!advertised && !unadvertisedSendLogged) {
+                unadvertisedSendLogged = true;
+                LOGGER.info("[房间] 未收到服务端通道注册，已改用透明发送重试握手");
+            }
             return true;
         } catch (ProtocolException error) {
             status = "无法编码房间请求";
             LOGGER.warn("房间请求编码失败：{}", error.code());
+            return false;
+        } catch (RuntimeException error) {
+            status = "房间通道发送失败";
+            LOGGER.warn("房间请求发送失败：{}", error.getMessage());
             return false;
         }
     }

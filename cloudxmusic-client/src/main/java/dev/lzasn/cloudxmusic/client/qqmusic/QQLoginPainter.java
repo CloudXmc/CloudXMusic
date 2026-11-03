@@ -23,10 +23,7 @@ public final class QQLoginPainter {
         c.round(34, 461, 36, 36, 18, SOFT);
         if(avatar==null||!account.loggedIn())UiIcons.draw(c,"user",52,479,21,DEEP);
         else {
-            Shape clip=c.g.getClip();c.g.clip(shape(34,461,36,36,18));
-            double zoom=36.0/Math.min(avatar.getWidth(),avatar.getHeight());
-            int w=(int)Math.ceil(avatar.getWidth()*zoom),h=(int)Math.ceil(avatar.getHeight()*zoom);
-            c.g.drawImage(avatar,34+(36-w)/2,461+(36-h)/2,w,h,null);c.g.setClip(clip);
+            c.roundImage(avatar,34,461,36,18);
         }
         String name=account.loggedIn()?(account.nickname().isBlank()?"QQ 音乐用户":account.nickname()):"登录 QQ 音乐";
         String badge=account.loggedIn()?account.profile().badge():"";

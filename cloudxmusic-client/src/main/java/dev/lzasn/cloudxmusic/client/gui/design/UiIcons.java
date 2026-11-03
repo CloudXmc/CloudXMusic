@@ -68,8 +68,26 @@ public final class UiIcons {
                 g.draw(new Arc2D.Double(-4,-7,13,14,-55,110,Arc2D.OPEN));
             }
             case "list" -> { for (int y = -6; y <= 6; y += 6) { g.fill(new Ellipse2D.Double(-9,y-1,2,2)); g.drawLine(-3,y,9,y); } }
-            case "settings" -> { g.drawLine(-9,-5,9,-5); g.drawLine(-9,5,9,5); g.setColor(new Color(255,250,253)); g.fill(new Ellipse2D.Double(-7,-8,6,6)); g.fill(new Ellipse2D.Double(2,2,6,6)); g.setColor(color); g.draw(new Ellipse2D.Double(-7,-8,6,6)); g.draw(new Ellipse2D.Double(2,2,6,6)); }
+            // 设置：两根滑杆。线条在旋钮处断开、圆环只描边——
+            // 之前用近白色填充圆点来"擦掉"穿过的线条，浅色卡片上会留下两块没抠干净的白斑。
+            case "settings" -> {
+                g.draw(new Line2D.Double(-9, -5, -7, -5));
+                g.draw(new Line2D.Double(-1, -5, 9, -5));
+                g.draw(new Line2D.Double(-9, 5, 2, 5));
+                g.draw(new Line2D.Double(8, 5, 9, 5));
+                g.draw(new Ellipse2D.Double(-7, -8, 6, 6));
+                g.draw(new Ellipse2D.Double(2, 2, 6, 6));
+            }
             case "user" -> { g.draw(new Ellipse2D.Double(-4,-9,8,8)); g.draw(new Arc2D.Double(-9,2,18,14,0,180,Arc2D.OPEN)); }
+            // 分享：下开口的方框 + 一支向上的箭头。不用实心填充，浅色底上也干净。
+            case "share" -> {
+                Path2D box = new Path2D.Double();
+                box.moveTo(-8, -2); box.lineTo(-8, 9); box.lineTo(8, 9); box.lineTo(8, -2);
+                g.draw(box);
+                g.draw(new Line2D.Double(0, 6, 0, -9));
+                g.draw(new Line2D.Double(-4, -5, 0, -9));
+                g.draw(new Line2D.Double(4, -5, 0, -9));
+            }
             // 音乐房间：热咖啡，梯形杯身 + 右把手 + 两缕热气。
             // 坐标必须收在 ±12 内（画布按 size/24 缩放，越界会被裁成半个杯子）。
             case "coffee" -> {

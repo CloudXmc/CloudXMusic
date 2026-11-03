@@ -95,6 +95,13 @@ public final class MusicPainter {
             if (v.page() == MusicView.Page.NOW) {
                 seekBar(c, v, l.box("seek"));
                 volumeBar(c, v, l.box("volume"));
+            } else if (v.page() == MusicView.Page.ROOM) {
+                // 房间页进度只在动态层画：轨道由静态层铺好，这里补进度、圆点和已播时间。
+                MusicView.RoomView room = v.room();
+                float progress = room.durationSeconds() <= 0 ? 0
+                        : Math.max(0, Math.min(1, room.positionTenths() / 10f / room.durationSeconds()));
+                roomProgress(c, 468, 242, 310, progress, true);
+                c.text(roomTime(Math.max(0, room.positionTenths() / 10)), 468, 265, 9, false, MUTED, 60);
             }
         }
         return image;
@@ -162,12 +169,8 @@ public final class MusicPainter {
         BufferedImage avatar = v.loggedIn() && !v.avatarUrl().isBlank()
                 ? dev.lzasn.cloudxmusic.client.gui.CoverCache.avatar(v.avatarUrl()) : null;
         if (avatar != null) {
-            Shape previous = c.g.getClip();
-            c.g.clip(shape(34, 461, 36, 36, 18));
-            double zoom = 36.0 / Math.min(avatar.getWidth(), avatar.getHeight());
-            int aw = (int) Math.ceil(avatar.getWidth() * zoom), ah = (int) Math.ceil(avatar.getHeight() * zoom);
-            c.g.drawImage(avatar, 34 + (36 - aw) / 2, 461 + (36 - ah) / 2, aw, ah, null);
-            c.g.setClip(previous);
+            // 圆形裁剪必须走离屏 AA 遮罩：直接 clip + drawImage 的圆边是硬台阶。
+            c.roundImage(avatar, 34, 461, 36, 18);
         } else {
             c.round(34, 461, 36, 36, 18, SOFT);
             UiIcons.draw(c,"user",52,479,21,DEEP);
@@ -185,6 +188,15 @@ public final class MusicPainter {
 
     /** 播放页：封面与歌词各自独立成层（便于动效），这里只画底部控制栏。 */
     private static void now(FrostCanvas c, MusicView v, MusicLayout l, Function<String,BufferedImage> covers) {
+        Box share = l.box("share");
+        if (share != null) {
+            // 分享当前曲目到聊天栏。不接 hover 样式：悬停会让静态层整幅重绘，这里不值当。
+            // 没有可分享的曲目（占位曲/未播放）时置灰，避免发出空消息。
+            boolean ready = !v.current().platformId().isBlank();
+            c.round(share.x(), share.y(), share.w(), share.h(), 15,
+                    ready ? CARD_BG : new Color(255, 255, 255, 90));
+            c.center("分享", share.cx(), share.cy() + 4.5f, 12, true, ready ? DEEP : MUTED, share.w() - 10);
+        }
         // QQ 的完整底栏由动态层独占，静态层不能再画一份标题和按钮。
         if(v.current().source()!=MusicSource.QQ){
             playerBar(c, v, l);
@@ -276,11 +288,8 @@ public final class MusicPainter {
         c.text(room.nowArtist(), 468, 194, 12, false, MUTED, 300);
         String status = room.roomStatus().isBlank() ? "已同步到房间时间轴" : room.roomStatus();
         c.text(status, 468, 218, 11, false, MUTED, 300);
-        float progress = room.durationSeconds() <= 0 ? 0
-                : Math.max(0, Math.min(1, room.positionTenths() / 10f / room.durationSeconds()));
-        roomProgress(c, 468, 242, 310, progress);
-        int currentSeconds = Math.max(0, room.positionTenths() / 10);
-        c.text(roomTime(currentSeconds), 468, 265, 9, false, MUTED, 60);
+        // 轨道留在静态层；进度填充、圆点和左侧已播时间由动态层画（房间时钟每帧在变）。
+        roomProgress(c, 468, 242, 310, 0, false);
         c.right(roomTime(room.durationSeconds()), 778, 265, 9, false, MUTED);
         if (room.owner()) {
             c.text("在「正在播放」页控制播放、切歌与循环", 468, 292, 9, false, MUTED, 330);
@@ -388,15 +397,9 @@ public final class MusicPainter {
             c.center("?", x + size / 2f, y + size * .64f, Math.max(10, size * .54f), true, MUTED, size - 2);
             return;
         }
-        Shape previous = c.g.getClip();
-        c.g.clip(shape(x, y, size, size, size / 2.0));
-        double scale = (double) size / Math.max(1, Math.min(avatar.getWidth(), avatar.getHeight()));
-        int aw = Math.max(1, (int) Math.round(avatar.getWidth() * scale));
-        int ah = Math.max(1, (int) Math.round(avatar.getHeight() * scale));
-        c.g.drawImage(avatar, x + (size - aw) / 2, y + (size - ah) / 2, aw, ah, null);
-        c.g.setClip(previous);
+        // 皮肤头像本身就是像素画，缩放走双线性 + 圆形 AA 遮罩，避免圆边台阶和像素乱跳。
+        c.roundImage(avatar, x, y, size, size / 2.0);
     }
-
     private static void roomCard(FrostCanvas c, Box b, int radius) {
         c.shadow(b.x(), b.y(), b.w(), b.h(), radius, 16, 1, 3,
                 dark ? new Color(0, 0, 0, 52) : new Color(116, 70, 93, 20));
@@ -455,9 +458,11 @@ public final class MusicPainter {
         c.center(label, b.cx(), b.cy() + 4, 12, true, DEEP, b.w() - 20);
     }
 
-    private static void roomProgress(FrostCanvas c, int x, int y, int width, float progress) {
+    /** @param fill false 时只画轨道（静态层），true 时连进度、圆点一起画（动态层）。 */
+    private static void roomProgress(FrostCanvas c, int x, int y, int width, float progress, boolean fill) {
         float safe = Math.max(0f, Math.min(1f, progress));
         c.round(x, y, width, 4, 2, TRACK);
+        if (!fill) return;
         c.round(x, y, width * safe, 4, 2, PINK);
         // 轨道中心是 y+2；圆点必须同轴，且首尾圆心内缩 4px，避免越出轨道。
         double centerX = x + 4 + (width - 8) * safe;
@@ -589,10 +594,7 @@ public final class MusicPainter {
         if(bar.qq()){
             if(artwork==null){c.round(296,599,36,36,8,SOFT);UiIcons.draw(c,"note",314,617,20,PINK);}
             else {
-                Shape clip=c.g.getClip();c.g.clip(shape(296,599,36,36,8));
-                double zoom=36.0/Math.min(artwork.getWidth(),artwork.getHeight());
-                int w=(int)Math.ceil(artwork.getWidth()*zoom),h=(int)Math.ceil(artwork.getHeight()*zoom);
-                c.g.drawImage(artwork,296+(36-w)/2,599+(36-h)/2,w,h,null);c.g.setClip(clip);
+                c.roundImage(artwork,296,599,36,36,8);
             }
         }
         int textX=bar.qq()?342:296,textWidth=bar.qq()?178:200;
@@ -728,7 +730,7 @@ public final class MusicPainter {
         }
         c.text("歌曲 / 歌手",360,194,11,false,MUTED,360);
         c.text("专辑",748,194,11,false,MUTED,180);
-        c.right("时长",972,194,11,MUTED);
+        c.right("时长",936,194,11,MUTED);
         if(v.tracks().isEmpty()) {
             UiIcons.draw(c,"note",671,318,48,PINK);
             c.center(emptyText(v.page(), v.loggedIn()),671,392,15,true,INK,660);
@@ -739,13 +741,15 @@ public final class MusicPainter {
             // 行与行之间只用一条分隔线，不再给每行套圆角卡片。
             c.g.setColor(LINE);
             c.g.drawLine(292, b.y(), 1050, b.y());
-            if(v.hover().equals("row"+i)||v.hover().equals("add"+i))
-                c.round(292,b.y(),758,46,10,HOVER);
+            // 行不再画悬浮高亮底色：列表靠分隔线和右侧图标自己区分层级，
+            // 整条高亮在深色主题下像一块"脏东西"，也省掉每次移动鼠标的整幅重绘诱因。
             cover(c,t,304,b.y()+5,36,11,covers);
             dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,t.title(),360,b.y()+19,14,true,on?DEEP:INK,360,t.vip());
             c.text(t.artist(),360,b.y()+36,11,false,MUTED,360);
             c.text(t.album(),748,b.y()+29,12,false,MUTED,150);
-            c.right(t.source()==MusicSource.QQ&&t.durationSeconds()==0?"—":t.durationText(),972,b.y()+29,12,MUTED);
+            c.right(t.source()==MusicSource.QQ&&t.durationSeconds()==0?"—":t.durationText(),936,b.y()+29,12,MUTED);
+            Box share=l.box("share"+i);
+            UiIcons.draw(c,"share",share.cx(),share.cy(),15,v.hover().equals("share"+i)?DEEP:MUTED);
             Box add=l.box("add"+i);
             UiIcons.draw(c, v.page()==MusicView.Page.QUEUE?"remove":"plus",
                     add.cx(), add.cy(), 16, v.hover().equals("add"+i)?DEEP:MUTED);
@@ -833,13 +837,7 @@ public final class MusicPainter {
         c.round(ax, ay, avatarSize, avatarSize, avatarSize / 2, SOFT);
         BufferedImage avatar = devAvatar(dev.avatar());
         if (avatar != null) {
-            Shape previous = c.g.getClip();
-            c.g.clip(shape(ax, ay, avatarSize, avatarSize, avatarSize / 2));
-            double zoom = avatarSize / (double) Math.min(avatar.getWidth(), avatar.getHeight());
-            int aw = (int) Math.ceil(avatar.getWidth() * zoom);
-            int ah = (int) Math.ceil(avatar.getHeight() * zoom);
-            c.g.drawImage(avatar, ax + (avatarSize - aw) / 2, ay + (avatarSize - ah) / 2, aw, ah, null);
-            c.g.setClip(previous);
+            c.roundImage(avatar, ax, ay, avatarSize, avatarSize / 2.0);
         } else {
             UiIcons.draw(c, "user", ax + avatarSize / 2, ay + avatarSize / 2, 24, DEEP);
         }
@@ -911,12 +909,7 @@ public final class MusicPainter {
                         ? dev.lzasn.cloudxmusic.client.gui.CoverCache.avatar(v.avatarUrl()) : null;
                 c.round(ACC_X, 176, 80, 80, 40, SOFT);
                 if (avatar != null) {
-                    Shape previous = c.g.getClip();
-                    c.g.clip(shape(ACC_X, 176, 80, 80, 40));
-                    double zoom = 80.0 / Math.min(avatar.getWidth(), avatar.getHeight());
-                    int aw = (int) Math.ceil(avatar.getWidth() * zoom), ah = (int) Math.ceil(avatar.getHeight() * zoom);
-                    c.g.drawImage(avatar, ACC_X + (80 - aw) / 2, 176 + (80 - ah) / 2, aw, ah, null);
-                    c.g.setClip(previous);
+                    c.roundImage(avatar, ACC_X, 176, 80, 40);
                 } else {
                     UiIcons.draw(c, "user", ACC_X + 40, 216, 36, DEEP);
                 }
@@ -1048,31 +1041,22 @@ public final class MusicPainter {
     /** 按 URL 画一张等比裁剪的圆角缩略图；没有图时回落到唱片占位图。 */
     private static void coverArt(FrostCanvas c, String url, int x, int y, int size, int radius,
                                  Function<String, BufferedImage> covers) {
-        Shape previous = c.g.getClip();
-        c.g.clip(shape(x, y, size, size, radius));
         BufferedImage image = url == null || url.isBlank() ? null : covers.apply(url);
         if (image != null) {
-            double zoom = (double) size / Math.min(image.getWidth(), image.getHeight());
-            int w = (int) Math.ceil(image.getWidth() * zoom), h = (int) Math.ceil(image.getHeight() * zoom);
-            c.g.drawImage(image, x + (size - w) / 2, y + (size - h) / 2, w, h, null);
+            c.roundImage(image, x, y, size, size, radius);
         } else {
             albumPlaceholder(c, x, y, size, radius);
         }
-        c.g.setClip(previous);
     }
 
     public static void cover(FrostCanvas c,SongView track,int x,int y,int size,int radius,Function<String,BufferedImage> covers) {
         if(size>100) c.shadow(x,y,size,size,radius,14,7,new Color(89,45,65,28));
-        Shape previous=c.g.getClip();c.g.clip(shape(x,y,size,size,radius));
         BufferedImage image=covers.apply(track.coverUrl());
         if(image!=null) {
-            double zoom=(double)size/Math.min(image.getWidth(),image.getHeight());
-            int w=(int)Math.ceil(image.getWidth()*zoom),h=(int)Math.ceil(image.getHeight()*zoom);
-            c.g.drawImage(image,x+(size-w)/2,y+(size-h)/2,w,h,null);
+            c.roundImage(image,x,y,size,size,radius);
         } else {
             albumPlaceholder(c, x, y, size, radius);
         }
-        c.g.setClip(previous);
     }
 
     /** 带指定 alpha 的当前 INK 色（暗黑模式下 INK 是浅色，歌词渐隐才能看清）。 */

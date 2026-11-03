@@ -15,7 +15,7 @@ public final class MusicLayout {
     public enum Action { PAGE, ACCOUNT, CLOSE, PREVIOUS, PLAY, NEXT, SEEK, SEARCH_FIELD, SEARCH,
         ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, MODE_CYCLE,
         STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH,
-        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE, PLAY_ALL,
+        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE, PLAY_ALL, SHARE, SHARE_ROW,
         ROOM_SOURCE, ROOM_CREATE, ROOM_JOIN_FIELD, ROOM_JOIN, ROOM_LIST_ENTRY, ROOM_LEAVE }
     public record Box(int x, int y, int w, int h) {
         public boolean contains(double px, double py) { return px >= x && py >= y && px < x + w && py < y + h; }
@@ -118,6 +118,8 @@ public final class MusicLayout {
             add("seek", Action.SEEK, 0, 328, 646, 672, 12);
             // 播放页的「译」开关，位置与 QQ 版一致：歌词区下方、控制栏上方的留白。
             add("translate", Action.TRANSLATE, 0, 1008, 520, 36, 28);
+            // 分享当前曲目到聊天栏：放在标题带右侧，避开右上角关闭键（1012 起）。
+            add("share", Action.SHARE, 0, 924, 26, 76, 30);
         } else {
             if (page == MusicView.Page.SETTINGS) {
                 add("lyric", Action.LYRIC, 0, 318, 132 - settingsScroll, 704, 48);
@@ -141,7 +143,10 @@ public final class MusicLayout {
                     add("refresh", page == MusicView.Page.QUEUE ? Action.CLEAR : Action.REFRESH, 0, 946, 116, 104, 36);
                 }
                 for (int i = 0; i < Math.min(ROWS, rowCount); i++) {
-                    add("row" + i, Action.ROW, i, MAIN_X, ROW_TOP + i * ROW_H, 696, 46);
+                    // 行主体收到 936 为止，给右侧「分享」腾位置：hit() 返回首个命中的盒子，
+                    // 行盒子压过去的话分享按钮永远点不到。
+                    add("row" + i, Action.ROW, i, MAIN_X, ROW_TOP + i * ROW_H, 640, 46);
+                    add("share" + i, Action.SHARE_ROW, i, 944, ROW_TOP + i * ROW_H + 5, 32, 36);
                     add("add" + i, Action.ADD, i, 1002, ROW_TOP + i * ROW_H + 3, 40, 40);
                 }
             }
@@ -193,6 +198,11 @@ public final class MusicLayout {
                     new Box(292, 640, 758, 22),   // 进度条与两端时间
                     new Box(958, 604, 92, 28)     // 音量滑条
             };
+        }
+        if (page == MusicView.Page.ROOM) {
+            // 房间当前曲的进度条、圆点与左侧已播时间：房间时钟每帧外推，
+            // 放进静态层会让整幅画布按 30Hz 重绘。
+            return new Box[]{new Box(462, 236, 322, 36)};
         }
         // 其他页面已经没有播放控件，不需要动态层。
         return new Box[0];

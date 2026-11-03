@@ -38,6 +38,24 @@ public final class QQSearchPainter {
     public static Box rowBox(int index, int scroll) {
         return new Box(MAIN_X, ROW_TOP + (index - scroll) * ROW_H, 696, 46);
     }
+    /**
+     * 分享按钮：横向跟主列表对齐（944 起），纵向按 QQ 自己的行高算。
+     *
+     * <p>QQ 搜索结果的行几何是 {@code ROW_TOP=264 / ROW_H=48}，和主列表的 {@code 212/50} 不同，
+     * 所以不能用 MusicLayout 里那套命中盒，必须单独算。</p>
+     */
+    public static Box shareBox(int visibleIndex) {
+        return new Box(944, ROW_TOP + visibleIndex * ROW_H + 5, 32, 36);
+    }
+    /** 返回被点到分享按钮的绝对行号，没点中返回 -1。 */
+    public static int shareAt(double x, double y, int scroll, int count) {
+        for (int i = 0; i < VISIBLE_ROWS; i++) {
+            if (!shareBox(i).contains(x, y)) continue;
+            int row = scroll + i;
+            return row >= 0 && row < count ? row : -1;
+        }
+        return -1;
+    }
     public static int rowAt(double x, double y, int scroll, int count) {
         if (x < MAIN_X || x >= MAIN_X + 696 || y < ROW_TOP || y >= ROW_TOP + VISIBLE_ROWS * ROW_H) return -1;
         int row = scroll + (int)((y - ROW_TOP) / ROW_H);
@@ -150,14 +168,14 @@ public final class QQSearchPainter {
             var cover=covers.apply(display.coverUrl());
             if(cover==null){c.round(304,y+5,36,36,8,SOFT);UiIcons.draw(c,"note",322,y+23,20,PINK);}
             else {
-                Shape clip=c.g.getClip();c.g.clip(shape(304,y+5,36,36,8));
-                double zoom=36.0/Math.min(cover.getWidth(),cover.getHeight());
-                int w=(int)Math.ceil(cover.getWidth()*zoom),h=(int)Math.ceil(cover.getHeight()*zoom);
-                c.g.drawImage(cover,304+(36-w)/2,y+5+(36-h)/2,w,h,null);c.g.setClip(clip);
+                c.roundImage(cover,304,y+5,36,36,8);
             }
             QQVipBadge.title(c,song.title(),354,y+19,14,true,INK,360,display.vip());
             c.text(song.artist(),354,y+36,11,false,MUTED,360);
-            c.text(song.album(), 748, y + 29, 12, false, MUTED, 290);
+            // 专辑列收到 180：原来 290 宽会压到右侧新加的分享按钮（944 起）。
+            c.text(song.album(), 748, y + 29, 12, false, MUTED, 180);
+            Box share = shareBox(index - search.scroll());
+            UiIcons.draw(c, "share", share.cx(), share.cy(), 15, MUTED);
         }
         if (search.songs().isEmpty()) {
             UiIcons.draw(c, "note", 671, 318, 48, PINK);
