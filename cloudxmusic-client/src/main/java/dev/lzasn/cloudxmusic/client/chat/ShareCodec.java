@@ -2,12 +2,15 @@ package dev.lzasn.cloudxmusic.client.chat;
 
 import dev.lzasn.cloudxmusic.client.omni.MusicSource;
 import dev.lzasn.cloudxmusic.client.omni.SongView;
+import dev.lzasn.cloudxmusic.protocol.ShareWire;
+import dev.lzasn.cloudxmusic.protocol.SongRef;
+import dev.lzasn.cloudxmusic.protocol.MusicSourceType;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 分享消息的编解码。
+ * 旧版公开聊天分享的兼容解析，以及专用通道的歌曲元数据转换。
  *
  * <p>正文保持人读，末尾挂一段短的机器标记：{@code #cxm:n:<歌曲ID>#}（n=网易云、q=QQ 音乐）。
  * 不用 {@code {}} / {@code []} 包裹标记，是因为不少服务器的聊天过滤插件对这类括号敏感；
@@ -22,7 +25,7 @@ public final class ShareCodec {
     private static final String PREFIX = "分享了 ";
     private static final String SEP = " · ";
 
-    private static final Pattern MARK = Pattern.compile("#cxm:([nq]):([A-Za-z0-9]{1,20})(?::(\\d{1,5}))?(?::(v))?#");
+    static final Pattern MARK = Pattern.compile("#cxm:([nq]):([A-Za-z0-9]{1,64})(?::(\\d{1,5}))?(?::(v))?#");
     /** 标题/歌手截断长度：留出标记和「分享了」「[点击播放]」的余量，整条压在 100 字以内。 */
     private static final int MAX_TITLE = 24, MAX_ARTIST = 16;
 
@@ -38,7 +41,13 @@ public final class ShareCodec {
 
     private ShareCodec() {}
 
-    /** 拼发送用的正文：{@code 分享了 歌名 · 歌手 [点击播放] #cxm:n:id#}。
+    public static ShareWire.Song wireSong(SongView song) {
+        return new ShareWire.Song(new SongRef(song.source() == MusicSource.QQ ? MusicSourceType.QQ : MusicSourceType.NETEASE,
+                song.platformId()), song.title().isBlank() ? "未知歌曲" : trim(song.title(), 48), trim(song.artist(), 48),
+                Math.max(0, Math.min(86_400, song.durationSeconds())), song.vip());
+    }
+
+    /** 旧版格式兼容工具：{@code 分享了 歌名 · 歌手 [点击播放] #cxm:n:id#}。
      * 正文不带「（VIP）」——VIP 只在悬停提示里提一句，聊天正文保持干净。 */
     public static String compose(SongView song) {
         String title = trim(song.title(), MAX_TITLE);
@@ -81,6 +90,7 @@ public final class ShareCodec {
     }
 
     private static boolean valid(char kind, String id) {
+        if (kind == 'n' && id.length() > 20) return false;
         for (int i = 0; i < id.length(); i++) {
             char ch = id.charAt(i);
             if (kind == 'n' ? !Character.isDigit(ch) : !Character.isLetterOrDigit(ch)) return false;
@@ -91,6 +101,7 @@ public final class ShareCodec {
     private static String trim(String value, int max) {
         if (value == null) return "";
         String text = value.strip();
-        return text.length() <= max ? text : text.substring(0, max - 1).stripTrailing() + "…";
+        return text.codePointCount(0, text.length()) <= max ? text
+                : text.substring(0, text.offsetByCodePoints(0, max - 1)).stripTrailing() + "…";
     }
 }

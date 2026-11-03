@@ -60,17 +60,20 @@ public final class CloudXMusicClient implements ClientModInitializer {
             if(dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.neteaseActive()) STATE.tick(client);
             // 分享点播可能正在等声卡交接，交接完成后再起播。
             dev.lzasn.cloudxmusic.client.chat.SharePlay.tick();
+            dev.lzasn.cloudxmusic.client.chat.ShareNetwork.tick();
             MusicRoomClient.INSTANCE.tick();
             RoomAudioFollower.INSTANCE.tick();
         });
 
         // 退出世界/回主菜单就停播，否则音乐会在菜单里继续放
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            dev.lzasn.cloudxmusic.client.chat.ShareNetwork.joined();
             dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.worldJoined();
             MusicRoomClient.INSTANCE.joinedWorld();
             if(dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.neteaseActive())STATE.refreshLibraryIfNeeded();
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            dev.lzasn.cloudxmusic.client.chat.ShareNetwork.disconnected();
             QrLogin.cancel();
             dev.lzasn.cloudxmusic.client.chat.SharePlay.reset();
             MusicRoomClient.INSTANCE.disconnected();
@@ -85,6 +88,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
             });
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            dev.lzasn.cloudxmusic.client.chat.ShareNetwork.disconnected();
             dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.stopForMenu();
             QrLogin.cancel();
             MusicRoomClient.INSTANCE.disconnected();
@@ -97,6 +101,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
         DynamicIslandHud.register();
         dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.register();
         dev.lzasn.cloudxmusic.client.chat.ShareCommands.register();
+        dev.lzasn.cloudxmusic.client.chat.ShareNetwork.register();
         // 分享消息：挡下原消息，自己往聊天栏放一条带 ClickEvent 的组件。
         // Fabric 没有给玩家聊天提供 MODIFY_CHAT，只能 ALLOW_CHAT 拦下来再手动添加。
         net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.ALLOW_CHAT.register(
@@ -107,7 +112,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
                     var client = Minecraft.getInstance();
                     if (client.gui != null) {
                         client.gui.getChat().addMessage(
-                                dev.lzasn.cloudxmusic.client.chat.ShareChat.render(sender, share));
+                                dev.lzasn.cloudxmusic.client.chat.ShareChat.render(sender, message, share));
                     }
                     return false;
                 });

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.5.1-D96A91?style=flat-square" alt="版本 2.5.1">
+  <img src="https://img.shields.io/badge/Version-2.5.2-D96A91?style=flat-square" alt="版本 2.5.2">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -27,7 +27,9 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 
 开发者：Lzasn（客户端、网易云音源与解码）、xiaota888（QQ 音乐音源、双音源架构与逐字歌词）、xWtree（早期界面开发、项目宣传者）。
 
-当前源码版本为 `2.5.1`，在音乐房间、QQ 音乐增强、高清 UI 与聊天分享基础上，修复服务器系统聊天中的分享解析；更新日志见 [CHANGELOG.md](CHANGELOG.md)，发布构建由 `v2.5.1` 标签触发 CI 完成。
+当前源码版本为 `2.5.2`（尚未发布），新增仅模组客户端可见的歌曲分享，并修复分享解析丢失聊天样式的问题；更新日志见 [CHANGELOG.md](CHANGELOG.md)。
+
+歌曲分享需要本服务器安装 CloudXMusic 服务端插件 `1.0.6+`，只向完成专用分享握手的客户端转发。没有配套插件时会提示不可用，不会把分享发送到公开聊天。新版分享显示名优先沿用玩家列表样式，聊天插件专属前缀不一定包含在其中；旧版文字分享仍可解析并保留原消息样式。
 
 > [!IMPORTANT]
 > 音乐房间已完成协议、房间管理、队列与播放同步，以及「每名成员用自己的账号取链跟播」，但尚未完成真实多人联机验收。房间内的进度对齐、成员暂停跟听、VIP/版权受限曲目的表现仍可能有偏差，请勿用于正式房间活动。

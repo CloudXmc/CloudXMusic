@@ -8,6 +8,11 @@ import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * 把一条分享消息渲染成可点击的聊天组件。
@@ -29,32 +34,72 @@ public final class ShareChat {
         ShareCodec.Share share = ShareCodec.parse(message.getString());
         if (share == null) return message;
         SharePlay.remember(share);
-        return render(null, share);
+        return render(null, message, share);
     }
 
     public static Component render(GameProfile sender, ShareCodec.Share share) {
+        return render(sender, Component.literal(share.body()), share);
+    }
+
+    /** 仅替换分享链接和机器标记；保留各文本片段继承后的颜色、字体及交互样式。 */
+    public static Component render(GameProfile sender, Component original, ShareCodec.Share share) {
         // authlib 7 里 GameProfile 已经是 record，取名字用 name()。
         String name = sender == null || sender.name() == null ? "" : sender.name();
-        String body = share.body();
-        int at = body.indexOf(ShareCodec.CLICK);
-        String head = (at >= 0 ? body.substring(0, at) : body).stripTrailing();
-        String tail = at >= 0 ? body.substring(at + ShareCodec.CLICK.length()) : "";
-
+        String raw = original.getString();
+        List<Span> spans = new ArrayList<>();
+        int[] offset = {0};
+        original.visit((style, text) -> {
+            spans.add(new Span(offset[0], text, style));
+            offset[0] += text.length();
+            return Optional.empty();
+        }, Style.EMPTY);
+        List<Edit> edits = new ArrayList<>();
+        var marker = ShareCodec.MARK.matcher(raw);
+        if (marker.find()) {
+            int start = marker.start(), end = marker.end();
+            if (raw.substring(end).isBlank()) {
+                while (start > 0 && Character.isWhitespace(raw.charAt(start - 1))) start--;
+                end = raw.length();
+            }
+            edits.add(new Edit(start, end, null));
+        }
+        int at = raw.indexOf(ShareCodec.CLICK);
+        if (at >= 0) {
+            Style inherited = spans.stream().filter(span -> span.start() <= at && at < span.end())
+                    .map(Span::style).findFirst().orElse(Style.EMPTY);
+            MutableComponent link = playable(share);
+            link.setStyle(link.getStyle().applyTo(inherited));
+            edits.add(new Edit(at, at + ShareCodec.CLICK.length(), link));
+        }
+        edits.sort(Comparator.comparingInt(Edit::start));
         MutableComponent out = Component.empty();
         // 服务端几乎都会把发送者拼进正文（"<名字> …" / "名字: …" / "[频道] 名字 …"），
         // 再自己加一遍就成了两个 ID。正文里已经出现名字就不再补。
-        if (!name.isBlank() && !head.contains(name)) out.append(Component.literal(name + " ").withColor(0xFFFFFF));
-        out.append(Component.literal(head).withColor(SUBTLE));
-        out.append(Component.literal(" "));
-        out.append(playable(share));
-        if (!tail.isBlank()) out.append(Component.literal(tail).withColor(SUBTLE));
+        if (!name.isBlank() && !raw.contains(name)) out.append(Component.literal(name + " ").withColor(0xFFFFFF));
+        int cursor = 0;
+        for (Edit edit : edits) {
+            appendRange(out, spans, cursor, edit.start());
+            if (edit.replacement() != null) out.append(edit.replacement());
+            cursor = edit.end();
+        }
+        appendRange(out, spans, cursor, raw.length());
+        if (at < 0) out.append(Component.literal(" ")).append(playable(share));
         return out;
     }
 
-    /**
-     * 把当前曲目发到聊天栏。正文是普通文本，装不装模组都读得懂；
-     * 只有末尾的 {@code #cxm:…} 标记需要模组才能变成可点击。
-     */
+    private record Span(int start, String text, Style style) {
+        int end() { return start + text.length(); }
+    }
+    private record Edit(int start, int end, Component replacement) {}
+    private static void appendRange(MutableComponent out, List<Span> spans, int from, int to) {
+        for (Span span : spans) {
+            int start = Math.max(from, span.start()), end = Math.min(to, span.end());
+            if (start < end) out.append(Component.literal(span.text().substring(start - span.start(), end - span.start()))
+                    .setStyle(span.style()));
+        }
+    }
+
+    /** 通过专用通道请求服务端转发，不再发送公开聊天或机器标记。 */
     public static void send(SongView song) {
         Minecraft client = Minecraft.getInstance();
         var connection = client.getConnection();
@@ -66,11 +111,10 @@ public final class ShareChat {
         long now = System.currentTimeMillis();
         // 连点容易触发服务器的反刷屏限制，这里先自己挡一层。
         if (now - lastSent < 1500) return;
-        lastSent = now;
-        connection.sendChat(ShareCodec.compose(song));
+        if (ShareNetwork.share(song)) lastSent = now;
     }
 
-    private static Component playable(ShareCodec.Share share) {
+    static MutableComponent playable(ShareCodec.Share share) {
         // 客户端命令：装了模组的人点在本地执行，不会把命令发给服务端。
         String command = "/cxm play " + share.source() + " " + share.id();
         // 黄色 + 下划线：MC 的文本样式只有下划线和删除线，没有上划线，
