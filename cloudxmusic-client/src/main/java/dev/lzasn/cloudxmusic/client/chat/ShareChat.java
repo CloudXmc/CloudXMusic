@@ -12,7 +12,7 @@ import net.minecraft.network.chat.MutableComponent;
 /**
  * 把一条分享消息渲染成可点击的聊天组件。
  *
- * <p>标题不重新拼：发送侧已经写好「歌名 · 歌手（VIP）」，接收侧只把 {@code [点击播放]}
+ * <p>标题不重新拼：发送侧已经写好「歌名 · 歌手」，接收侧只把 {@code [点击播放]}
  * 换成带 {@code ClickEvent} 的片段，其余原样保留。这样以后改标题格式只动发送侧。</p>
  */
 public final class ShareChat {
@@ -23,9 +23,18 @@ public final class ShareChat {
 
     private ShareChat() {}
 
+    /** 解析聊天插件通过系统消息广播的分享；动作栏和普通系统消息原样显示。 */
+    public static Component modifyGameMessage(Component message, boolean overlay) {
+        if (overlay) return message;
+        ShareCodec.Share share = ShareCodec.parse(message.getString());
+        if (share == null) return message;
+        SharePlay.remember(share);
+        return render(null, share);
+    }
+
     public static Component render(GameProfile sender, ShareCodec.Share share) {
         // authlib 7 里 GameProfile 已经是 record，取名字用 name()。
-        String name = sender == null || sender.name() == null || sender.name().isBlank() ? "有人" : sender.name();
+        String name = sender == null || sender.name() == null ? "" : sender.name();
         String body = share.body();
         int at = body.indexOf(ShareCodec.CLICK);
         String head = (at >= 0 ? body.substring(0, at) : body).stripTrailing();
@@ -34,7 +43,7 @@ public final class ShareChat {
         MutableComponent out = Component.empty();
         // 服务端几乎都会把发送者拼进正文（"<名字> …" / "名字: …" / "[频道] 名字 …"），
         // 再自己加一遍就成了两个 ID。正文里已经出现名字就不再补。
-        if (!head.contains(name)) out.append(Component.literal(name + " ").withColor(0xFFFFFF));
+        if (!name.isBlank() && !head.contains(name)) out.append(Component.literal(name + " ").withColor(0xFFFFFF));
         out.append(Component.literal(head).withColor(SUBTLE));
         out.append(Component.literal(" "));
         out.append(playable(share));

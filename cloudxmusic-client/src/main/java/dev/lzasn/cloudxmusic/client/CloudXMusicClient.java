@@ -111,6 +111,9 @@ public final class CloudXMusicClient implements ClientModInitializer {
                     }
                     return false;
                 });
+        // 聊天插件常将玩家发言改为系统消息广播，需覆盖独立的 GAME 接收路径。
+        net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.MODIFY_GAME.register(
+                dev.lzasn.cloudxmusic.client.chat.ShareChat::modifyGameMessage);
         // 正式播放由交接协调器控制；不再自动启动独立声卡测试。
     }
 
