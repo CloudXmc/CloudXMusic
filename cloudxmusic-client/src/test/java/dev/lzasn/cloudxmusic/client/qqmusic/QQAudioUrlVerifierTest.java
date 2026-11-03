@@ -44,7 +44,7 @@ class QQAudioUrlVerifierTest {
             assertEquals(base.resolve("/ok.flac"),QQAudioUrlVerifier.verify(base.resolve("/ok.flac"),true,Duration.ofSeconds(3),allow));
             assertEquals(base.resolve("/ok.flac"),QQAudioUrlVerifier.verify(base.resolve("/redirect.flac"),true,Duration.ofSeconds(3),allow));
             assertNull(QQAudioUrlVerifier.verify(base.resolve("/bad.flac"),true,Duration.ofSeconds(3),allow));
-            assertNull(QQAudioUrlVerifier.verify(base.resolve("/forbidden.flac"),true,Duration.ofSeconds(3),allow));
+            assertThrows(java.io.IOException.class,()->QQAudioUrlVerifier.verify(base.resolve("/forbidden.flac"),true,Duration.ofSeconds(3),allow),"403 必须保留权限拒绝原因，不能退化为未知空地址");
             assertThrows(HttpTimeoutException.class,()->QQAudioUrlVerifier.verify(base.resolve("/slow.flac"),true,Duration.ofMillis(200),allow));
             assertTrue(failures.isEmpty(),failures.toString());
         }finally{server.stop(0);pool.shutdownNow();}

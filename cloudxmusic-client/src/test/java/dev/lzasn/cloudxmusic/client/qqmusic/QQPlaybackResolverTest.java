@@ -12,6 +12,48 @@ import static dev.lzasn.cloudxmusic.client.qqmusic.QQSessionVerifierTest.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class QQPlaybackResolverTest {
+    @Test void roomDenialStopsImmediatelyWithoutRetryingOtherRoutesOrQualities(){
+        for(boolean row:List.of(false,true)){
+            var calls=new ArrayList<String>();
+            var resolver=resolver((r,c,t)->{
+                calls.add(method(r));
+                if(method(r).equals("get_song_detail_yqq"))return metadata();
+                return row?reply(0,"{\"midurlinfo\":[{\"result\":22006,\"purl\":\"\"}]}"):reply(22006,"{}");
+            },(u,f,t)->fail("权限拒绝后不得请求 CDN"));
+            var error=assertThrows(QQPlaybackAccessException.class,()->resolver.resolveLink(SONG,QQQuality.SQ,info->{},true));
+            assertEquals(QQPlaybackAccessException.Reason.RESTRICTED,error.reason());
+            assertEquals(2,calls.size(),"明确拒绝后不能继续取链或验证账号");
+        }
+    }
+    @Test void roomHttp403AndExpiredSessionAreTerminal(){
+        for(int code:List.of(403,401)){
+            var probes=new java.util.concurrent.atomic.AtomicInteger();
+            var resolver=resolver((r,c,t)->method(r).equals("get_song_detail_yqq")?metadata():link(filename(r)),(u,f,t)->{
+                probes.incrementAndGet();throw new QQAuthHttp.HttpFailure(code);
+            });
+            var error=assertThrows(QQPlaybackAccessException.class,()->resolver.resolveLink(SONG,QQQuality.SQ,info->{},true));
+            assertEquals(code==403?QQPlaybackAccessException.Reason.RESTRICTED:QQPlaybackAccessException.Reason.LOGIN_REQUIRED,error.reason());
+            assertEquals(1,probes.get());
+        }
+    }
+    @Test void roomWithoutAccountStopsBeforeAnyNetworkRequest(){
+        var resolver=new QQPlaybackResolver(()->{throw new QQPlaybackAccessException(QQPlaybackAccessException.Reason.LOGIN_REQUIRED);},
+                s->true,(r,c,t)->fail("未登录不能取链"),(u,f,t)->fail("未登录不能访问 CDN"));
+        assertEquals(QQPlaybackAccessException.Reason.LOGIN_REQUIRED,
+                assertThrows(QQPlaybackAccessException.class,()->resolver.resolveLink(SONG,QQQuality.SQ,info->{},true)).reason());
+    }
+    @Test void roomEmptySqCanFallBackButExhaustedLinksBecomeRestricted()throws Exception{
+        for(boolean playable:List.of(true,false)){
+            var resolver=resolver((r,c,t)->switch(method(r)){
+                case "get_song_detail_yqq"->metadata();
+                case "GetLoginUserInfo"->reply(0,"{\"musicid\":123456}");
+                default->playable&&filename(r).startsWith("M500")?link(filename(r)):emptyLink();
+            },(u,f,t)->u);
+            if(playable)assertEquals(QQQuality.STANDARD,resolver.resolveLink(SONG,QQQuality.SQ,info->{},true).actualQuality());
+            else assertEquals(QQPlaybackAccessException.Reason.RESTRICTED,
+                    assertThrows(QQPlaybackAccessException.class,()->resolver.resolveLink(SONG,QQQuality.SQ,info->{},true)).reason());
+        }
+    }
     @Test void restriction22006FallsBackThroughEachQualityAndReturnsNoResourceOnlyAfterSessionCheck()throws Exception{
         for(String playable:List.of("M800","M500","none")){
             List<String> files=new ArrayList<>();List<String> methods=new ArrayList<>();

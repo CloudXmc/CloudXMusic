@@ -43,6 +43,7 @@ final class QQAudioUrlVerifier {
                 finally { pending.cancel(true); }
                 int status = response.statusCode();
                 QQRequestDiagnostics.audio(uri,status,response.body());
+                if(status==401||status==403)throw new QQPlaybackAccessException(status==401?QQPlaybackAccessException.Reason.LOGIN_REQUIRED:QQPlaybackAccessException.Reason.RESTRICTED);
                 if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
                     String location = response.headers().firstValue("Location").orElseThrow(() -> new IOException("QQ CDN 重定向缺少目标"));
                     try { uri = uri.resolve(location); } catch (IllegalArgumentException e) { throw new IOException("QQ CDN 重定向目标无效"); }

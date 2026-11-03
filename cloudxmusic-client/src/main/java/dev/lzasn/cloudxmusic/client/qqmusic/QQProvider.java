@@ -133,8 +133,11 @@ public final class QQProvider implements OnlineMusicProvider {
         var link=playbackLink(song,quality);return link==null?null:link.url();
     }
     QQPlaybackResolver.Link playbackLink(UnifiedSong song,QQQuality quality)throws IOException,InterruptedException{
+        return playbackLink(song,quality,false);
+    }
+    QQPlaybackResolver.Link playbackLink(UnifiedSong song,QQQuality quality,boolean room)throws IOException,InterruptedException{
         if (playback == null) throw new IOException("QQ 账号与取链服务尚未装配，请通过 OmniRouter 获取已注册的 Provider");
-        return playback.resolveLink(song,quality,info->details.put(song.platformId(),info));
+        return playback.resolveLink(song,quality,info->details.put(song.platformId(),info),room);
     }
 
     @Override

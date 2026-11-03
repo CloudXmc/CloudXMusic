@@ -12,6 +12,30 @@ import javax.imageio.ImageIO;
 import static org.junit.jupiter.api.Assertions.*;
 
 class QQCatalogPainterTest {
+    @Test void trackDurationDoesNotOverlapShareButton() {
+        var song = new UnifiedSong("qq", "MID1", "测试歌曲", "测试歌手", "测试专辑");
+        var withDuration = catalogRow(song, 240);
+        var withoutDuration = catalogRow(song, 0);
+        var share = QQCatalogPainter.shareBox(0);
+        for (int y = share.y(); y < share.y() + share.h(); y++) {
+            for (int x = share.x(); x < share.x() + share.w(); x++) {
+                assertEquals(withoutDuration.getRGB(x, y), withDuration.getRGB(x, y),
+                        "时长文字不能进入分享按钮区域");
+            }
+        }
+    }
+
+    private BufferedImage catalogRow(UnifiedSong song, int duration) {
+        var track = new QQCatalogApi.Track(song, SongView.from(song, duration, ""), 1);
+        var view = new QQCatalogController.View(QQCatalogController.Mode.PLAYLIST, "测试歌单",
+                java.util.List.of(), java.util.List.of(track), false, false, false, "", 0, 0);
+        var image = new BufferedImage(1100, 674, BufferedImage.TYPE_INT_ARGB);
+        try (var canvas = new FrostCanvas(image, 1)) {
+            QQCatalogPainter.paint(canvas, view, url -> null, null);
+        }
+        return image;
+    }
+
     @Test void dailyEntryNeverBorrowsUnrelatedPlaylistCover(){
         var list=new QQCatalogApi.Playlist("1",0,"","普通歌单",30,"unrelated-playlist");
         var v=new QQCatalogController.View(QQCatalogController.Mode.HOME,"",java.util.List.of(list),java.util.List.of(),false,false,false,"",0,0);
@@ -49,5 +73,10 @@ class QQCatalogPainterTest {
     }
     @Test void cardArrowAndSongHitsCannotPassThroughToNetease() {
         assertFalse(QQCatalogPainter.REFRESH.contains(100,474));assertFalse(QQCatalogPainter.PLAY.contains(671,619));assertFalse(QQCatalogPainter.MORE.contains(671,619));
+    }
+
+    @Test void catalogTrackAddHitUsesAbsoluteTrackIndex() {
+        assertEquals(5, QQCatalogPainter.trackAddAt(1022, 182 + 3 * 52 + 20, 2, 10));
+        assertEquals(-1, QQCatalogPainter.trackAddAt(990, 202, 0, 10));
     }
 }

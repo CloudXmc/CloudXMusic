@@ -284,7 +284,7 @@ public final class MusicPainter {
         Box now = roomNowBox();
         roomCard(c, now, 22);
         cover(c, v.current(), 314, 134, 132, 16, covers);
-        c.text(room.nowTitle(), 468, 170, 20, true, INK, 300);
+        dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,room.nowTitle(),468,170,20,true,INK,300,room.nowVip());
         c.text(room.nowArtist(), 468, 194, 12, false, MUTED, 300);
         String status = room.roomStatus().isBlank() ? "已同步到房间时间轴" : room.roomStatus();
         c.text(status, 468, 218, 11, false, MUTED, 300);
@@ -313,7 +313,8 @@ public final class MusicPainter {
                 MusicView.RoomTrack track = room.queue().get(index);
                 int rowY = queue.y() + 50 + i * ROOM_QUEUE_STEP;
                 // 当前曲目高亮，成员据此确认自己跟的是哪一首。
-                boolean current = index == room.currentIndex();
+                // 当前项按服务端广播的歌曲 MID 匹配；窗口刷新或滚动后行号不能代表播放项。
+                boolean current = !room.currentMid().isBlank() && room.currentMid().equals(track.mid());
                 if (current) {
                     c.round(queue.x() + 14, rowY - 3, queue.w() - 28, ROOM_QUEUE_STEP - 3, 10, SOFT);
                 }
@@ -321,7 +322,7 @@ public final class MusicPainter {
                         queue.x() + 22, rowY + 26, 10, true, current ? DEEP : PINK, 32);
                 // 缩略图 30px：行高 45 里上下各留 7px，标题/歌手跟着右移保持 14px 间距。
                 coverArt(c, track.coverUrl(), queue.x() + 42, rowY + 7, 30, 7, covers);
-                c.text(track.title(), queue.x() + 86, rowY + 20, 12, true, INK, 268);
+                dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,track.title(),queue.x()+86,rowY+20,12,true,INK,268,track.vip());
                 c.text(track.artist(), queue.x() + 86, rowY + 37, 10, false, MUTED, 268);
                 c.right(track.duration(), queue.x() + queue.w() - 22, rowY + 24, 10, false, MUTED);
                 if (i < shown - 1) {
@@ -750,9 +751,12 @@ public final class MusicPainter {
             c.right(t.source()==MusicSource.QQ&&t.durationSeconds()==0?"—":t.durationText(),936,b.y()+29,12,MUTED);
             Box share=l.box("share"+i);
             UiIcons.draw(c,"share",share.cx(),share.cy(),15,v.hover().equals("share"+i)?DEEP:MUTED);
-            Box add=l.box("add"+i);
-            UiIcons.draw(c, v.page()==MusicView.Page.QUEUE?"remove":"plus",
-                    add.cx(), add.cy(), 16, v.hover().equals("add"+i)?DEEP:MUTED);
+            // 房间成员只读，隐藏加歌/移除入口，避免点击后再被业务层静默拦截。
+            if (!(v.room().joined() && !v.room().owner())) {
+                Box add=l.box("add"+i);
+                UiIcons.draw(c, v.page()==MusicView.Page.QUEUE?"remove":"plus",
+                        add.cx(), add.cy(), 16, v.hover().equals("add"+i)?DEEP:MUTED);
+            }
         }
         if(!v.tracks().isEmpty()) {
             c.g.setColor(LINE);

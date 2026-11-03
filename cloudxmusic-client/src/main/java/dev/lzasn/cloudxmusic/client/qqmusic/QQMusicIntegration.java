@@ -32,6 +32,12 @@ public final class QQMusicIntegration {
         login = new QQLoginService(accounts, Async::main);
         playback=new QQPlaybackController(new QQAudioPlayer(),dev.lzasn.cloudxmusic.client.CloudXMusicClient.STATE::pauseForExternalPlayback,Async::main,accounts::revision);
         playback.qualityAware();
+        playback.roomPlayRequest((songs,selected)->{
+            var room=dev.lzasn.cloudxmusic.client.room.MusicRoomClient.INSTANCE;
+            if(!room.owner()||room.roomSource()!=dev.lzasn.cloudxmusic.protocol.MusicSourceType.QQ)return;
+            playback.replaceRoomQueue(songs);
+            room.replaceQqOwnerQueue(songs.stream().map(QQMusicIntegration::queueSong).toList(),selected);
+        });
         netease=new NeteasePlaybackAdapter(CloudXMusicClient.STATE);
         presentation=new QQPresentation(provider,Async::main,accounts::revision);
         artwork=new QQArtworkCache(Async::main);
@@ -61,6 +67,7 @@ public final class QQMusicIntegration {
                 lifecycle.update(client.level!=null,client.screen instanceof net.minecraft.client.gui.screens.TitleScreen));
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client->{
             if(artworkAccount!=accounts.revision()){artworkAccount=accounts.revision();artwork.clear();}
+            artwork.tick();
             playback.tick();boolean active=coordinator.allowsPlayback(MusicSource.QQ);
             presentation.update(playback.view().song(),active);
             queueMetadata.update(playback.queue(),active);
@@ -87,6 +94,9 @@ public final class QQMusicIntegration {
     public static QQLoginUi createLoginUi() {
         if (!registered) throw new IllegalStateException("QQ 模块尚未初始化");
         return new QQLoginUi(accounts,login,artwork::image,terms);
+    }
+    public static boolean qqLoggedIn() {
+        return registered && accounts != null && accounts.view().loggedIn();
     }
     public static QQPlaybackController playback(){if(!registered)throw new IllegalStateException("QQ 模块尚未初始化");return playback;}
     public static MusicSourceCoordinator coordinator(){return coordinator;}

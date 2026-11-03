@@ -13,14 +13,20 @@ import static dev.lzasn.cloudxmusic.client.gui.design.MusicLayout.Box;
 public final class QQCatalogPainter {
     public static final Box REFRESH=new Box(970,104,80,28),BACK=new Box(292,104,68,28),PLAY=new Box(866,104,92,28),
             MORE=new Box(292,552,758,26);
+    private static final int TRACK_ADD_X = 1002;
+    private static final int TRACK_ADD_W = 40;
     private static final Box CHART_PREV=new Box(982,286,30,26),CHART_NEXT=new Box(1020,286,30,26);
     private QQCatalogPainter(){}
     public static void paint(FrostCanvas c,QQCatalogController.View view,Function<String,BufferedImage> images,UnifiedSong current){
+        paint(c, view, images, current, true);
+    }
+
+    public static void paint(FrostCanvas c,QQCatalogController.View view,Function<String,BufferedImage> images,UnifiedSong current,boolean queueActions){
         Shape clip=c.g.getClip();c.g.clip(new Rectangle2D.Double(282,98,778,482));
         try{
             button(c,REFRESH,view.loading()?"加载中":"刷新");
             if(view.mode()==QQCatalogController.Mode.HOME)home(c,view,images);
-            else detail(c,view,images,current);
+            else detail(c,view,images,current,queueActions);
         }finally{c.g.setClip(clip);}
     }
     private static void home(FrostCanvas c,QQCatalogController.View v,Function<String,BufferedImage> images){
@@ -73,7 +79,7 @@ public final class QQCatalogPainter {
         c.center("30",x+side/2,y+70,47,true,ink,side-12);
         c.center("DAILY SELECTION",x+side/2,y+92,8,true,ink,side-8);
     }
-    private static void detail(FrostCanvas c,QQCatalogController.View v,Function<String,BufferedImage> images,UnifiedSong current){
+    private static void detail(FrostCanvas c,QQCatalogController.View v,Function<String,BufferedImage> images,UnifiedSong current,boolean queueActions){
         if(v.mode()!=QQCatalogController.Mode.LIKED)button(c,BACK,"‹ 返回");
         c.text(v.title(),v.mode()==QQCatalogController.Mode.LIKED?292:374,124,15,true,INK,v.mode()==QQCatalogController.Mode.LIKED?552:474);
         button(c,PLAY,"播放全部");c.text(v.status(),292,157,11,false,v.error()?QQSearchPainter.errorColor():MUTED,758);
@@ -84,11 +90,15 @@ public final class QQCatalogPainter {
             cover(c,images.apply(song.coverUrl()),304,y+7,36,36,7);
             if(song.coverUrl().isBlank())UiIcons.draw(c,"note",322,y+25,19,PINK);
             QQVipBadge.title(c,song.title(),352,y+22,13,true,INK,372,song.vip());
-            c.text(song.artist(),352,y+40,10,false,MUTED,372);c.text(song.album(),748,y+29,11,false,MUTED,175);
-            c.text(song.durationText(),1002,y+29,11,false,MUTED,48);
-            // 分享按钮：夹在专辑与时长之间，几何见 shareBox。
+            c.text(song.artist(),352,y+40,10,false,MUTED,372);c.text(song.album(),748,y+29,11,false,MUTED,140);
+            c.right(song.durationText(),930,y+29,11,false,MUTED);
+            // 分享按钮夹在时长列（930 右对齐）与加歌按钮（1002）之间，几何见 shareBox。
             Box share=shareBox(n-v.scroll());
             UiIcons.draw(c,"share",share.cx(),share.cy(),15,MUTED);
+            if (queueActions) {
+                Box add = trackAddBox(n - v.scroll());
+                UiIcons.draw(c, "plus", add.cx(), add.cy(), 16, MUTED);
+            }
         }
         if(v.tracks().isEmpty()&&!v.loading())c.text(v.error()?"请检查账号后刷新重试":"歌单暂无歌曲",292,242,13,false,MUTED,758);
         c.center(v.loading()?"正在加载…":v.hasMore()?"下拉或点击加载更多":"已显示全部歌曲",671,570,10,false,MUTED,758);
@@ -98,7 +108,7 @@ public final class QQCatalogPainter {
         QQCoverArt.paint(c,image,x,y,width,height,radius);
     }
     /**
-     * 歌单/收藏列表的分享按钮：横向夹在专辑列（收到 175 宽）和时长列（1002 起）之间。
+     * 歌单/收藏列表的分享按钮：横向夹在时长列（930 右对齐）与加歌按钮（1002）之间。
      *
      * <p>这一页的行几何是 {@code y = 182 + i*52}，和主列表、QQ 搜索结果都不一样，
      * 各自算各自的。</p>
@@ -114,6 +124,17 @@ public final class QQCatalogPainter {
         }
         return -1;
     }
+
+    public static Box trackAddBox(int localRow) {
+        return new Box(TRACK_ADD_X, 182 + localRow * 52 + 6, TRACK_ADD_W, TRACK_ADD_W);
+    }
+
+    /** QQ 收藏/歌单详情的加歌命中区；主页卡片不暴露该动作。 */
+    public static int trackAddAt(double x, double y, int scroll, int count) {
+        if (x < TRACK_ADD_X || x >= TRACK_ADD_X + TRACK_ADD_W || y < 182 || y >= 546) return -1;
+        int row = scroll + (int) ((y - 182) / 52);
+        return row >= 0 && row < count ? row : -1;
+    }
     public static boolean click(QQCatalogController controller,double x,double y){
         if(x<282||x>1060||y<98||y>=582)return false;var v=controller.view();
         if(REFRESH.contains(x,y)){controller.refresh();return true;}
@@ -128,12 +149,13 @@ public final class QQCatalogPainter {
             else if(PLAY.contains(x,y))controller.play(0);
             else if(MORE.contains(x,y))controller.loadMore();
             else {
-                // 分享按钮在行内部，必须先于"点行播歌"拦下来。
+                // 分享 -> 加歌 -> 点行播歌，顺序不能反：后两者都会整行吞掉点击。
                 int shareRow=shareAt(x,y,v.scroll(),v.tracks().size());
                 if(shareRow>=0){
                     dev.lzasn.cloudxmusic.client.chat.ShareChat.send(v.tracks().get(shareRow).display());
                     return true;
                 }
+                if(trackAddAt(x,y,v.scroll(),v.tracks().size())>=0)return true;
                 if(x>=292&&x<1050&&y>=182&&y<546)controller.play(v.scroll()+(int)((y-182)/52));
             }
         }

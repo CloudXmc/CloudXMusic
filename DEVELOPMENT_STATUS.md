@@ -1,10 +1,14 @@
 # CloudXMusic（云朵音乐盒）开发交接文档
 
-更新时间：2026-10-31
+更新时间：2026-11-03
 开发者：Lzasn,xWtree,xiaota888
-当前版本：2.5.0-alpha.2（开发中，未发布）
+当前版本：2.5.0-alpha.3（本地合并）
 最近发布：2.5.0-alpha.1（2026-10-30）
 目标环境：Minecraft 1.21.11、Fabric 客户端、Java 21
+
+> **2026-11-03 合并交接**：已将 `D:\file\CloudXMusic_fork` 的 alpha.3 客户端修复与主线高分屏 UI、房间动态层、抗锯齿和聊天分享合并。修复握手重试、静态快照 MID 丢失和 QQ 歌单列重叠；CI 版本标题已统一。完整验证、备份及剩余服务端曲末风险见 `docs/MERGE_ALPHA3_20261103.md`。下文 alpha.2 版本、旧机器路径及发布状态保留为历史记录，不作为本次发布声明。
+
+> 当前可用 JDK 21：`D:\minecraft\meta\java_versions\mojang-java-runtime-delta-windows-x64-cb4394a27089`。客户端可使用现有 Gradle 缓存离线构建；旧的 `C:\Program Files\Microsoft\jdk-21.0.12.101-hotspot` 已不存在。
 
 ## 1. 项目定位
 

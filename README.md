@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.5.0--alpha.2-D96A91?style=flat-square" alt="版本 2.5.0-alpha.2">
+  <img src="https://img.shields.io/badge/Version-2.5.0--alpha.3-D96A91?style=flat-square" alt="版本 2.5.0-alpha.3">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -27,7 +27,7 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 
 开发者：Lzasn（客户端、网易云音源与解码）、xiaota888（QQ 音乐音源、双音源架构与逐字歌词）、xWtree（早期界面开发、项目宣传者）。
 
-当前源码版本为 `2.5.0-alpha.2`（开发中，尚未发布）；最近发布版本为 `2.5.0-alpha.1`。
+当前源码版本为 `2.5.0-alpha.3`，已在本地合并 QQ 房间修复与主线 UI、聊天分享功能；本次合并未执行发布。
 
 > [!IMPORTANT]
 > 音乐房间已完成协议、房间管理、队列与播放同步，以及「每名成员用自己的账号取链跟播」，但尚未完成真实多人联机验收。房间内的进度对齐、成员暂停跟听、VIP/版权受限曲目的表现仍可能有偏差，请勿用于正式房间活动。
@@ -58,6 +58,8 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 ## 使用
 
 默认是按 `H` 打开或关闭音乐盒（可在游戏按键设置中修改）。点击左侧账号区域切换网易云 / QQ 音乐，搜索、发现、收藏、队列、正在播放和底栏随全局音源更新。QQ 搜索支持单曲 / 歌单 Tab，音质支持臻品母带、SQ、HQ 和标准四档并自动降级。登录、搜索、音质与歌词切换等均在界面内完成，无需命令。返回游戏主标题界面时停止播放。
+
+播放页标题及歌曲列表提供分享按钮，可将歌曲发到游戏聊天栏；安装模组的接收者可点击播放。房间内点播仍受房间权限限制。
 
 音乐房间需要服务端插件 `CloudXMusic-Server`（本地 `music-server` 模块构建）。房主创建房间时，当前个人队列会按房间音源过滤后作为房间队列，之后房主的加歌/移除/播放全部会实时同步；成员加入后看到的是房间队列（只读）。房主控播放/暂停、上下首、进度、循环三档，成员只能本地「暂停跟听」，不影响其他人。
 
@@ -114,6 +116,7 @@ Linux/macOS：
 - 「音乐房间」已完成协议（v5）、房间管理（20 人上限）、队列与播放同步、成员状态广播和本地跟播（每名成员用自己的账号取链解码，偏差超 4 秒才纠偏）。房主控播放/切歌/循环，成员可本地「暂停跟听」，双方都不影响对方；**尚未完成真实双端联机验收**，请勿用于正式房间活动。
 - 房间音源在创建时固定；进入房间不会自动切换全局音源。若当前全局音源与房间音源不一致，房间内会提示先手动切换，退出房间后全局音源保持不变。
 - 远端发行物只包含客户端；`music-protocol` 与 `music-server` 源码仅在本地开发，客户端通过 `libs/cloudxmusic-protocol.jar` 合并协议运行包。
+- 本地服务端仍按歌曲标称时长自动推进队列；QQ 客户端则等待声卡排空后提出曲末请求。取链或缓冲延迟可能导致服务端先切歌，需进行服务端配套与真实双端验收。
 
 ## 开发资料
 

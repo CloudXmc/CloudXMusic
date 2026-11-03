@@ -28,16 +28,23 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
             if (tone == null) tone = MemberTone.ACTIVE;
         }
     }
-    public record RoomTrack(String title, String artist, String duration, String coverUrl) {
+    public record RoomTrack(String title, String artist, String duration, String coverUrl, String mid, boolean vip) {
         public RoomTrack {
             title = title == null || title.isBlank() ? "等待添加歌曲" : title;
             artist = artist == null ? "" : artist;
             duration = duration == null ? "" : duration;
             coverUrl = coverUrl == null ? "" : coverUrl;
+            mid = mid == null ? "" : mid;
+        }
+        public RoomTrack(String title, String artist, String duration, String coverUrl) {
+            this(title, artist, duration, coverUrl, "", false);
+        }
+        public RoomTrack(String title, String artist, String duration, String coverUrl, String mid) {
+            this(title, artist, duration, coverUrl, mid, false);
         }
         /** 没有封面时留空，绘制层回落到唱片占位图。 */
         public RoomTrack(String title, String artist, String duration) {
-            this(title, artist, duration, "");
+            this(title, artist, duration, "", "", false);
         }
     }
     public record RoomSummary(String roomCode, String playerId, String source, int members, String status) {
@@ -60,7 +67,7 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
                            String nowTitle, String nowArtist, int positionTenths, int durationSeconds,
                            boolean playing, boolean owner, List<RoomMember> members, List<RoomTrack> queue,
                            List<RoomSummary> publicRooms, int queueScroll, int currentIndex, String repeatLabel,
-                           int capacity, int memberScroll) {
+                           int capacity, int memberScroll, String currentMid) {
         public RoomView {
             roomCode = roomCode == null || roomCode.isBlank() ? "------" : roomCode;
             source = source == null || source.isBlank() ? "网易云音乐" : source;
@@ -75,20 +82,33 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
             repeatLabel = repeatLabel == null || repeatLabel.isBlank() ? "列表循环" : repeatLabel;
             capacity = Math.max(members.size(), Math.min(32, capacity <= 0 ? 20 : capacity));
             memberScroll = Math.max(0, memberScroll);
+            currentMid = currentMid == null ? "" : currentMid;
+        }
+        public RoomView(boolean joined, String roomCode, String source, String roomStatus,
+                        String nowTitle, String nowArtist, int positionTenths, int durationSeconds,
+                        boolean playing, boolean owner, List<RoomMember> members, List<RoomTrack> queue,
+                        List<RoomSummary> publicRooms, int queueScroll, int currentIndex, String repeatLabel,
+                        int capacity, int memberScroll) {
+            this(joined, roomCode, source, roomStatus, nowTitle, nowArtist, positionTenths, durationSeconds,
+                    playing, owner, members, queue, publicRooms, queueScroll, currentIndex, repeatLabel,
+                    capacity, memberScroll, "");
         }
         public static RoomView empty() {
             return new RoomView(false, "------", "网易云音乐", "", "", "", 0, 0, false, false,
                     List.of(), List.of(), List.of(), 0, -1, "列表循环", 20, 0);
         }
+        public boolean nowVip() {
+            return !currentMid.isBlank()&&queue.stream().anyMatch(track->track.vip()&&currentMid.equals(track.mid()));
+        }
         public RoomView withQueueScroll(int value) {
             return new RoomView(joined, roomCode, source, roomStatus, nowTitle, nowArtist,
                     positionTenths, durationSeconds, playing, owner, members, queue, publicRooms, value,
-                    currentIndex, repeatLabel, capacity, memberScroll);
+                    currentIndex, repeatLabel, capacity, memberScroll, currentMid);
         }
         public RoomView withMemberScroll(int value) {
             return new RoomView(joined, roomCode, source, roomStatus, nowTitle, nowArtist,
                     positionTenths, durationSeconds, playing, owner, members, queue, publicRooms, queueScroll,
-                    currentIndex, repeatLabel, capacity, value);
+                    currentIndex, repeatLabel, capacity, value, currentMid);
         }
         /**
          * 抹掉随房间时钟变化的字段，供静态画布比较用。
@@ -100,7 +120,7 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
         public RoomView withClock(int value) {
             return new RoomView(joined, roomCode, source, roomStatus, nowTitle, nowArtist,
                     value, durationSeconds, playing, owner, members, queue, publicRooms, queueScroll,
-                    currentIndex, repeatLabel, capacity, memberScroll);
+                    currentIndex, repeatLabel, capacity, memberScroll, currentMid);
         }
     }
 

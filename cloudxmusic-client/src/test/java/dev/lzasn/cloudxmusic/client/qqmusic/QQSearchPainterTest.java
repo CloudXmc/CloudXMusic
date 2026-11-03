@@ -37,6 +37,12 @@ class QQSearchPainterTest {
         }
     }
 
+    @Test void qqSearchAddHitIsSeparateFromPlaybackRow() {
+        assertEquals(2, QQSearchPainter.addAt(1022, QQSearchPainter.ROW_TOP + 2 * QQSearchPainter.ROW_H + 20, 0, 7));
+        assertEquals(-1, QQSearchPainter.rowAt(1022, QQSearchPainter.ROW_TOP + 20, 0, 7));
+        assertEquals(-1, QQSearchPainter.addAt(990, QQSearchPainter.ROW_TOP + 20, 0, 7));
+    }
+
     @Test void rendersBothThemesAndRedErrorWithoutChangingAccountPixels() throws Exception {
         Path out = Path.of("../outputs/qq-integration").toAbsolutePath().normalize();
         Files.createDirectories(out);

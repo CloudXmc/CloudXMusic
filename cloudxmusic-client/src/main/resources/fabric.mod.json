@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "cloudxmusic",
-  "version": "${version}",
+  "version": "2.5.0-alpha.3",
   "name": "CloudXMusic · 云朵音乐盒",
   "description": "云朵音乐盒：Minecraft Fabric 客户端音乐播放器，提供自绘磨砂界面、网易云音乐与灵动岛歌词。",
   "authors": ["Lzasn", "xWtree", "xiaota888"],

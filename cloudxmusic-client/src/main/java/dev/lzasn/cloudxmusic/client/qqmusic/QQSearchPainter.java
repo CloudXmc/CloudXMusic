@@ -25,6 +25,7 @@ public final class QQSearchPainter {
     public static final int ROW_TOP = 264;
     public static final int ROW_H = 48;
     public static final int VISIBLE_ROWS = 7;
+    private static final Box ADD_AREA = new Box(1002, ROW_TOP + 3, 40, 40);
     private static BufferedImage background;
     private static String backgroundKey;
     private QQSearchPainter() {}
@@ -55,6 +56,19 @@ public final class QQSearchPainter {
             return row >= 0 && row < count ? row : -1;
         }
         return -1;
+    }
+
+    public static Box addBox(int index, int scroll) {
+        return new Box(ADD_AREA.x(), ROW_TOP + (index - scroll) * ROW_H + 3,
+                ADD_AREA.w(), ADD_AREA.h());
+    }
+
+    /** 搜索结果右侧的加歌命中区；与整行播放区分开，避免误触播放。 */
+    public static int addAt(double x, double y, int scroll, int count) {
+        if (x < ADD_AREA.x() || x >= ADD_AREA.x() + ADD_AREA.w()
+                || y < ROW_TOP || y >= ROW_TOP + VISIBLE_ROWS * ROW_H) return -1;
+        int row = scroll + (int) ((y - ROW_TOP) / ROW_H);
+        return row >= 0 && row < count ? row : -1;
     }
     public static int rowAt(double x, double y, int scroll, int count) {
         if (x < MAIN_X || x >= MAIN_X + 696 || y < ROW_TOP || y >= ROW_TOP + VISIBLE_ROWS * ROW_H) return -1;
@@ -111,7 +125,7 @@ public final class QQSearchPainter {
             boolean playing=search.source()==Source.QQ&&playback!=null&&!playback.status().isEmpty();
             boolean playbackError=playing&&playback.error();
             String status=search.loading()||search.error()?search.status():playbackError?playback.status():testing?probe.status():search.status();
-            c.text(status, search.source()==Source.QQ?464:292, 174, 11, false,
+            c.text(status, search.source()==Source.QQ?464:292, 175, 11, false,
                     (playbackError||search.error()||(testing&&probe.error())) ? errorColor() : MUTED, search.source()==Source.QQ?586:758);
         }
         return image;
@@ -172,10 +186,15 @@ public final class QQSearchPainter {
             }
             QQVipBadge.title(c,song.title(),354,y+19,14,true,INK,360,display.vip());
             c.text(song.artist(),354,y+36,11,false,MUTED,360);
-            // 专辑列收到 180：原来 290 宽会压到右侧新加的分享按钮（944 起）。
-            c.text(song.album(), 748, y + 29, 12, false, MUTED, 180);
+            // 专辑列收到 175：右侧要让出分享按钮（944）与加歌按钮（1002）。
+            c.text(song.album(), 748, y + 29, 12, false, MUTED, 175);
             Box share = shareBox(index - search.scroll());
             UiIcons.draw(c, "share", share.cx(), share.cy(), 15, MUTED);
+            // 房间听众只读，隐藏加歌入口；房主仍可把搜索结果并入 QQ 房间队列。
+            if (!music.room().joined() || music.room().owner()) {
+                Box add = addBox(index, search.scroll());
+                UiIcons.draw(c, "plus", add.cx(), add.cy(), 16, MUTED);
+            }
         }
         if (search.songs().isEmpty()) {
             UiIcons.draw(c, "note", 671, 318, 48, PINK);

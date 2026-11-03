@@ -12,6 +12,44 @@ import java.util.concurrent.locks.LockSupport;
 import static org.junit.jupiter.api.Assertions.*;
 
 class QQAudioPlayerTest {
+    @Test void streamingPermissionDenialIsTerminalAndNeverSignalsOutputStarted()throws Exception{
+        AtomicInteger opened=new AtomicInteger(),started=new AtomicInteger();
+        try(var player=new QQAudioPlayer(f->{throw new AssertionError("403 后不能打开声卡");},(u,s)->{
+            opened.incrementAndGet();throw new QQAudioHttp.Failure(403);
+        })){
+            player.playFrom(URI.create("https://a.qq.com/denied.mp3"),22,0,false,()->true,started::incrementAndGet,()->{}).get(1,TimeUnit.SECONDS);
+            waitFor(()->player.view().status()==QQPlaybackAudio.Status.ERROR);
+            assertEquals(QQPlaybackAccessException.Reason.RESTRICTED,player.accessFailure());
+            assertTrue(player.unavailable());assertEquals(1,opened.get());assertEquals(0,started.get());
+        }
+    }
+    @Test void startedSignalWaitsForSuccessfulPcmWriteAndIsNotRepeatedAfterResume()throws Exception{
+        AtomicInteger started=new AtomicInteger(),running=new AtomicInteger(),max=new AtomicInteger();Device d=new Device(running,max);
+        CountDownLatch writing=new CountDownLatch(1),release=new CountDownLatch(1);SourceDataLine device=d.line();
+        SourceDataLine blocked=(SourceDataLine)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{SourceDataLine.class},(p,m,a)->{
+            if(m.getName().equals("write")){writing.countDown();assertTrue(release.await(2,TimeUnit.SECONDS));}
+            return m.invoke(device,a);
+        });
+        try(var player=new QQAudioPlayer(f->blocked,(u,s)->fixture())){
+            player.playFrom(URI.create("https://a.qq.com/first.flac"),22,0,false,()->true,started::incrementAndGet,()->{}).get(1,TimeUnit.SECONDS);
+            assertTrue(writing.await(1,TimeUnit.SECONDS));assertEquals(0,started.get(),"声卡仅打开、写入未成功时不能恢复 UI");
+            release.countDown();waitFor(()->started.get()==1);player.pause().get(1,TimeUnit.SECONDS);player.resume(()->true).get(1,TimeUnit.SECONDS);
+            waitFor(()->d.frames>1000);assertEquals(1,started.get());player.stop().get(1,TimeUnit.SECONDS);
+        }finally{release.countDown();}
+    }
+    @Test void failedDeviceAndCancelledPendingStreamCannotReportAudioStarted()throws Exception{
+        AtomicInteger started=new AtomicInteger();CountDownLatch loading=new CountDownLatch(1),release=new CountDownLatch(1);
+        try(var player=new QQAudioPlayer(f->{throw new LineUnavailableException();},(u,s)->fixture())){
+            player.playFrom(URI.create("https://a.qq.com/fail.flac"),22,0,false,()->true,started::incrementAndGet,()->{}).get(1,TimeUnit.SECONDS);
+            waitFor(()->player.view().status()==QQPlaybackAudio.Status.ERROR);assertEquals(0,started.get());assertFalse(player.unavailable());
+        }
+        try(var player=new QQAudioPlayer(f->{throw new AssertionError("取消后不得打开声卡");},(u,s)->{
+            loading.countDown();release.await(2,TimeUnit.SECONDS);return fixture();
+        })){
+            player.playFrom(URI.create("https://a.qq.com/cancel.flac"),22,0,false,()->true,started::incrementAndGet,()->{}).get(1,TimeUnit.SECONDS);
+            assertTrue(loading.await(1,TimeUnit.SECONDS));player.stop().get(1,TimeUnit.SECONDS);release.countDown();assertEquals(0,started.get());
+        }finally{release.countDown();}
+    }
     @Test void viewSamplesHardwareDuringBlockedWriteWithoutWaitingForClockTick()throws Exception{
         AtomicLong played=new AtomicLong();AtomicReference<AudioFormat> format=new AtomicReference<>();
         AtomicBoolean running=new AtomicBoolean();CountDownLatch writing=new CountDownLatch(1),release=new CountDownLatch(1);
