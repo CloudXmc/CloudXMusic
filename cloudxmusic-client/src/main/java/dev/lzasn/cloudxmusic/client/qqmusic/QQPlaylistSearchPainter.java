@@ -10,6 +10,8 @@ import static dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas.*;
 public final class QQPlaylistSearchPainter {
     /** Tab 绘制和点击共用此坐标，避免命中区域与画面错位。 */
     public static final int TAB_TOP = 162;
+    private static final int TAB_HEIGHT = 26;
+    private static final int TAB_BASELINE = TAB_TOP + TAB_HEIGHT / 2 + 4;
     public static final Box SONGS=new Box(292,TAB_TOP,68,26),PLAYLISTS=new Box(368,TAB_TOP,68,26);
     private QQPlaylistSearchPainter(){}
     public static Box tile(int visibleIndex){return new Box(292+(visibleIndex%4)*192,208+(visibleIndex/4)*178,178,170);}
@@ -22,7 +24,7 @@ public final class QQPlaylistSearchPainter {
         try(var c=new FrostCanvas(image,scale)){var t=c.g.getTransform();c.g.setTransform(new java.awt.geom.AffineTransform());c.g.drawImage(base,0,0,null);c.g.setTransform(t);c.g.translate(MusicLayout.PAD,MusicLayout.PAD);tabs(c,false);}return image;
     }
     private static void tabs(FrostCanvas c,boolean playlists){
-        for(int i=0;i<2;i++){Box box=i==0?SONGS:PLAYLISTS;boolean chosen=playlists==(i==1);if(chosen)c.round(box.x(),box.y(),box.w(),box.h(),13,SOFT);c.center(i==0?"单曲":"歌单",box.cx(),box.cy()+4,12,chosen,chosen?DEEP:MUTED,60);}
+        for(int i=0;i<2;i++){Box box=i==0?SONGS:PLAYLISTS;boolean chosen=playlists==(i==1);if(chosen)c.round(box.x(),box.y(),box.w(),box.h(),13,SOFT);c.center(i==0?"单曲":"歌单",box.cx(),TAB_BASELINE,12,chosen,chosen?DEEP:MUTED,60);}
     }
     private static void field(FrostCanvas c,MusicView music,boolean loading){
         c.card(292,116,634,36,24);UiIcons.draw(c,"search",316,134,19,PINK);

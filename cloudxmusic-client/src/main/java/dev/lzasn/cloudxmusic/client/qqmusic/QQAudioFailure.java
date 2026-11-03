@@ -8,6 +8,11 @@ import javax.sound.sampled.LineUnavailableException;
 final class QQAudioFailure {
     private QQAudioFailure(){}
     static final class Output extends IOException {Output(Throwable cause){super("QQ 声卡输出失败",cause);}}
+    static boolean network(Throwable failure){
+        Set<Throwable> seen=Collections.newSetFromMap(new IdentityHashMap<>());
+        for(Throwable cause=failure;cause!=null&&seen.add(cause);cause=cause.getCause())if(cause instanceof QQAudioHttp.Failure)return true;
+        return false;
+    }
     static String message(Throwable failure){
         Set<Throwable> seen=Collections.newSetFromMap(new IdentityHashMap<>());
         for(Throwable cause=failure;cause!=null&&seen.add(cause);cause=cause.getCause()){

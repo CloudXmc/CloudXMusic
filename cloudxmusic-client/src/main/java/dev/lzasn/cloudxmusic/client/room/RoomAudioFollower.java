@@ -39,6 +39,7 @@ public final class RoomAudioFollower {
     private boolean sourceHintShown;
     /** 上一 tick 是否在房间里，用来在"刚离开"时做一次清理。 */
     private boolean joinedLastTick;
+    private QQRoomPlaybackBridge qqBridge;
 
     private RoomAudioFollower() {}
 
@@ -55,7 +56,8 @@ public final class RoomAudioFollower {
             // 房间若在播，下面会按房间位置起播；若没在播，就安静等房主开始。
             LOGGER.info("[房间] 进入房间，停止本地播放");
             CloudXMusicClient.STATE.clearRoomPlayback();
-            QQMusicIntegration.playback().stop();
+            if(room.roomSource()==MusicSourceType.QQ)QQMusicIntegration.playback().roomMode(true);
+            else QQMusicIntegration.playback().stop();
         }
         joinedLastTick = true;
         // 房间内关掉个人队列的曲末自动切歌：切哪首由服务端决定。
@@ -63,15 +65,25 @@ public final class RoomAudioFollower {
         // 房主：房间队列实时跟随个人播放队列（加歌、叉号移除、播放全部都会同步）。
         MusicSourceType roomType = room.roomSource();
         if (roomType != null && room.owner()) {
-            room.syncOwnerQueue(roomType == MusicSourceType.QQ
-                    ? QQMusicIntegration.playback().queue().stream()
-                            .map(QQMusicIntegration::queueSong).toList()
-                    : CloudXMusicClient.STATE.queue().stream()
-                            .map(dev.lzasn.cloudxmusic.client.omni.SongView::from).toList());
+            if (roomType == MusicSourceType.QQ) {
+                QQPlaybackController playback = QQMusicIntegration.playback();
+                playback.roomMode(true);
+                room.syncQqOwnerQueue(playback.queue().stream().map(QQMusicIntegration::queueSong).toList());
+            } else {
+                MusicState state = CloudXMusicClient.STATE;
+                room.syncOwnerQueue(state.queue().stream()
+                                .map(dev.lzasn.cloudxmusic.client.omni.SongView::from).toList(),
+                        state.hasCurrentTrack() ? state.current().id() : "",
+                        (int) Math.round(state.position() * 10), state.playing(), state.playbackMode());
+            }
         }
         Packet.RoomTrack track = room.currentRoomTrack();
         if (track == null) {
-            if (sounding) shutdown();
+            if(roomType==MusicSourceType.QQ){
+                QQMusicIntegration.playback().roomMode(true);
+                if(qqBridge!=null&&!activeKey.isEmpty())qqBridge.clear();
+                sounding=false;
+            }else if (sounding) shutdown();
             activeKey = "";
             return;
         }
@@ -98,6 +110,18 @@ public final class RoomAudioFollower {
         if (wantSound && !wantSoundLastTick) failedKey = "";
         wantSoundLastTick = wantSound;
 
+        if(track.ref().source()==MusicSourceType.QQ){
+            if(qqBridge==null)qqBridge=new QQRoomPlaybackBridge(QQMusicIntegration.playback(),System::nanoTime,
+                    (mid,revision)->{
+                        if(room.qqAudioStarted(mid,revision)){failedKey="";sounding=true;}
+                    },room::qqAudioFinished);
+            qqBridge.follow(new UnifiedSong("qq",track.ref().songId(),track.title(),track.artist(),""),
+                    wantSound,room.positionMs()/1000.0,room.playbackMode(),room.seekRevision());
+            activeKey=key;sounding=wantSound;
+            if(wantSound)checkPlayback(track);
+            return;
+        }
+
         if (!wantSound) {
             if (sounding) pauseLocal(track);
             activeKey = key;
@@ -122,7 +146,9 @@ public final class RoomAudioFollower {
         failedKey = "";
         CloudXMusicClient.STATE.roomMode(false);
         CloudXMusicClient.STATE.clearRoomPlayback();
-        QQMusicIntegration.playback().stop();
+        if(qqBridge!=null)qqBridge=null;
+        QQPlaybackController qq=QQMusicIntegration.playback();
+        if(qq.roomMode())qq.roomMode(false);else qq.stop();
     }
 
     // ------------------------------------------------------------ 起播与暂停
@@ -139,17 +165,6 @@ public final class RoomAudioFollower {
                     track.ref().songId(), "", track.coverUrl(), track.vip()), roomMs);
             return;
         }
-        QQPlaybackController qq = QQMusicIntegration.playback();
-        // QQ 的播放受全局音源门禁限制；音源没切到 QQ 时抢不到声卡，按播不了处理。
-        if (!QQMusicIntegration.coordinator().allowsPlayback(MusicSource.QQ)) {
-            markUnavailable(track, "当前全局音源不是 QQ 音乐，无法跟播这首");
-            return;
-        }
-        UnifiedSong song = new UnifiedSong("qq", track.ref().songId(), track.title(),
-                track.artist(), "");
-        qq.play(List.of(song), 0);
-        if (roomMs > 1_500L) qq.seek(roomMs / 1000.0);
-        sounding = true;
     }
 
     private void pauseLocal(Packet.RoomTrack track) {
@@ -157,8 +172,7 @@ public final class RoomAudioFollower {
         if (track.ref().source() == MusicSourceType.NETEASE) {
             CloudXMusicClient.STATE.pauseRoomPlayback();
         } else {
-            QQPlaybackController qq = QQMusicIntegration.playback();
-            if (qq.view().playing()) qq.toggle();
+            QQMusicIntegration.playback().roomPause();
         }
         sounding = false;
     }
@@ -179,8 +193,8 @@ public final class RoomAudioFollower {
 
     private void checkPlayback(Packet.RoomTrack track) {
         String key = key(track);
-        if (key.equals(failedKey)) return;
         if (track.ref().source() == MusicSourceType.NETEASE) {
+            if (key.equals(failedKey)) return;
             MusicState state = CloudXMusicClient.STATE;
             // 只认「取链真的失败」这一个信号。之前按「起播后 6 秒内还没声音」猜，
             // 首次播放要跑 VIP 降级链 + 探测 + 拉歌词，很容易超时误报成播不了。
@@ -189,16 +203,27 @@ public final class RoomAudioFollower {
             }
             return;
         }
-        QQPlaybackController.View view = QQMusicIntegration.playback().view();
-        if (view.error()) markUnavailable(track, "这首暂时播不了：" + view.status());
+        QQPlaybackController player=QQMusicIntegration.playback();
+        QQPlaybackController.RoomStatus status=player.roomStatus();
+        if(status==QQPlaybackController.RoomStatus.GETTING_AUDIO){
+            failedKey="";
+            MusicRoomClient.INSTANCE.reportSelfState(MemberState.BUFFERING);
+        }else if(!key.equals(failedKey)&&(status==QQPlaybackController.RoomStatus.NO_PERMISSION
+                ||status==QQPlaybackController.RoomStatus.LOGIN_REQUIRED||status==QQPlaybackController.RoomStatus.ERROR)){
+            markUnavailable(track,"这首暂时播不了："+status.detail(),status.detail());
+        }
     }
 
     private void markUnavailable(Packet.RoomTrack track, String message) {
+        markUnavailable(track,message,"本曲不可播放");
+    }
+
+    private void markUnavailable(Packet.RoomTrack track,String message,String detail) {
         sounding = false;
         failedKey = key(track);
         activeKey = key(track);
         LOGGER.warn("[房间] 跟播失败：{}（{}）", track.title(), message);
-        MusicRoomClient.INSTANCE.reportSelfState(MemberState.UNAVAILABLE);
+        MusicRoomClient.INSTANCE.reportSelfState(MemberState.UNAVAILABLE,detail);
         RoomToast.show(message);
     }
 

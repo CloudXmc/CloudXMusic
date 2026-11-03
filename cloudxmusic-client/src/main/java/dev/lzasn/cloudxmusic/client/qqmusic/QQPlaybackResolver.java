@@ -33,6 +33,17 @@ public final class QQPlaybackResolver {
         return result==null?null:result.url();
     }
     Link resolveLink(UnifiedSong song,QQQuality preferred,java.util.function.Consumer<QQTrackMetadata.Info> metadata) throws IOException,InterruptedException{
+        return resolveLink(song,preferred,metadata,false);
+    }
+    Link resolveLink(UnifiedSong song,QQQuality preferred,java.util.function.Consumer<QQTrackMetadata.Info> metadata,boolean room) throws IOException,InterruptedException{
+        try{return resolveInternal(song,preferred,metadata,room);}
+        catch(IOException error){
+            var reason=QQPlaybackAccessException.reason(error);
+            if(room&&reason!=null)throw new QQPlaybackAccessException(reason);
+            throw error;
+        }
+    }
+    private Link resolveInternal(UnifiedSong song,QQQuality preferred,java.util.function.Consumer<QQTrackMetadata.Info> metadata,boolean room) throws IOException,InterruptedException{
         Objects.requireNonNull(song);
         Objects.requireNonNull(preferred);
         if (!song.source().equals("qq") || !QQTrackMetadata.validMid(song.platformId())) throw new IllegalArgumentException("需要有效的 QQ 音乐歌曲 MID");
@@ -43,6 +54,7 @@ public final class QQPlaybackResolver {
         try {info=QQTrackMetadata.loadInfo(song.platformId(),api);}
         catch(QQPlaybackApi.BusinessFailure failure){
             if(!failure.songUnavailable())throw failure;
+            if(room)throw new QQPlaybackAccessException(QQPlaybackAccessException.Reason.RESTRICTED);
             verifySession(api,session);return null;
         }
         String mediaMid=info.mediaMid();metadata.accept(info);
@@ -60,16 +72,21 @@ public final class QQPlaybackResolver {
                         desktop ? "UrlGetVkey" : "CgiGetVkey", params, desktop);
                 if (reply.code() != 0) {
                     var rejected=new QQPlaybackApi.BusinessFailure(reply.code());
+                    if(room)throw rejected;
                     if(!rejected.songUnavailable())failure=rejected;
                     continue;
                 }
                 List<URI> candidates;
-                try { candidates = candidates(reply.data(), filename, song.platformId(), quality.flac()); }
+                try { candidates = candidates(reply.data(), filename, song.platformId(), quality.flac(),room); }
+                catch(QQPlaybackAccessException denied){throw denied;}
                 catch (IOException e) { failure = e; continue; }
                 for (URI candidate : candidates) {
                     URI verified;
                     try { verified = checkAudio.verify(candidate, quality.flac(), api.remaining()); }
-                    catch (IOException e) { failure = e; api.remaining(); continue; }
+                    catch (IOException e) {
+                        if(room&&QQPlaybackAccessException.reason(e)!=null)throw e;
+                        failure = e; api.remaining(); continue;
+                    }
                     api.remaining();
                     if (verified != null) {
                         if (!QQAudioUrlVerifier.allowed(verified) || !QQAudioUrlVerifier.extension(verified, quality.flac()))
@@ -82,6 +99,8 @@ public final class QQPlaybackResolver {
         }
         verifySession(api,session);
         if (failure != null) throw failure;
+        // 单个档位的空地址不等于无权限；穷尽桌面/Web 和音质降级仍无资源才结束等待。
+        if(room)throw new QQPlaybackAccessException(QQPlaybackAccessException.Reason.RESTRICTED);
         // 已穷尽各档位的空 purl / 22006，交给控制器跳过；不吞网络或格式错误。
         return null;
     }
@@ -94,6 +113,9 @@ public final class QQPlaybackResolver {
         if (!id.isEmpty() && !id.equals(session.credentials().userId())) throw new IOException("QQ 取链账号验证身份不一致");
     }
     static List<URI> candidates(JsonObject data, String filename, String songMid, boolean flac) throws IOException {
+        return candidates(data,filename,songMid,flac,false);
+    }
+    private static List<URI> candidates(JsonObject data,String filename,String songMid,boolean flac,boolean room)throws IOException{
         JsonElement rows = data.get("midurlinfo");
         if (rows == null || !rows.isJsonArray() || rows.getAsJsonArray().size() > 16) throw new IOException("QQ VKey 响应缺少有效 midurlinfo 数组");
         List<String> hosts = new ArrayList<>();
@@ -113,6 +135,7 @@ public final class QQPlaybackResolver {
             JsonObject row = item.getAsJsonObject();
             if (row.has("result") && QQAuthHttp.integer(row, "result") != 0) {
                 var rejected=new QQPlaybackApi.BusinessFailure(QQAuthHttp.integer(row,"result"));
+                if(room&&rejected.songUnavailable())throw new QQPlaybackAccessException(QQPlaybackAccessException.Reason.RESTRICTED);
                 if(!rejected.songUnavailable())throw rejected;
                 continue;
             }

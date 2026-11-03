@@ -50,4 +50,9 @@ class QQCatalogPainterTest {
     @Test void cardArrowAndSongHitsCannotPassThroughToNetease() {
         assertFalse(QQCatalogPainter.REFRESH.contains(100,474));assertFalse(QQCatalogPainter.PLAY.contains(671,619));assertFalse(QQCatalogPainter.MORE.contains(671,619));
     }
+
+    @Test void catalogTrackAddHitUsesAbsoluteTrackIndex() {
+        assertEquals(5, QQCatalogPainter.trackAddAt(1022, 182 + 3 * 52 + 20, 2, 10));
+        assertEquals(-1, QQCatalogPainter.trackAddAt(990, 202, 0, 10));
+    }
 }

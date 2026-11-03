@@ -8,13 +8,23 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import javax.imageio.ImageIO;
 import javax.imageio.stream.ImageInputStream;
 
 /** QQ 图片缓存独立于网易云；最多 64 张、2 MiB/张、2048x2048，后台下载及解码。 */
 public final class QQArtworkCache implements AutoCloseable {
     @FunctionalInterface interface Loader {BufferedImage load(URI uri)throws Exception;}
+    @FunctionalInterface interface RetryDelay {void pause(int attempt)throws InterruptedException;}
+    static final class HttpFailure extends IOException {
+        private final int status;
+        HttpFailure(int status){super("QQ 图片 HTTP "+status);this.status=status;}
+        int status(){return status;}
+    }
+    private static final org.slf4j.Logger LOGGER=org.slf4j.LoggerFactory.getLogger(QQArtworkCache.class);
     private final Loader loader;
+    private final RetryDelay retryDelay;
+    private final LongSupplier clock;
     private final Map<String,BufferedImage> images=new LinkedHashMap<>();
     private final Set<String> requested=new HashSet<>();
     private final Map<String,Long> failed=new LinkedHashMap<>();
@@ -22,32 +32,75 @@ public final class QQArtworkCache implements AutoCloseable {
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER).build();
     private final Consumer<Runnable> main;
     private int revision;
-    private long generation;
-    private boolean closed;
-    QQArtworkCache(Consumer<Runnable> main){this.main=main;this.loader=this::download;}
-    QQArtworkCache(Consumer<Runnable> main,Loader loader){this.main=main;this.loader=loader;}
+    private volatile long generation;
+    private volatile boolean closed;
+    QQArtworkCache(Consumer<Runnable> main){this.main=main;this.loader=this::download;this.retryDelay=attempt->Thread.sleep(250L*attempt);this.clock=System::nanoTime;}
+    QQArtworkCache(Consumer<Runnable> main,Loader loader){this(main,loader,attempt->Thread.sleep(250L*attempt));}
+    QQArtworkCache(Consumer<Runnable> main,Loader loader,RetryDelay retryDelay){this(main,loader,retryDelay,System::nanoTime);}
+    QQArtworkCache(Consumer<Runnable> main,Loader loader,RetryDelay retryDelay,LongSupplier clock){this.main=main;this.loader=loader;this.retryDelay=retryDelay;this.clock=clock;}
     public int revision(){return revision;}
+    /** 静态界面不会持续调用 image；退避结束后由客户端 tick 主动恢复失败任务。 */
+    void tick(){
+        if(closed)return;
+        long now=clock.getAsLong();
+        for(String url:new ArrayList<>(failed.keySet()))if(now>=failed.get(url))image(url);
+    }
     boolean prefetch(String url){
         image(url);return images.containsKey(url)||requested.contains(url);
     }
     public BufferedImage image(String url){
         if(url==null||url.isBlank()||closed)return null;
         BufferedImage image=images.get(url);if(image!=null||requested.contains(url))return image;
-        Long retry=failed.get(url);if(retry!=null&&System.nanoTime()<retry)return null;
+        Long retry=failed.get(url);if(retry!=null&&clock.getAsLong()<retry)return null;
         URI uri;try{uri=URI.create(url);if(!allowed(uri))return null;}catch(IllegalArgumentException e){return null;}
         requested.add(url);long token=generation;
         try{io.execute(()->{
             BufferedImage loaded=null;
-            try{loaded=loader.load(uri);}catch(InterruptedException e){Thread.currentThread().interrupt();}
-            catch(Exception error){org.slf4j.LoggerFactory.getLogger(QQArtworkCache.class).debug("QQ 图片加载失败，主机={}，原因={}",uri.getHost(),error.getClass().getSimpleName());}
+            try{loaded=loadWithRetry(uri,token);}catch(InterruptedException e){Thread.currentThread().interrupt();}
+            catch(Exception error){LOGGER.warn("[QQ封面] 加载失败，host={}，原因={}，30 秒后允许重试",uri.getHost(),error.getClass().getSimpleName());}
             BufferedImage result=loaded;
             main.accept(()->{
                 if(closed||generation!=token)return;requested.remove(url);
-                if(result!=null){failed.remove(url);if(images.size()>=64)images.remove(images.keySet().iterator().next());images.put(url,result);revision++;}
-                else{if(failed.size()>=64)failed.remove(failed.keySet().iterator().next());failed.put(url,System.nanoTime()+TimeUnit.SECONDS.toNanos(30));}
+                if(result!=null){failed.remove(url);if(images.size()>=64)images.remove(images.keySet().iterator().next());images.put(url,result);revision++;
+                    LOGGER.info("[QQ封面] 加载成功，host={}，已刷新 UI 缓存版本={}",uri.getHost(),revision);}
+                else{if(failed.size()>=64)failed.remove(failed.keySet().iterator().next());failed.put(url,clock.getAsLong()+TimeUnit.SECONDS.toNanos(30));}
             });
         });}catch(RejectedExecutionException e){requested.remove(url);}
         return null;
+    }
+    private BufferedImage loadWithRetry(URI uri,long token)throws Exception{
+        List<URI> candidates=candidates(uri);Exception last=null;
+        for(int attempt=0;attempt<3;attempt++){
+            if(closed||generation!=token||Thread.currentThread().isInterrupted())throw new InterruptedException();
+            URI candidate=candidates.get(Math.min(attempt,candidates.size()-1));
+            try{
+                BufferedImage result=loader.load(candidate);
+                if(result==null)throw new IOException("QQ 封面返回空图片");
+                return result;
+            }catch(InterruptedException e){throw e;}
+            catch(Exception failure){
+                last=failure;
+                boolean fallback=attempt+1<candidates.size();
+                boolean temporary=!(failure instanceof HttpFailure httpFailure)
+                        ||httpFailure.status()==408||httpFailure.status()==429||httpFailure.status()>=500;
+                boolean retry=attempt<2&&(temporary||fallback);
+                if(!retry)throw failure;
+                LOGGER.info("[QQ封面] 后台重试，host={}，attempt={}/3，HTTP={}，备用地址={}",candidate.getHost(),attempt+2,
+                        failure instanceof HttpFailure httpFailure?httpFailure.status():"无响应",fallback);
+                if(temporary)retryDelay.pause(attempt+1);
+            }
+        }
+        throw last;
+    }
+    /** 仅为已知专辑图片生成无鉴权备用图；不猜测头像或任意外部图片地址。 */
+    static List<URI> candidates(URI uri){
+        if(!allowed(uri))return List.of();
+        String path=uri.getPath();
+        if(path==null||!path.matches("/music/photo_new/T002R[0-9]+x[0-9]+M000[A-Za-z0-9]+\\.jpg"))return List.of(uri);
+        var urls=new LinkedHashSet<URI>();urls.add(uri);
+        urls.add(URI.create("https://y.gtimg.cn"+path.replaceFirst("T002R[0-9]+x[0-9]+","T002R150x150")));
+        urls.add(URI.create("https://pic.y.qq.com"+path));
+        return List.copyOf(urls);
     }
     static boolean allowed(URI uri){String h=uri.getHost();return "https".equals(uri.getScheme())&&uri.getUserInfo()==null&&(uri.getPort()==-1||uri.getPort()==443)&&h!=null&&(h.equals("gtimg.cn")||h.endsWith(".gtimg.cn")||h.equals("y.qq.com")||h.equals("music-file.y.qq.com")||h.equals("qpic.y.qq.com")||h.matches("pic[0-9]*\\.y\\.qq\\.com")||h.equals("q1.qlogo.cn")||h.equals("q.qlogo.cn")||h.equals("thirdqq.qlogo.cn")||h.equals("thirdwx.qlogo.cn")||h.equals("wx.qlogo.cn"));}
     static HttpRequest imageRequest(URI uri){
@@ -64,7 +117,11 @@ public final class QQArtworkCache implements AutoCloseable {
             CompletableFuture<HttpResponse<byte[]>> pending=http.sendAsync(request,info->new QQAuthHttp.LimitedBody());
             HttpResponse<byte[]> response;try{response=pending.get(12,TimeUnit.SECONDS);}finally{pending.cancel(true);}
             if(response.statusCode()>=300&&response.statusCode()<400){uri=uri.resolve(response.headers().firstValue("location").orElseThrow());if(!allowed(uri))throw new IOException("QQ 图片跳转地址无效");continue;}
-            if(response.statusCode()!=200)throw new IOException("QQ 图片 HTTP "+response.statusCode());
+            if(response.statusCode()!=200){
+                // 不记录查询参数、Cookie 或响应正文，保留实机定位需要的状态码。
+                LOGGER.warn("[QQ封面] 下载失败，HTTP={}，host={}，path={}",response.statusCode(),uri.getHost(),uri.getPath());
+                throw new HttpFailure(response.statusCode());
+            }
             return decode(response.body());
         }
         throw new IOException("QQ 图片跳转过多");

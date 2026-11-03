@@ -11,7 +11,7 @@ public final class QQVipBadge {
         if(!vip){c.text(title,x,baseline,size,bold,ink,max);return;}
         String fitted=c.fit(title,size,bold,Math.max(0,max-40));
         c.text(fitted,x,baseline,size,bold,ink,Math.max(0,max-40));
-        float bx=x+c.width(fitted,size,bold)+6,by=baseline-12;
+        float bx=x+c.width(fitted,size,bold)+8,by=baseline-12;
         Color accent=FrostCanvas.PINK;
         c.round(bx,by,32,16,5,new Color(accent.getRed(),accent.getGreen(),accent.getBlue(),FrostCanvas.dark?32:20));
         Stroke saved=c.g.getStroke();c.g.setStroke(new BasicStroke(1));c.g.setColor(accent);

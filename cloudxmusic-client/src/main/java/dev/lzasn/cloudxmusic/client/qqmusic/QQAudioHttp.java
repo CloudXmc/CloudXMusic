@@ -25,8 +25,11 @@ final class QQAudioHttp implements AutoCloseable {
                 .followRedirects(HttpClient.Redirect.NEVER).build();
     }
     static final class Failure extends IOException {
-        Failure(String message,Throwable cause){super(message,cause);}
-        Failure(String message){super(message);}
+        private final int statusCode;
+        Failure(String message,Throwable cause){super(message,cause);statusCode=0;}
+        Failure(String message){super(message);statusCode=0;}
+        Failure(int statusCode){super("QQ 网络音频 HTTP 状态码："+statusCode);this.statusCode=statusCode;}
+        int statusCode(){return statusCode;}
     }
     InputStream open(URI uri,BooleanSupplier cancelled,Consumer<CompletableFuture<?>> pending,LongConsumer progress)throws IOException,InterruptedException{
         Stream stream=new Stream(uri,cancelled,pending,progress);
@@ -71,7 +74,7 @@ final class QQAudioHttp implements AutoCloseable {
                         catch(IllegalArgumentException e){throw new Failure("QQ CDN 重定向地址无效",e);}
                         continue;
                     }
-                    if(code!=200&&code!=206)throw new Failure("QQ 网络音频 HTTP 状态码："+code);
+                    if(code!=200&&code!=206)throw new Failure(code);
                     if(!response.headers().firstValue("Content-Encoding").orElse("identity").equalsIgnoreCase("identity"))
                         throw new Failure("QQ 网络音频返回了不支持的压缩编码");
                     String type=response.headers().firstValue("Content-Type").orElse("").toLowerCase(Locale.ROOT);

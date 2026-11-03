@@ -35,7 +35,7 @@ public final class QQAccountManager implements AutoCloseable {
         @Override public String toString() { return "QQAccountSnapshot[redacted]"; }
     }
     synchronized Snapshot snapshot() throws IOException {
-        if (closed || credentials == null || credentials.expired()) throw new IOException("请先登录 QQ 音乐，或等待账号恢复完成");
+        if (closed || credentials == null || credentials.expired()) throw new QQPlaybackAccessException(QQPlaybackAccessException.Reason.LOGIN_REQUIRED);
         return new Snapshot(credentials, generation);
     }
     synchronized boolean isCurrent(Snapshot snapshot) {
