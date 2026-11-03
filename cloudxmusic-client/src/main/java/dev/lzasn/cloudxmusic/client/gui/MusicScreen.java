@@ -343,7 +343,6 @@ public final class MusicScreen extends Screen {
         }
         int dim = (int) Math.round(0x19 * (1 - slide));
         graphics.fill(0, 0, width, height, (dim << 24) | 0x2C2430);
-        Hit hover = layout.hit(localX(mx), localY(my));
         PlaybackSnapshot framePlayback=QQMusicIntegration.snapshot();
         MusicView view = snapshot("",framePlayback);
         // 老版本持久化的账号可能没有头像地址，静默补一次。
@@ -524,7 +523,6 @@ public final class MusicScreen extends Screen {
                     (int) Math.round(originY + qm.y() * scale),
                     (int) Math.round(qm.w() * scale), (int) Math.round(qm.h() * scale));
         }
-        if(!sourceMenuOpen&&!qqLogin.isOpen()&&!qualityMenuOpen)renderHover(graphics,hover);
         // 模态层最后绘制，封面、歌词、控制栏均不能覆盖二维码或穿透点击。
         if(sourceMenuOpen||qqLogin.isOpen()){
             var route=QQMusicIntegration.coordinator().view();var account=QQMusicIntegration.account();
@@ -559,19 +557,6 @@ public final class MusicScreen extends Screen {
         // Q 弹：末段冲过 1 再回落，缩放与位移都会反向弹一下（ease-out-back）。
         double c1 = 2.4, c3 = c1 + 1, u = t - 1;
         return 1 + c3 * u * u * u + c1 * u * u;
-    }
-
-    private void renderHover(GuiGraphics graphics, Hit hit) {
-        if (hit == null) return;
-        // 只保留歌曲列表行的悬停高亮；导航和底栏页签不铺遮罩。
-        if (hit.action() != Action.ROW) return;
-        Box box = hit.box();
-        int left = (int) Math.round(originX + box.x() * scale);
-        int top = (int) Math.round(originY + box.y() * scale);
-        int right = (int) Math.round(originX + (box.x() + box.w()) * scale);
-        int bottom = (int) Math.round(originY + (box.y() + box.h()) * scale);
-        GuiPrimitives.roundedRect(graphics, left, top, right, bottom,
-                Math.min(18, (bottom - top) / 2), 0x36F5D7E5);
     }
 
     private double localX(double x) {
