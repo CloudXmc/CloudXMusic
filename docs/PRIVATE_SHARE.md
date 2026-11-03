@@ -1,6 +1,6 @@
 # 模组专用歌曲分享
 
-当前为客户端 2.5.2、服务端插件 1.0.6 的本地开发功能，尚未发布。
+本功能对应客户端 2.5.2、服务端插件 1.0.6。客户端通过 `v2.5.2` 标签触发 CI 发布；服务端插件仍仅在本地构建。
 
 ## 可见范围
 
@@ -37,6 +37,6 @@
 
 2026-11-03 本地验证：客户端 443 项、协议 16 项、服务端 19 项测试全部通过，共 478 项，无失败、错误或跳过。客户端与服务端构建通过，已核对安装包内版本和分享通道类，客户端使用的协议库与本次协议构建产物 SHA-256 一致。
 
-本地产物：`cloudxmusic-client/build/libs/CloudXMusic-2.5.2.jar` 与 `music-server/build/libs/CloudXMusic-Server-1.0.6.jar`。本轮提交仅署名 Lzasn；尚未安装或发布本次改动。
+本地产物：`cloudxmusic-client/build/libs/CloudXMusic-2.5.2.jar` 与 `music-server/build/libs/CloudXMusic-Server-1.0.6.jar`。本轮提交仅署名 Lzasn；尚未安装，客户端发布结果以 GitHub Actions / Release 为准。
 
 服务端与协议源码仍保留在本地；远端客户端通过更新后的 `libs/cloudxmusic-protocol.jar` 独立构建。
