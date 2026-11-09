@@ -80,7 +80,10 @@ public final class QQAudioPlayer implements QQPlaybackAudio {
     @Override public void volume(float value){if(Float.isFinite(value))volume=Math.max(0,Math.min(1,value));}
     @Override public synchronized View view(){
         View result=view;Session s=current;
-        return s==null?result:new View(result.status(),s.pcmClock.snapshot().seconds(),result.duration(),volume,result.error());
+        if(s==null)return result;
+        double position=result.status()==QQPlaybackAudio.Status.PLAYING
+                ?s.pcmClock.snapshot().seconds():s.position;
+        return new View(result.status(),position,result.duration(),volume,result.error());
     }
     @Override public boolean unavailable(){return view.status()==Status.ERROR&&unavailable;}
     @Override public QQPlaybackAccessException.Reason accessFailure(){return view.status()==Status.ERROR?accessFailure:null;}
