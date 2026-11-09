@@ -89,4 +89,3 @@ jobs:
         with:
           files: dist/*.jar
           body_path: release-notes.md
-          prerelease: ${{ contains(github.ref_name, '-') }}
