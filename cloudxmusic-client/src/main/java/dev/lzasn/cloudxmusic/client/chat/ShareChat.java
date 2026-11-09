@@ -31,10 +31,15 @@ public final class ShareChat {
     /** 解析聊天插件通过系统消息广播的分享；动作栏和普通系统消息原样显示。 */
     public static Component modifyGameMessage(Component message, boolean overlay) {
         if (overlay) return message;
-        ShareCodec.Share share = ShareCodec.parse(message.getString());
-        if (share == null) return message;
-        SharePlay.remember(share);
-        return render(null, message, share);
+        try {
+            ShareCodec.Share share = ShareCodec.parse(message.getString());
+            if (share == null) return message;
+            SharePlay.remember(share);
+            return render(null, message, share);
+        } catch (RuntimeException error) {
+            // 系统提示优先原样显示；解析/重建失败不能导致整条消息消失。
+            return message;
+        }
     }
 
     public static Component render(GameProfile sender, ShareCodec.Share share) {
@@ -111,7 +116,19 @@ public final class ShareChat {
         long now = System.currentTimeMillis();
         // 连点容易触发服务器的反刷屏限制，这里先自己挡一层。
         if (now - lastSent < 1500) return;
-        if (ShareNetwork.share(song)) lastSent = now;
+        if (ShareNetwork.share(song) || sendFallback(song)) lastSent = now;
+    }
+
+    /** 无插件或握手失败时的公开聊天降级；本机接收端会再次解析并生成可点击组件。 */
+    static boolean sendFallback(SongView song) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.getConnection() == null) return false;
+        try {
+            client.getConnection().sendChat(ShareCodec.compose(song));
+            return true;
+        } catch (RuntimeException error) {
+            return false;
+        }
     }
 
     static MutableComponent playable(ShareCodec.Share share) {

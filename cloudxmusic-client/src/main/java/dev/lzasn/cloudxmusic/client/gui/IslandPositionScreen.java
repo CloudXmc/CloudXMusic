@@ -1,6 +1,7 @@
 package dev.lzasn.cloudxmusic.client.gui;
 
 import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
+import dev.lzasn.cloudxmusic.client.hud.DynamicIslandHud;
 import dev.lzasn.cloudxmusic.client.gui.design.IslandPainter;
 import dev.lzasn.cloudxmusic.client.state.MusicState;
 import net.minecraft.client.gui.GuiGraphics;
@@ -25,7 +26,8 @@ public final class IslandPositionScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // 遮罩、灵动岛和提示由 DynamicIslandHud 在同帧绘制。
+        // 调整屏幕是权威状态：每帧主动绘制遮罩、灵动岛和提示。
+        DynamicIslandHud.renderAdjustmentOverlay(graphics);
     }
 
     @Override

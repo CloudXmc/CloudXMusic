@@ -789,7 +789,7 @@ public final class MusicPainter {
     private static void settings(FrostCanvas c,MusicView v,MusicLayout l) {
         sectionTitle(c, l.box("lyric").y() - 8, "灵动岛");
         setting(c,v,l,"lyric","灵动岛歌词",v.lyricMode());
-        setting(c,v,l,"island","顶部灵动岛",v.islandEnabled()?"已开启":"已关闭");
+        setting(c,v,l,"island","灵动岛显示",v.islandEnabled()?"已开启":"已关闭");
         setting(c,v,l,"islandScale","灵动岛缩放",Math.round(v.islandScale()*100)+"%");
         setting(c,v,l,"islandPos","灵动岛位置","更改位置");
 
@@ -797,8 +797,28 @@ public final class MusicPainter {
         setting(c,v,l,"darkMode","暗黑模式",v.darkMode()?"已开启":"已关闭");
         setting(c,v,l,"panelScale","主面板缩放",Math.round(v.panelScale()*100)+"%");
 
+        // 3D 世界歌词：世界阶段公告牌与 Skija 字形动效，关闭时不烘焙纹理。
+        MusicView.WorldLyricView world = v.worldLyrics();
+        sectionTitle(c, l.box("worldLyricLeft0").y() - 12, "3D 世界歌词");
+        setting(c,v,l,"worldLyricLeft0","世界歌词",onOff(world.enabled()));
+        setting(c,v,l,"worldLyricRight0","显示距离",String.format("%.1f 格",world.distance()));
+        setting(c,v,l,"worldLyricLeft1","字号大小",Math.round(world.scale()*100)+"%");
+        setting(c,v,l,"worldLyricRight1","散布角度",Math.round(world.spreadDeg())+"°");
+        setting(c,v,l,"worldLyricLeft2","保持视野内",onOff(world.stayOnScreen()));
+        setting(c,v,l,"worldLyricRight2","保持距离",onOff(world.keepDistance()));
+        setting(c,v,l,"worldLyricLeft3","翻译模式",translationLabel(world.translation()));
+        setting(c,v,l,"worldLyricRight3","分句显示",onOff(world.splitLines()));
+        setting(c,v,l,"worldLyricLeft4","字形发光",onOff(world.glowEnabled()));
+        setting(c,v,l,"worldLyricRight4","发光强度",Math.round(world.glowStrength()*100)+"%");
+        setting(c,v,l,"worldLyricLeft5","发光形态",world.glowMode()==0?"经典":"辉光");
+        setting(c,v,l,"worldLyricRight5","逐字弹跳",onOff(world.wordPop()));
+        setting(c,v,l,"worldLyricLeft6","心象动效",onOff(world.cadenza()));
+        setting(c,v,l,"worldLyricRight6","绘光动效",onOff(world.huiguang()));
+        setting(c,v,l,"worldLyricLeft7","光影直绘",onOff(world.hudDraw()));
+        setting(c,v,l,"worldLyricRight7","翻译特效",onOff(world.translationEffects()));
+
         // 关于信息跟随设置项一起滚动；开发者卡片不使用阴影，只靠描边和层级色区分。
-        int aboutY = l.box("panelScale").y() + 88;
+        int aboutY = l.box("worldLyricLeft7").y() + 88;
         sectionTitle(c, aboutY - 34, "关于");
         c.text("CloudXMusic", 318, aboutY, 23, true, DEEP, 620);
         // 版本号宽度按实际文本量算：写死 76px 时 "v2.5.0-alpha.2" 会被挤成 v2.5.0-alp…
@@ -825,6 +845,18 @@ public final class MusicPainter {
     /** 设置页分组标题，视觉与左侧“音乐库 / 账号”分组一致。 */
     private static void sectionTitle(FrostCanvas c, float baseline, String title) {
         c.text(title, 318, baseline, 12, false, MUTED, 704);
+    }
+
+    private static String onOff(boolean value) {
+        return value ? "已开启" : "已关闭";
+    }
+
+    private static String translationLabel(int mode) {
+        return switch (mode) {
+            case 1 -> "整行";
+            case 2 -> "逐字";
+            default -> "关闭";
+        };
     }
 
     private static void developerCard(FrostCanvas c, Dev dev, int x, int y, int w, int h) {

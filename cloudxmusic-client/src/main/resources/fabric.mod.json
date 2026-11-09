@@ -9,6 +9,7 @@
   "license": "GPL-3.0-only",
   "icon": "assets/cloudxmusic/icon.png",
   "environment": "client",
+  "mixins": ["cloudxmusic.worldlyrics.mixins.json"],
   "entrypoints": {
     "client": [
       "dev.lzasn.cloudxmusic.client.CloudXMusicClient"

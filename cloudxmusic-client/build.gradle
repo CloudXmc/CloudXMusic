@@ -30,6 +30,11 @@ dependencies {
     mappings loom.officialMojangMappings()
     modImplementation("net.fabricmc:fabric-loader:${project.loader_version}")
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.fabric_version}")
+    // MuoniumPlayer 世界歌词渲染栈：Skija 负责高质量字形光栅化。
+    implementation "io.github.humbleui:skija-windows-x64:0.143.17"
+    include "io.github.humbleui:skija-windows-x64:0.143.17"
+    include "io.github.humbleui:skija-shared:0.143.17"
+    include "io.github.humbleui:types:0.2.0"
     // 协议源码仅在本地开发；远端客户端构建使用 libs/ 中的协议运行包。
     implementation files(rootProject.file("libs/cloudxmusic-protocol.jar"))
 
@@ -43,11 +48,17 @@ dependencies {
     implementation "dev.lzasn.local:nayuki-flac:0.0.0-e807ab25"
     include "dev.lzasn.local:nayuki-flac:0.0.0-e807ab25"
 
+    compileOnly "org.projectlombok:lombok:1.18.34"
+    annotationProcessor "org.projectlombok:lombok:1.18.34"
+
     testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 processResources {
+    // The imported reference stack bundled Apple system fonts without a
+    // redistribution grant. CloudXMusic uses its existing OFL fonts instead.
+    exclude "muonium/fonts/**"
     inputs.property "version", project.version
     filesMatching("fabric.mod.json") {
         expand "version": project.version
@@ -90,6 +101,9 @@ jar {
     }
     from(rootProject.file("LICENSE")) {
         rename { "${it}_${project.base.archivesName.get()}" }
+    }
+    from(rootProject.file("cloudxmusic-client/src/main/resources/assets/cloudxmusic/licenses")) {
+        into "META-INF/licenses"
     }
     // 把 JLayer 的类直接并进来（不是模组，不能走 jar-in-jar）
     from({ zipTree(rootProject.file("libs/jlayer-1.0.1.jar")) }) {

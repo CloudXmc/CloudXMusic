@@ -1,7 +1,9 @@
 package dev.lzasn.cloudxmusic.client.gui.design;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** 绘制和点击共享设计坐标；所有列宽、对齐和命中区域集中在这里。 */
 public final class MusicLayout {
@@ -16,6 +18,11 @@ public final class MusicLayout {
         ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, MODE_CYCLE,
         STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH,
         DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE, PLAY_ALL, SHARE, SHARE_ROW,
+        WORLD_LYRICS, WORLD_LYRICS_DISTANCE, WORLD_LYRICS_SCALE, WORLD_LYRICS_SPREAD,
+        WORLD_LYRICS_STAY, WORLD_LYRICS_KEEP_DISTANCE, WORLD_LYRICS_TRANSLATION,
+        WORLD_LYRICS_SPLIT_LINES, WORLD_LYRICS_GLOW, WORLD_LYRICS_GLOW_STRENGTH,
+        WORLD_LYRICS_GLOW_MODE, WORLD_LYRICS_WORD_POP, WORLD_LYRICS_CADENZA,
+        WORLD_LYRICS_HUIGUANG, WORLD_LYRICS_HUD_DRAW, WORLD_LYRICS_TRANS_EFFECTS,
         ROOM_SOURCE, ROOM_CREATE, ROOM_JOIN_FIELD, ROOM_JOIN, ROOM_LIST_ENTRY, ROOM_LEAVE }
     public record Box(int x, int y, int w, int h) {
         public boolean contains(double px, double py) { return px >= x && py >= y && px < x + w && py < y + h; }
@@ -24,6 +31,7 @@ public final class MusicLayout {
     }
     public record Hit(String id, Action action, int index, Box box) {}
     private final List<Hit> hits = new ArrayList<>();
+    private final Map<String, Box> boxes = new LinkedHashMap<>();
 
     /** 导航区可视范围：从「音乐库」标签下方到分隔线之前，超出部分靠滚动查看。 */
     public static final int NAV_TOP = 137, NAV_BOTTOM = 405;
@@ -37,6 +45,16 @@ public final class MusicLayout {
 
     public static int navMaxScroll() {
         return Math.max(0, navContentHeight() - (NAV_BOTTOM - NAV_TOP));
+    }
+
+    public static final int SETTINGS_WORLD_Y = 492;
+    public static final int SETTINGS_ROW_STEP = 52;
+    public static final int SETTINGS_WORLD_ROWS = 8;
+    public static final int SETTINGS_ABOUT_Y = SETTINGS_WORLD_Y + SETTINGS_WORLD_ROWS * SETTINGS_ROW_STEP + 36;
+
+    /** Keep the final About line reachable without moving the fixed outer panel. */
+    public static int settingsMaxScroll() {
+        return Math.max(0, SETTINGS_ABOUT_Y + 200 - 620);
     }
 
     /** 房间页未加入状态的卡片；纯 UI 阶段先只共享坐标，不注册可点击命中区。 */
@@ -128,6 +146,13 @@ public final class MusicLayout {
                 add("islandPos", Action.ISLAND_POS, 0, 318, 288 - settingsScroll, 704, 48);
                 add("darkMode", Action.DARK_MODE, 0, 318, 364 - settingsScroll, 704, 48);
                 add("panelScale", Action.PANEL_SCALE, 0, 318, 416 - settingsScroll, 704, 48);
+                // 3D 世界歌词使用两列布局：16 项在 8 行内排完，避免设置页无限拉长。
+                int col1 = 318, col2 = 682, colW = 340;
+                for (int row = 0; row < SETTINGS_WORLD_ROWS; row++) {
+                    int y = SETTINGS_WORLD_Y + row * SETTINGS_ROW_STEP - settingsScroll;
+                    add("worldLyricLeft" + row, worldLyricLeftAction(row), 0, col1, y, colW, 48);
+                    add("worldLyricRight" + row, worldLyricRightAction(row), 0, col2, y, colW, 48);
+                }
             } else if (page == MusicView.Page.ROOM) {
                 // 占位页：没有任何可点控件，不能继承列表页的刷新按钮和行命中区，
                 // 否则点空白处会取到空 rows 而越界。
@@ -154,7 +179,41 @@ public final class MusicLayout {
     }
 
     private void add(String id, Action action, int index, int x, int y, int w, int h) {
-        hits.add(new Hit(id, action, index, new Box(x, y, w, h)));
+        Box box = new Box(x, y, w, h);
+        boxes.put(id, box);
+        // Scrolled content can be below the canvas. Keep its geometry for
+        // painting while withholding an impossible off-screen click target.
+        if (box.w() <= 0 || box.h() <= 0 || box.x() < 0 || box.y() < 0
+                || box.x() + box.w() > WIDTH || box.y() + box.h() > HEIGHT) {
+            return;
+        }
+        hits.add(new Hit(id, action, index, box));
+    }
+
+    private static Action worldLyricLeftAction(int row) {
+        return switch (row) {
+            case 0 -> Action.WORLD_LYRICS;
+            case 1 -> Action.WORLD_LYRICS_SCALE;
+            case 2 -> Action.WORLD_LYRICS_STAY;
+            case 3 -> Action.WORLD_LYRICS_TRANSLATION;
+            case 4 -> Action.WORLD_LYRICS_GLOW;
+            case 5 -> Action.WORLD_LYRICS_GLOW_MODE;
+            case 6 -> Action.WORLD_LYRICS_CADENZA;
+            default -> Action.WORLD_LYRICS_HUD_DRAW;
+        };
+    }
+
+    private static Action worldLyricRightAction(int row) {
+        return switch (row) {
+            case 0 -> Action.WORLD_LYRICS_DISTANCE;
+            case 1 -> Action.WORLD_LYRICS_SPREAD;
+            case 2 -> Action.WORLD_LYRICS_KEEP_DISTANCE;
+            case 3 -> Action.WORLD_LYRICS_SPLIT_LINES;
+            case 4 -> Action.WORLD_LYRICS_GLOW_STRENGTH;
+            case 5 -> Action.WORLD_LYRICS_WORD_POP;
+            case 6 -> Action.WORLD_LYRICS_HUIGUANG;
+            default -> Action.WORLD_LYRICS_TRANS_EFFECTS;
+        };
     }
     private void add(String id, Action action, int index, Box box) {
         add(id, action, index, box.x(), box.y(), box.w(), box.h());
@@ -166,8 +225,9 @@ public final class MusicLayout {
     }
 
     public Box box(String id) {
-        for (Hit hit : hits) if (hit.id.equals(id)) return hit.box;
-        throw new IllegalArgumentException("Unknown layout box: " + id);
+        Box box = boxes.get(id);
+        if (box == null) throw new IllegalArgumentException("Unknown layout box: " + id);
+        return box;
     }
 
     /**

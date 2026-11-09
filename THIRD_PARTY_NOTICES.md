@@ -61,6 +61,22 @@ CloudXMusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 - 本项目新增 F000 优先、M800 降级、账号代次隔离、URL 域名/文件匹配和无凭证 Range 音频头检查；取链接入后，QQ 解码、播放与队列已在后续版本完成接线。
 - 不增加依赖，不自动安装 Node.js 或外部 API 服务，不向音频 CDN 发送 QQ 登录 Cookie。
 
+## vendored 代码：MuoniumPlayer 世界歌词
+
+- 来源：https://github.com/zihe114514/MuoniumPlayer-multiversion ，`main` 分支的 `1.21.11 recode` 与 `muonium-common`。
+- 作者/版权：MuoniumPlayer Team（云杉、心事抱抱、N0ne、eyz2021）及贡献者 Chryui/Cherry7593。
+- 许可：**Apache-2.0**，完整许可文本与 Skia/Skija NOTICE 保存在 `assets/cloudxmusic/licenses/muonium/`，同时复制到产物 `META-INF/licenses/muonium/`。
+- vendored 范围：世界歌词状态机、公告牌渲染、逐字字形图集、发光/绘光/心象动效、字体渲染辅助层、Skija 桥接与两个 Mixin。相关文件位于 `com.muoniumplayer.*`，并按 Apache-2.0 §4(b) 在文件头注明来源及 CloudXMusic 修改。
+- 本项目新增适配层：播放快照/逐字歌词转换、`HudConfig` 字段同步、简化字体管理和 Skija 原生库加载。未搬入 MuoniumPlayer 的音乐引擎、2D界面、声学、语音、Modern UI 等无关子系统。
+
+## 嵌套运行依赖：Skija
+
+- Maven 坐标：`io.github.humbleui:skija-windows-x64:0.143.17`，传递依赖 `skija-shared:0.143.17` 与 `types:0.2.0`。
+- 作者/版权：JetBrains / HumbleUI 及 Skia 贡献者。
+- 许可：Skija 为 **Apache-2.0**；Skia 的 BSD 风格许可与 NOTICE 随 MuoniumPlayer 许可资源一并提供。
+- 打包方式：Loom 嵌套到产物 `META-INF/jars/`；Windows x64 平台包内含 `skija.dll` 与 `icudtl.dat`。
+- 用途：为世界歌词逐字字形图集提供高质量抗锯齿、字体整形和 Gaussian glow 烘焙；不用于游戏主界面。
+
 ## 界面资源
 
 FLAC 测试依赖位于 `META-INF/jars/`；界面随模组提供下列开源字体。

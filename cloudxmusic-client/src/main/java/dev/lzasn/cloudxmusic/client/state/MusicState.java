@@ -98,6 +98,32 @@ public final class MusicState {
     private float islandScale = 1f;
     private float islandX = .5f;
     private float islandY = .06f;
+    /** 3D 世界歌词：默认关闭，开启后歌词浮在视野前方（不占 2D 画布）。 */
+    private boolean worldLyrics;
+    /** 歌词平面到眼睛的距离（格）。 */
+    private float worldLyricDistance = 10.5f;
+    /** 歌词字号倍率。 */
+    private float worldLyricScale = 1f;
+    /** 每句在视线锥体内的最大扩散角。 */
+    private float worldLyricSpreadDeg = 30f;
+    /** 转开视角时让歌词滑回视野边缘。 */
+    private boolean worldLyricStayOnScreen;
+    /** 移动时保持歌词与眼睛的径向距离。 */
+    private boolean worldLyricKeepDistance = true;
+    /** 翻译副行：0 关闭 / 1 整行淡入 / 2 逐字点亮。 */
+    private int worldLyricTranslation = 1;
+    private boolean worldLyricGlow = true;
+    private float worldLyricGlowStrength = .35f;
+    /** 发光形态：0 经典 / 1 辉光。 */
+    private int worldLyricGlowMode;
+    private boolean worldLyricWordPop;
+    private boolean worldLyricCadenza;
+    private boolean worldLyricHuiguang;
+    /** 光影包激活时推迟到 HUD 阶段直绘。 */
+    private boolean worldLyricHudDraw;
+    private boolean worldLyricTransEffects;
+    /** 把带 / 或 ／ 的合并歌词拆成两句。 */
+    private boolean worldLyricSplitLines = true;
 
     // ------------------------------------------------------------ tick
 
@@ -214,6 +240,67 @@ public final class MusicState {
         islandY = Math.max(0f, Math.min(1f, y));
     }
     public void persistAppearance() { savePersisted(); }
+
+    // ------------------------------------------------------------ 3D 世界歌词
+
+    public boolean worldLyrics() { return worldLyrics; }
+    public void toggleWorldLyrics() { worldLyrics = !worldLyrics; savePersisted(); }
+    public float worldLyricDistance() { return worldLyricDistance; }
+    public void worldLyricDistance(float v) {
+        worldLyricDistance = Math.max(3f, Math.min(48f, v));
+        savePersisted();
+    }
+    public float worldLyricScale() { return worldLyricScale; }
+    public void worldLyricScale(float v) {
+        worldLyricScale = Math.max(.4f, Math.min(6f, v));
+        savePersisted();
+    }
+    public float worldLyricSpreadDeg() { return worldLyricSpreadDeg; }
+    public void worldLyricSpreadDeg(float v) {
+        worldLyricSpreadDeg = Math.max(0f, Math.min(60f, v));
+        savePersisted();
+    }
+    public boolean worldLyricStayOnScreen() { return worldLyricStayOnScreen; }
+    public void toggleWorldLyricStayOnScreen() { worldLyricStayOnScreen = !worldLyricStayOnScreen; savePersisted(); }
+    public boolean worldLyricKeepDistance() { return worldLyricKeepDistance; }
+    public void toggleWorldLyricKeepDistance() { worldLyricKeepDistance = !worldLyricKeepDistance; savePersisted(); }
+    public int worldLyricTranslation() { return worldLyricTranslation; }
+    public void worldLyricTranslation(int v) {
+        worldLyricTranslation = Math.max(0, Math.min(2, v));
+        savePersisted();
+    }
+    public boolean worldLyricGlow() { return worldLyricGlow; }
+    public void toggleWorldLyricGlow() { worldLyricGlow = !worldLyricGlow; savePersisted(); }
+    public float worldLyricGlowStrength() { return worldLyricGlowStrength; }
+    public void worldLyricGlowStrength(float v) {
+        worldLyricGlowStrength = Math.max(0f, Math.min(1f, v));
+        savePersisted();
+    }
+    public int worldLyricGlowMode() { return worldLyricGlowMode; }
+    public void worldLyricGlowMode(int v) {
+        worldLyricGlowMode = Math.max(0, Math.min(1, v));
+        savePersisted();
+    }
+    public boolean worldLyricWordPop() { return worldLyricWordPop; }
+    public void toggleWorldLyricWordPop() { worldLyricWordPop = !worldLyricWordPop; savePersisted(); }
+    public boolean worldLyricCadenza() { return worldLyricCadenza; }
+    public void toggleWorldLyricCadenza() {
+        worldLyricCadenza = !worldLyricCadenza;
+        if (worldLyricCadenza) worldLyricHuiguang = false;
+        savePersisted();
+    }
+    public boolean worldLyricHuiguang() { return worldLyricHuiguang; }
+    public void toggleWorldLyricHuiguang() {
+        worldLyricHuiguang = !worldLyricHuiguang;
+        if (worldLyricHuiguang) worldLyricCadenza = false;
+        savePersisted();
+    }
+    public boolean worldLyricHudDraw() { return worldLyricHudDraw; }
+    public void toggleWorldLyricHudDraw() { worldLyricHudDraw = !worldLyricHudDraw; savePersisted(); }
+    public boolean worldLyricTransEffects() { return worldLyricTransEffects; }
+    public void toggleWorldLyricTransEffects() { worldLyricTransEffects = !worldLyricTransEffects; savePersisted(); }
+    public boolean worldLyricSplitLines() { return worldLyricSplitLines; }
+    public void toggleWorldLyricSplitLines() { worldLyricSplitLines = !worldLyricSplitLines; savePersisted(); }
 
     /** 是否处于「调整灵动岛位置」模式（运行时状态，不持久化）。 */
     private boolean adjustingIslandPos;
@@ -359,6 +446,28 @@ public final class MusicState {
             islandScale = getNum(root, "islandScale", 1f);
             islandX = getNum(root, "islandX", .5f);
             islandY = getNum(root, "islandY", .06f);
+            worldLyrics = getBool(root, "worldLyrics", false);
+            worldLyricDistance = Math.max(3f, Math.min(48f,
+                    getNum(root, "worldLyricDistance", 10.5f)));
+            worldLyricScale = Math.max(.4f, Math.min(6f,
+                    getNum(root, "worldLyricScale", 1f)));
+            worldLyricSpreadDeg = Math.max(0f, Math.min(60f,
+                    getNum(root, "worldLyricSpreadDeg", 30f)));
+            worldLyricStayOnScreen = getBool(root, "worldLyricStayOnScreen", false);
+            worldLyricKeepDistance = getBool(root, "worldLyricKeepDistance", true);
+            worldLyricTranslation = Math.max(0, Math.min(2,
+                    (int) getNum(root, "worldLyricTranslation", 1f)));
+            worldLyricGlow = getBool(root, "worldLyricGlow", true);
+            worldLyricGlowStrength = Math.max(0f, Math.min(1f,
+                    getNum(root, "worldLyricGlowStrength", .35f)));
+            worldLyricGlowMode = Math.max(0, Math.min(1,
+                    (int) getNum(root, "worldLyricGlowMode", 0f)));
+            worldLyricWordPop = getBool(root, "worldLyricWordPop", false);
+            worldLyricCadenza = getBool(root, "worldLyricCadenza", false);
+            worldLyricHuiguang = getBool(root, "worldLyricHuiguang", false);
+            worldLyricHudDraw = getBool(root, "worldLyricHudDraw", false);
+            worldLyricTransEffects = getBool(root, "worldLyricTransEffects", false);
+            worldLyricSplitLines = getBool(root, "worldLyricSplitLines", true);
             playing = false;
             lyric = Lyric.EMPTY;
             if (current != NOTHING) {
@@ -383,6 +492,22 @@ public final class MusicState {
         root.addProperty("islandScale", islandScale);
         root.addProperty("islandX", islandX);
         root.addProperty("islandY", islandY);
+        root.addProperty("worldLyrics", worldLyrics);
+        root.addProperty("worldLyricDistance", worldLyricDistance);
+        root.addProperty("worldLyricScale", worldLyricScale);
+        root.addProperty("worldLyricSpreadDeg", worldLyricSpreadDeg);
+        root.addProperty("worldLyricStayOnScreen", worldLyricStayOnScreen);
+        root.addProperty("worldLyricKeepDistance", worldLyricKeepDistance);
+        root.addProperty("worldLyricTranslation", worldLyricTranslation);
+        root.addProperty("worldLyricGlow", worldLyricGlow);
+        root.addProperty("worldLyricGlowStrength", worldLyricGlowStrength);
+        root.addProperty("worldLyricGlowMode", worldLyricGlowMode);
+        root.addProperty("worldLyricWordPop", worldLyricWordPop);
+        root.addProperty("worldLyricCadenza", worldLyricCadenza);
+        root.addProperty("worldLyricHuiguang", worldLyricHuiguang);
+        root.addProperty("worldLyricHudDraw", worldLyricHudDraw);
+        root.addProperty("worldLyricTransEffects", worldLyricTransEffects);
+        root.addProperty("worldLyricSplitLines", worldLyricSplitLines);
         Path path = stateFile();
         Path temp = path.resolveSibling(path.getFileName() + ".tmp");
         try {

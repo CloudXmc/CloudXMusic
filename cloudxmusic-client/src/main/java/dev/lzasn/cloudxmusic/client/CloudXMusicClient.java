@@ -46,7 +46,6 @@ public final class CloudXMusicClient implements ClientModInitializer {
                 GLFW.GLFW_KEY_H,
                 KEY_CATEGORY
         ));
-
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (openGuiKey.consumeClick()) {
                 if (client.screen instanceof MusicScreen) {
@@ -63,6 +62,9 @@ public final class CloudXMusicClient implements ClientModInitializer {
             dev.lzasn.cloudxmusic.client.chat.ShareNetwork.tick();
             MusicRoomClient.INSTANCE.tick();
             RoomAudioFollower.INSTANCE.tick();
+            com.muoniumplayer.core.ncm.music.CloudMusic.update(
+                    dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.snapshot(),
+                    dev.lzasn.cloudxmusic.client.worldlyrics.WorldLyricConfig.from(STATE));
         });
 
         // 退出世界/回主菜单就停播，否则音乐会在菜单里继续放
@@ -99,6 +101,9 @@ public final class CloudXMusicClient implements ClientModInitializer {
         });
 
         DynamicIslandHud.register();
+        com.muoniumplayer.compat.mc.WorldLyricsBridge.install();
+        net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback.EVENT.register(
+                (graphics, delta) -> com.muoniumplayer.compat.mc.WorldLyricsBridge.hudPhaseDraw());
         dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.register();
         dev.lzasn.cloudxmusic.client.chat.ShareCommands.register();
         dev.lzasn.cloudxmusic.client.chat.ShareNetwork.register();
@@ -108,13 +113,17 @@ public final class CloudXMusicClient implements ClientModInitializer {
                 (message, signedMessage, sender, params, receptionTimestamp) -> {
                     var share = dev.lzasn.cloudxmusic.client.chat.ShareCodec.parse(message.getString());
                     if (share == null) return true;
-                    dev.lzasn.cloudxmusic.client.chat.SharePlay.remember(share);
                     var client = Minecraft.getInstance();
-                    if (client.gui != null) {
+                    // 无法写入替换组件时必须保留原消息，不能先返回 false 把它吞掉。
+                    if (client.gui == null) return true;
+                    try {
+                        dev.lzasn.cloudxmusic.client.chat.SharePlay.remember(share);
                         client.gui.getChat().addMessage(
                                 dev.lzasn.cloudxmusic.client.chat.ShareChat.render(sender, message, share));
+                        return false;
+                    } catch (RuntimeException error) {
+                        return true;
                     }
-                    return false;
                 });
         // 聊天插件常将玩家发言改为系统消息广播，需覆盖独立的 GAME 接收路径。
         net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents.MODIFY_GAME.register(

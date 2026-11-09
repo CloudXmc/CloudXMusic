@@ -85,6 +85,8 @@ public final class UiPreviewRenderer {
         render(out,"cloudxmusic-now-room-member.png",Page.NOW,"",false,0,false,null,ROOM_MEMBER);
         render(out,"cloudxmusic-settings.png",Page.SETTINGS,"",false,0,false);
         render(out,"cloudxmusic-settings-dark.png",Page.SETTINGS,"",false,0,true);
+        render(out,"cloudxmusic-settings-scrolled.png",Page.SETTINGS,"",false,0,false,
+                null,null,MusicLayout.settingsMaxScroll());
         render(out,"cloudxmusic-account.png",Page.ACCOUNT,"",false,0,false);
         render(out,"cloudxmusic-account-dark.png",Page.ACCOUNT,"",false,0,true);
         String[] phoneValues={"","","15016649252","3638",""};
@@ -116,6 +118,11 @@ public final class UiPreviewRenderer {
             throw new AssertionError("seek bar does not have a hitbox");
         if(new MusicLayout(Page.NOW,ROWS,3).hit(671,619)==null)
             throw new AssertionError("transport controls do not have a hitbox");
+        int settingsEnd=MusicLayout.settingsMaxScroll();
+        MusicLayout settingsLayout=new MusicLayout(Page.SETTINGS,0,0,settingsEnd);
+        Box lastWorldRow=settingsLayout.box("worldLyricLeft7");
+        if(lastWorldRow.y()<0||MusicLayout.SETTINGS_ABOUT_Y-settingsEnd+200>HEIGHT)
+            throw new AssertionError("settings content cannot be fully reached by scrolling");
         Box field=MusicPainter.accFieldBox(0),code=MusicPainter.accPhoneCodeBox();
         Box send=MusicPainter.accSendBox(),submit=MusicPainter.accSubmitBox();
         if(code.y()!=send.y()||code.h()!=send.h()||send.x()-code.x()-code.w()!=10)
@@ -143,6 +150,12 @@ public final class UiPreviewRenderer {
     private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,
                                boolean darkMode,MusicPainter.AccountView accountViewOverride,
                                MusicView.RoomView roomViewOverride) throws Exception {
+        render(out,file,page,search,focused,focusIndex,darkMode,accountViewOverride,roomViewOverride,0);
+    }
+
+    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,
+                               boolean darkMode,MusicPainter.AccountView accountViewOverride,
+                               MusicView.RoomView roomViewOverride,int settingsScroll) throws Exception {
         int width=1600,height=900;
         BufferedImage frame=new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);
         Graphics2D bg=frame.createGraphics();
@@ -166,7 +179,8 @@ public final class UiPreviewRenderer {
         FrostCanvas.setDark(darkMode);
 
         List<Track> queue=List.of(CURRENT,TRACKS.get(0),TRACKS.get(1),TRACKS.get(2));
-        MusicLayout layout=new MusicLayout(page,page==Page.NOW||page==Page.SETTINGS?0:ROWS,queue.size()-1);
+        MusicLayout layout=new MusicLayout(page,page==Page.NOW||page==Page.SETTINGS?0:ROWS,
+                queue.size()-1,page==Page.SETTINGS?settingsScroll:0);
         List<Track> rows=page==Page.NOW||page==Page.SETTINGS?List.of():TRACKS.subList(0,ROWS);
         List<Track> upcoming=page==Page.NOW?queue.subList(1,4):List.of();
         var lyrics=List.of(
@@ -180,7 +194,7 @@ public final class UiPreviewRenderer {
         MusicView view=new MusicView(page,SongView.from(CURRENT),
                 rows.stream().map(SongView::from).toList(),upcoming.stream().map(SongView::from).toList(),lyrics,
                 102,true,true,"CloudXMusic",search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
-                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.5.0-alpha.1","",0,-1,.8f,"",
+                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.6.0","",0,-1,.8f,"",
                 darkMode,.8f,1f,.5f,.06f,"H",0,40,
                 roomViewOverride==null?MusicView.RoomView.empty():roomViewOverride);
         BufferedImage canvas=MusicPainter.paint(view,layout,1d,url->null);

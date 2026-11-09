@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.5.2-D96A91?style=flat-square" alt="版本 2.5.2">
+  <img src="https://img.shields.io/badge/Version-2.6.0-D96A91?style=flat-square" alt="版本 2.6.0">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -27,9 +27,9 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 
 开发者：Lzasn（客户端、网易云音源与解码）、xiaota888（QQ 音乐音源、双音源架构与逐字歌词）、xWtree（早期界面开发、项目宣传者）。
 
-当前源码版本为 `2.5.2`，新增仅模组客户端可见的歌曲分享，并修复分享解析丢失聊天样式的问题；更新日志见 [CHANGELOG.md](CHANGELOG.md)，发布构建由 `v2.5.2` 标签触发 CI 完成。
+当前源码版本为 `2.6.0`，重点新增完整的 3D 世界歌词系统，并带来分享自动降级、设置页扩展与多项稳定性修复；更新日志见 [CHANGELOG.md](CHANGELOG.md)，发布构建由 `v2.6.0` 标签触发 CI 完成。
 
-歌曲分享需要本服务器安装 CloudXMusic 服务端插件 `1.0.6+`，只向完成专用分享握手的客户端转发。没有配套插件时会提示不可用，不会把分享发送到公开聊天。新版分享显示名优先沿用玩家列表样式，聊天插件专属前缀不一定包含在其中；旧版文字分享仍可解析并保留原消息样式。
+歌曲分享会先尝试 CloudXMusic 服务端插件 `1.0.6+` 的专用握手：握手成功时由插件转发，显示名优先沿用玩家列表样式。单人、局域网主机或无插件服务器会自动降级为普通公开聊天分享，末尾携带短机器标记；本机和其他安装模组的客户端会将它解析为可点击的「点击播放」，普通聊天插件与系统提示仍照常显示。
 
 > [!IMPORTANT]
 > 音乐房间已完成协议、房间管理、队列与播放同步，以及「每名成员用自己的账号取链跟播」，但尚未完成真实多人联机验收。房间内的进度对齐、成员暂停跟听、VIP/版权受限曲目的表现仍可能有偏差，请勿用于正式房间活动。
@@ -64,6 +64,17 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 播放页标题及歌曲列表提供分享按钮，可将歌曲发到游戏聊天栏；安装模组的接收者可点击播放。房间内点播仍受房间权限限制。
 
 音乐房间需要服务端插件 `CloudXMusic-Server`（本地 `music-server` 模块构建）。房主创建房间时，当前个人队列会按房间音源过滤后作为房间队列，之后房主的加歌/移除/播放全部会实时同步；成员加入后看到的是房间队列（只读）。房主控播放/暂停、上下首、进度、循环三档，成员只能本地「暂停跟听」，不影响其他人。
+
+### 3D 世界歌词（MuoniumPlayer 移植）
+
+在设置页的「3D 世界歌词」双列分组里开关并调整布局、翻译、发光和动效。渲染器使用 MuoniumPlayer 的世界歌词子系统，在世界渲染尾部按相机朝向生成公告牌：
+
+- 3D 世界歌词与灵动岛歌词模式相互独立；关闭灵动岛歌词不会停止播放或隐藏 3D 世界歌词；
+- 歌词跟随玩家位置并保持在视野前方，支持视线锥体扩散、回屏保持与地面高度限制；
+- 每句按字符独立烘焙 Skija 超采样字形，带入场回弹、逐字出现、wordPop、绘光拖尾与心象分块动效；
+- 逐字歌词（QQ QRC）按进度推进高亮，普通 LRC 按字符时间轴展开；
+- 光晕使用 Skija 多层高斯或 HDR bloom 烘焙进字形图集；
+- 关闭时不创建字形纹理，也不进入世界歌词渲染流程。
 
 ## 构建
 
@@ -118,6 +129,9 @@ Linux/macOS：
 - 「音乐房间」已完成协议（v5）、房间管理（20 人上限）、队列与播放同步、成员状态广播和本地跟播（每名成员用自己的账号取链解码，偏差超 4 秒才纠偏）。房主控播放/切歌/循环，成员可本地「暂停跟听」，双方都不影响对方；**尚未完成真实双端联机验收**，请勿用于正式房间活动。
 - 房间音源在创建时固定；进入房间不会自动切换全局音源。若当前全局音源与房间音源不一致，房间内会提示先手动切换，退出房间后全局音源保持不变。
 - 远端发行物只包含客户端；`music-protocol` 与 `music-server` 源码仅在本地开发，客户端通过 `libs/cloudxmusic-protocol.jar` 合并协议运行包。
+- 3D 世界歌词使用 `keepDistance` 跟随模型：歌词随玩家平移并锁定在视野前方，不是固定世界坐标物件；转开视角时可按设置回屏。
+- 世界歌词在 `LevelRenderer#renderLevel` 尾部绘制并关闭深度测试，因此不会被方块遮挡；Iris 下的信标全亮回退路径仍需实机验收。
+- 当前发行包只嵌套 Windows x64 的 Skija 原生库；其他平台需要补充对应 `skija-<platform>` 运行包。
 - 本地服务端仍按歌曲标称时长自动推进队列；QQ 客户端则等待声卡排空后提出曲末请求。取链或缓冲延迟可能导致服务端先切歌，需进行服务端配套与真实双端验收。
 
 ## 开发资料
@@ -138,6 +152,8 @@ Linux/macOS：
 - [JLayer](https://repo1.maven.org/maven2/javazoom/jlayer/)：MP3 解码，LGPL-3.0-or-later。
 - [ZXing Core](https://github.com/zxing/zxing)：二维码编码，Apache-2.0。
 - [Project Nayuki FLAC library](https://github.com/nayuki/FLAC-library-Java)：FLAC 解码，LGPL-3.0-or-later，保留上游源码与许可。
+- [Skija](https://github.com/HumbleUI/Skija)：世界歌词字形与辉光烘焙，Apache-2.0；Windows x64 运行库随 JAR 嵌套打包。
+- [MuoniumPlayer](https://github.com/zihe114514/MuoniumPlayer-multiversion)：3D 世界歌词子系统来源，Apache-2.0；许可与 NOTICE 随资源打包。
 - Inter、Noto Sans SC 与 Noto Sans CJK KR 字体的许可证随资源一并提供。
 
 完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。项目原创代码采用 [GNU GPL-3.0-only](LICENSE)；版权归 Lzasn、xWtree、xiaota888 所有。

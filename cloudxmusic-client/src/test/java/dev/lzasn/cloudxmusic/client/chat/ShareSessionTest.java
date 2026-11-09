@@ -16,14 +16,26 @@ class ShareSessionTest {
             received::add, notifications::add, clock::get);
     private final ShareWire.Song song = new ShareWire.Song(new SongRef(MusicSourceType.NETEASE, "1"), "歌曲", "", 0, false);
 
-    @Test void absentPluginNeverFallsBackToPublicChatOrSendsSongData() {
+    @Test void absentPluginNeverSendsSongDataAndLeavesFallbackToCaller() {
         assertFalse(session.share(song));
-        session.joined(); assertFalse(session.share(song));
+        session.joined();
+        assertTrue(session.handshakeInFlight());
+        assertFalse(session.share(song));
         assertEquals(List.of(new ShareWire.Hello()), sent);
-        assertFalse(notifications.isEmpty());
-        clock.set(1_999_999_999L); session.tick(); assertEquals(1, sent.size());
-        clock.incrementAndGet(); session.tick(); assertEquals(2, sent.size());
+        assertTrue(notifications.isEmpty());
+        clock.set(750_000_000L); session.tick();
+        assertFalse(session.handshakeInFlight());
+        assertEquals(1, sent.size());
+        clock.set(2_000_000_000L); session.tick(); assertEquals(2, sent.size());
         assertTrue(sent.stream().allMatch(message -> message instanceof ShareWire.Hello));
+    }
+    @Test void welcomeWithinGraceSwitchesToServerShare() {
+        session.joined();
+        assertTrue(session.handshakeInFlight());
+        session.receive(new ShareWire.Welcome());
+        assertTrue(session.ready());
+        assertTrue(session.share(song));
+        assertEquals(new ShareWire.Request(song), sent.getLast());
     }
     @Test void privateShareAndEchoWorkOnlyAfterWelcome() {
         session.joined(); session.receive(new ShareWire.Welcome());

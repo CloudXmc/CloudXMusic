@@ -16,8 +16,45 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
                         boolean darkMode, float panelScale, float islandScale, float islandX, float islandY,
                         String openKey,
                         /** 列表当前首个可见行下标与总条数，只用于绘制右侧滚动条。 */
-                        int scroll, int total, RoomView room) {
+                        int scroll, int total, RoomView room, WorldLyricView worldLyrics) {
     public enum Page { NOW, DISCOVER, SEARCH, FAVORITES, QUEUE, ROOM, SETTINGS, ACCOUNT }
+
+    /** 3D 世界歌词的只读配置快照；绘制层不直接读 MusicState。 */
+    public record WorldLyricView(
+            boolean enabled, float distance, float scale, float spreadDeg,
+            boolean stayOnScreen, boolean keepDistance, int translation,
+            boolean glowEnabled, float glowStrength, int glowMode,
+            boolean wordPop, boolean cadenza, boolean huiguang,
+            boolean hudDraw, boolean translationEffects, boolean splitLines) {
+        public static final WorldLyricView EMPTY = new WorldLyricView(
+                false, 10.5f, 1f, 30f, false, true, 1,
+                true, .35f, 0, false, false, false, false, false, true);
+        public WorldLyricView {
+            distance = Math.max(3f, Math.min(48f, distance));
+            scale = Math.max(.4f, Math.min(6f, scale));
+            spreadDeg = Math.max(0f, Math.min(60f, spreadDeg));
+            translation = Math.max(0, Math.min(2, translation));
+            glowStrength = Math.max(0f, Math.min(1f, glowStrength));
+            glowMode = Math.max(0, Math.min(1, glowMode));
+        }
+    }
+
+    /** 兼容既有调用：不带世界歌词快照时按关闭处理（测试与离线预览沿用）。 */
+    public MusicView(Page page, SongView current, List<SongView> tracks, List<SongView> queue,
+                     List<LyricRow> lyrics, int positionTenths, boolean playing,
+                     boolean loggedIn, String nickname, String search, boolean focused,
+                     boolean cursor, String status, String quality, String lyricMode,
+                     boolean islandEnabled, PlaybackMode playbackMode, boolean favorite,
+                     String version, String hover, int coverRevision, float seekPreview,
+                     float volume, String avatarUrl, boolean darkMode, float panelScale,
+                     float islandScale, float islandX, float islandY, String openKey,
+                     int scroll, int total, RoomView room) {
+        this(page, current, tracks, queue, lyrics, positionTenths, playing, loggedIn, nickname,
+                search, focused, cursor, status, quality, lyricMode, islandEnabled, playbackMode,
+                favorite, version, hover, coverRevision, seekPreview, volume, avatarUrl, darkMode,
+                panelScale, islandScale, islandX, islandY, openKey, scroll, total, room,
+                WorldLyricView.EMPTY);
+    }
     public record LyricRow(String text, String translation, boolean active) {}
     /** 成员状态灯：绿灯在听、琥珀暂停跟听、警示色表示这首播不了。 */
     public enum MemberTone { ACTIVE, PAUSED, UNAVAILABLE }
@@ -137,7 +174,8 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
         this(page, current, tracks, queue, lyrics, positionTenths, playing, loggedIn, nickname,
                 search, focused, cursor, status, quality, lyricMode, islandEnabled, playbackMode,
                 favorite, version, hover, coverRevision, seekPreview, volume, avatarUrl, darkMode,
-                panelScale, islandScale, islandX, islandY, openKey, scroll, total, RoomView.empty());
+                panelScale, islandScale, islandX, islandY, openKey, scroll, total, RoomView.empty(),
+                WorldLyricView.EMPTY);
     }
     /** 不带滚动信息的 SongView 版本，QQ 测试与旧调用沿用（滚动条按无滚动处理）。 */
     public MusicView(Page page, SongView current, List<SongView> tracks, List<SongView> queue,
@@ -186,6 +224,6 @@ public record MusicView(Page page, SongView current, List<SongView> tracks, List
         return new MusicView(page, current, tracks, queue, List.of(), 0, playing, loggedIn, nickname,
                 search, focused, cursor, status, quality, lyricMode, islandEnabled, playbackMode,
                 favorite, version, hover, coverRevision, -1f, 0f, avatarUrl, darkMode, panelScale, islandScale,
-                islandX, islandY, openKey, scroll, total, room.withClock(0));
+                islandX, islandY, openKey, scroll, total, room.withClock(0), worldLyrics);
     }
 }

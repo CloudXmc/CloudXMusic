@@ -3,6 +3,7 @@ package dev.lzasn.cloudxmusic.client.hud;
 import dev.lzasn.cloudxmusic.client.CloudXMusicClient;
 import dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration;
 import dev.lzasn.cloudxmusic.client.gui.CoverCache;
+import dev.lzasn.cloudxmusic.client.gui.IslandPositionScreen;
 import dev.lzasn.cloudxmusic.client.gui.MusicScreen;
 import dev.lzasn.cloudxmusic.client.gui.UiTexture;
 import dev.lzasn.cloudxmusic.client.gui.design.FirstRunNoticeScreen;
@@ -53,11 +54,17 @@ public final class DynamicIslandHud {
         MusicState state = CloudXMusicClient.STATE;
         long now = System.nanoTime();
 
-        // 调整灵动岛位置模式：始终显示灵动岛，可拖动，底部提示，Esc/点中央退出。
-        if (state.adjustingIslandPos()) {
-            renderAdjustMode(graphics);
+        // 调整界面自己每帧绘制遮罩、提示和灵动岛。这里必须跳过，
+        // 否则屏幕生命周期与 adjustingIslandPos 状态位错位时会产生双画或整层丢失。
+        if (client.screen instanceof IslandPositionScreen) {
             return;
         }
+        // Leaving the adjustment screen means SURFACE may now be reused by the
+        // normal playback HUD. Invalidate the adjustment cache so the next
+        // entry always repaints "拖动调整位置" even when raster scale is unchanged.
+        adjustCached = false;
+        // 调整屏幕关闭后若旧状态位残留，不能让它劫持普通 HUD。
+        if (state.adjustingIslandPos()) state.setAdjustingIslandPos(false);
 
         // 面板正在下滑时就不再算「界面打开」：灵动岛从这一刻开始展开，
         // 和面板退场同时进行，而不是等界面彻底消失后才动。
@@ -109,6 +116,15 @@ public final class DynamicIslandHud {
         graphics.drawCenteredString(client.font, "拖动灵动岛调整位置，Esc 或点击空白处保存",
                 gw / 2, gh - 28, 0xFFFFFFFF);
         renderAdjustIsland(graphics, state);
+    }
+
+    /**
+     * 由 {@link IslandPositionScreen#render} 每帧调用。屏幕存在即视为调整模式，
+     * 不再让一次性状态位决定提示层是否可见。
+     */
+    public static void renderAdjustmentOverlay(GuiGraphics graphics) {
+        CloudXMusicClient.STATE.setAdjustingIslandPos(true);
+        renderAdjustMode(graphics);
     }
 
     private static boolean eligible(net.minecraft.client.Minecraft client, MusicState state, dev.lzasn.cloudxmusic.client.omni.PlaybackSnapshot playback) {
@@ -239,7 +255,7 @@ public final class DynamicIslandHud {
                 (graphics.guiHeight() - 8.0) / IslandPainter.HEIGHT)) * state.islandScale();
         // 与播放态同一套倍率规则（见 renderIsland）：按设备物理像素取，不再硬卡 2 倍。
         double raster = Math.max(.75, Math.min(3, display * client.getWindow().getGuiScale()));
-        if (!adjustCached || raster != previousScale) {
+        if (!adjustCached || previous != null || raster != previousScale) {
             SURFACE.update(IslandPainter.paintAdjustment(raster));
             // 置空播放态快照，退出调整模式后普通渲染必定重绘一次，不会沿用提示药丸。
             previous = null;

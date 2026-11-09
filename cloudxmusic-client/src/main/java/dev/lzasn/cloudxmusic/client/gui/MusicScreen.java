@@ -308,7 +308,16 @@ public final class MusicScreen extends Screen {
                 activeFocused&&System.currentTimeMillis()/500%2==0,status,playback.quality(),playback.lyricMode().label,
                 state.islandEnabled(),nowMode,nowFavorite,VERSION,hover,artworkRevision(),seekPreview,
                 playback.volume(),qq?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel(),scroll,totalRows,
-                MusicRoomClient.INSTANCE.view().withQueueScroll(roomQueueScroll).withMemberScroll(roomMemberScroll));
+                MusicRoomClient.INSTANCE.view().withQueueScroll(roomQueueScroll).withMemberScroll(roomMemberScroll),
+                new MusicView.WorldLyricView(
+                        state.worldLyrics(), state.worldLyricDistance(), state.worldLyricScale(),
+                        state.worldLyricSpreadDeg(), state.worldLyricStayOnScreen(),
+                        state.worldLyricKeepDistance(), state.worldLyricTranslation(),
+                        state.worldLyricGlow(), state.worldLyricGlowStrength(),
+                        state.worldLyricGlowMode(), state.worldLyricWordPop(),
+                        state.worldLyricCadenza(), state.worldLyricHuiguang(),
+                        state.worldLyricHudDraw(), state.worldLyricTransEffects(),
+                        state.worldLyricSplitLines()));
     }
 
     private java.awt.image.BufferedImage paintMain(MusicView still,QQPlaybackController.View qqView){
@@ -777,6 +786,24 @@ public final class MusicScreen extends Screen {
             case PANEL_SCALE -> { state.panelScale(cyclePanelScale(state.panelScale())); rebuildScale(); }
             case ISLAND_SCALE -> state.islandScale(cycleIslandScale(state.islandScale()));
             case ISLAND_POS -> startIslandPosAdjust();
+            case WORLD_LYRICS -> state.toggleWorldLyrics();
+            case WORLD_LYRICS_DISTANCE -> state.worldLyricDistance(cycleWorldLyricDistance(state.worldLyricDistance()));
+            case WORLD_LYRICS_SCALE -> state.worldLyricScale(cycleWorldLyricScale(state.worldLyricScale()));
+            case WORLD_LYRICS_SPREAD -> state.worldLyricSpreadDeg(cycleWorldLyricSpread(state.worldLyricSpreadDeg()));
+            case WORLD_LYRICS_STAY -> state.toggleWorldLyricStayOnScreen();
+            case WORLD_LYRICS_KEEP_DISTANCE -> state.toggleWorldLyricKeepDistance();
+            case WORLD_LYRICS_TRANSLATION -> state.worldLyricTranslation(
+                    (state.worldLyricTranslation() + 1) % 3);
+            case WORLD_LYRICS_SPLIT_LINES -> state.toggleWorldLyricSplitLines();
+            case WORLD_LYRICS_GLOW -> state.toggleWorldLyricGlow();
+            case WORLD_LYRICS_GLOW_STRENGTH -> state.worldLyricGlowStrength(
+                    cycleWorldLyricGlowStrength(state.worldLyricGlowStrength()));
+            case WORLD_LYRICS_GLOW_MODE -> state.worldLyricGlowMode((state.worldLyricGlowMode() + 1) % 2);
+            case WORLD_LYRICS_WORD_POP -> state.toggleWorldLyricWordPop();
+            case WORLD_LYRICS_CADENZA -> state.toggleWorldLyricCadenza();
+            case WORLD_LYRICS_HUIGUANG -> state.toggleWorldLyricHuiguang();
+            case WORLD_LYRICS_HUD_DRAW -> state.toggleWorldLyricHudDraw();
+            case WORLD_LYRICS_TRANS_EFFECTS -> state.toggleWorldLyricTransEffects();
             case FAVORITE -> state.toggleFavoriteCurrent();
             case SHARE -> dev.lzasn.cloudxmusic.client.chat.ShareChat.send(currentSong());
             case SHARE_ROW -> {
@@ -922,6 +949,35 @@ public final class MusicScreen extends Screen {
         return steps[idx % steps.length];
     }
 
+    /** 世界歌词距离：参考实现默认 10.5 格（3~48），档位按这个量级取。 */
+    private static float cycleWorldLyricDistance(float current) {
+        float[] steps = {6.5f, 10.5f, 14f, 20f};
+        int idx = 0;
+        for (int i = 0; i < steps.length; i++) if (current >= steps[i] - 0.01f) idx = i + 1;
+        return steps[idx % steps.length];
+    }
+
+    private static float cycleWorldLyricScale(float current) {
+        float[] steps = {0.6f, 0.8f, 1.0f, 1.2f, 1.5f, 2.0f, 3.0f};
+        int idx = 0;
+        for (int i = 0; i < steps.length; i++) if (current >= steps[i] - 0.01f) idx = i + 1;
+        return steps[idx % steps.length];
+    }
+
+    private static float cycleWorldLyricSpread(float current) {
+        float[] steps = {0f, 15f, 30f, 45f, 60f};
+        int idx = 0;
+        for (int i = 0; i < steps.length; i++) if (current >= steps[i] - 0.01f) idx = i + 1;
+        return steps[idx % steps.length];
+    }
+
+    private static float cycleWorldLyricGlowStrength(float current) {
+        float[] steps = {0f, .15f, .35f, .6f, 1f};
+        int idx = 0;
+        for (int i = 0; i < steps.length; i++) if (current >= steps[i] - 0.01f) idx = i + 1;
+        return steps[idx % steps.length];
+    }
+
     /** 点击「更改位置」：打开透明调整界面，由它接管鼠标并处理拖拽。 */
     private void startIslandPosAdjust() {
         state.setAdjustingIslandPos(true);
@@ -996,7 +1052,8 @@ public final class MusicScreen extends Screen {
             rebuildLayout(); painted = null; return true;
         }
         if (page == Page.SETTINGS && localX(mx) >= MAIN_X && sy != 0) {
-            settingsScroll = Math.max(0, Math.min(200, settingsScroll + (sy > 0 ? -1 : 1) * 28));
+            settingsScroll = Math.max(0, Math.min(MusicLayout.settingsMaxScroll(),
+                    settingsScroll + (sy > 0 ? -1 : 1) * 28));
             rebuildLayout(); painted = null; return true;
         }
         if (page == Page.SEARCH && search.isQq() && sy != 0

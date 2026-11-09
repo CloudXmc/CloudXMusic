@@ -73,7 +73,8 @@
 ## 透明交互界面
 
 - 需要拖动 HUD 时，必须打开一个 `Screen` 接管鼠标；不能只靠 HUD 回调轮询 `MouseHandler`，否则游戏会保持鼠标捕获并触发挖掘/放置。
-- `IslandPositionScreen` 负责点击命中、拖动和松开保存；`DynamicIslandHud` 只绘制遮罩、灵动岛和提示。
+- `IslandPositionScreen` 负责点击命中、拖动、松开保存，并在 `render(...)` 每帧调用 `DynamicIslandHud.renderAdjustmentOverlay(...)` 绘制遮罩、灵动岛和提示。
+- 调整界面存在时，普通 `DynamicIslandHud` 回调必须直接返回。不能让 `adjustingIslandPos` 这个瞬时状态位单独决定提示层是否可见，否则第二次进入会出现屏幕已打开但遮罩和文案不绘制。
 - 透明调整界面必须重写 `renderBackground(...)` 为空，避免原版菜单背景模糊把 HUD 一起糊住。
 - 内部卡片需要单侧直角时使用路径轮廓（例如 `leftFlatCard`），不要用四角统一的圆角矩形。
 
@@ -89,8 +90,35 @@
 - 房间进度用独立纹理 `roomSurface`，**不能复用 `overlay`**：QQ 音源下 `overlay` 已经被底栏播放条占用，两者落点完全不同。
 - 阴影放大使用双线性插值（`FrostCanvas.shadow`），不要改回双三次：阴影本身已模糊，双三次只会让每次拖尾多花一倍 CPU。
 
-## 动画与交互性能
+## 3D 世界歌词（MuoniumPlayer 世界阶段移植）
 
+当前生效实现是 `com.muoniumplayer.*` 下的 MuoniumPlayer 世界歌词栈，由
+`WorldLyricsRenderTailMixin` 注入 `LevelRenderer#renderLevel(...)` 的尾部。
+旧 `dev.lzasn.cloudxmusic.client.world.*` HUD/FOV 自研版已删除，设置页只读写
+`MusicState` 中由 `WorldLyricConfig` 同步到 `HudConfig` 的字段。
+
+- Mixin 必须在 `renderLevel` 尾部绘制；Fabric 的 `WorldRenderEvents.END_MAIN`
+  位于云、天气与后处理链之前，歌词会被后续 pass 覆盖。Loom remap 后目标方法为
+  `method_22710`，构建时不要手写 refmap 覆盖这一结果。
+- `WorldLyricsBridge` 自己构造 `rotateX(pitch) · rotateY(yaw + 180°)` 的视图姿态，
+  临时把 `RenderSystem.getModelViewStack()` 置为单位阵，并在结束帧恢复。
+- `keepDistance` 的语义是锚点随玩家平移、方位偏移守恒，所以歌词表现为始终贴在
+  视野前方，不是固定世界坐标。不要复活旧版的弹簧/贴边/屏幕投影。
+- 关深度测试、关剔除并保持透明度混合：歌词不会被方块遮挡。Iris 激活时
+  `WorldBillboard` 走信标全亮 RenderType，必要时可切到 `hudDraw` 路径。
+- `LyricGlyphAtlas` 按字符烘焙 Skija 超采样字形；墨格与光晕格分离，支持经典光晕、
+  HDR bloom、逐字 pop、绘光拖尾和心象分块。字体使用项目现有 Inter + Noto Sans SC，
+  不随包分发 MuoniumPlayer 的苹果系统字体。
+- 「经典」使用逐字晕格；「辉光」改走整行低频 bloom。辉光分支会额外放大发光强度与
+  扩散半径，并在白天提高到 0.82 基础能量，否则两种模式会收敛成几乎相同的细边光。
+- 心象块内偏移必须用「本字 x − 本块首字 x」，块首 x 从当前行 `-lineWidth/2` 起算；
+  不能复用整行左缘，也不能用只在逐字时间轴模式推进的 `n`。否则无 QRC 时所有字会
+  归到首块，并把整行累计宽度重复加进每个块，表现为巨大字间距。
+- `CloudMusic.update(...)` 在客户端 tick 中把双音源 `PlaybackSnapshot` 转换成
+  `LyricLine`/`Word`；`lyricsTrackKey` 与 `lyricsRevision` 必须随切歌或歌词刷新更新。
+  `LyricMode.OFF` 只控制灵动岛，不参与世界歌词可用性判断，两套显示必须保持独立。
+
+## 动画与交互性能
 - 歌曲列表不绘制整行悬浮底色；静态画布与 `MusicScreen` 实时绘制层都应遵守，避免静态层删掉高亮后又被实时圆角遮罩补回。保留行点击命中与按钮反馈。
 - 动画根据帧间隔或绝对时间计算，不按固定帧数递增，避免不同帧率下速度不一致。
 - 音乐进度只保留必要的小数精度用于画面刷新；拖动时先更新预览，松开后再请求音频跳转，避免反复重启解码。
