@@ -66,7 +66,7 @@ class QQAudioDrainTest {
             assertEquals(QQPlaybackAudio.Status.PAUSED,player.view().status());assertTrue(device.open);assertFalse(device.running);
             assertEquals(0,device.discarded.get());device.release.countDown();assertTrue(device.drainExited.await(1,TimeUnit.SECONDS));
             assertEquals(0,finished.get());assertEquals(QQPlaybackAudio.Status.PAUSED,player.view().status());
-            player.resume(()->true).get(1,TimeUnit.SECONDS);assertTrue(callback.await(1,TimeUnit.SECONDS));
+            player.resume(()->true).get(1,TimeUnit.SECONDS);waitFor(()->finished.get()==1);
             assertEquals(1,finished.get());assertEquals(0,device.discarded.get());assertEquals(1,device.opens.get());
             assertEquals(device.written.get()/device.rate(),player.view().position(),1e-9);
         }finally{device.release.countDown();}
