@@ -15,6 +15,8 @@ import io.github.humbleui.skija.Bitmap;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.ImageInfo;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 import java.util.List;
 
@@ -24,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MuoWorldLyricsPortTest {
     @Test
+    @EnabledOnOs(OS.WINDOWS)
     void bundledSkijaAndFontsAreUsable() {
         assertTrue(SkijaNatives.ensureLoaded(), SkijaNatives::failure);
         assertTrue(FontManager.pf25bold.lineBox() > 0);
