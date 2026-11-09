@@ -194,7 +194,7 @@ public final class UiPreviewRenderer {
         MusicView view=new MusicView(page,SongView.from(CURRENT),
                 rows.stream().map(SongView::from).toList(),upcoming.stream().map(SongView::from).toList(),lyrics,
                 102,true,true,"CloudXMusic",search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
-                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.6.0","",0,-1,.8f,"",
+                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.6.0-alpha.1","",0,-1,.8f,"",
                 darkMode,.8f,1f,.5f,.06f,"H",0,40,
                 roomViewOverride==null?MusicView.RoomView.empty():roomViewOverride);
         BufferedImage canvas=MusicPainter.paint(view,layout,1d,url->null);

@@ -61,7 +61,7 @@ class QQCatalogPainterTest {
             for(var mode:QQCatalogController.Mode.values()){
                 String title=switch(mode){case LIKED->"我喜欢";case PLAYLIST->"热歌榜";default->"每日30首 · 今日私享";};
                 var cv=new QQCatalogController.View(mode,title,lists,mode==QQCatalogController.Mode.HOME?java.util.List.of():songs,false,true,false,"已加载 · 下拉继续",0,0);
-                var view=new MusicView(mode==QQCatalogController.Mode.LIKED?MusicView.Page.FAVORITES:MusicView.Page.DISCOVER,songs.getFirst().display(),java.util.List.of(),java.util.List.of(),java.util.List.of(),0,true,true,"测试QQ昵称","",false,false,"","SQ 无损","双语",true,PlaybackMode.REPEAT_LIST,false,"2.6.0","",0,-1,.8f,"",dark,1,1,.5f,.5f,"H");
+                var view=new MusicView(mode==QQCatalogController.Mode.LIKED?MusicView.Page.FAVORITES:MusicView.Page.DISCOVER,songs.getFirst().display(),java.util.List.of(),java.util.List.of(),java.util.List.of(),0,true,true,"测试QQ昵称","",false,false,"","SQ 无损","双语",true,PlaybackMode.REPEAT_LIST,false,"2.6.0-alpha.1","",0,-1,.8f,"",dark,1,1,.5f,.5f,"H");
                 var layout=new MusicLayout(view.page(),0,0);
                 var blank=MusicPainter.paint(view,layout,1,url->cover,c->QQLoginPainter.sidebar(c,new QQAccountManager.View(true,"小獭.","已登录",false),false,cover),c->{});
                 var painted=MusicPainter.paint(view,layout,1,url->cover,c->QQLoginPainter.sidebar(c,new QQAccountManager.View(true,"小獭.","已登录",false),false,cover),c->QQCatalogPainter.paint(c,cv,url->cover,songs.getFirst().song()));

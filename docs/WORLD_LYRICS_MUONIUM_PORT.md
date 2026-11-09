@@ -147,7 +147,7 @@ dependencies {
 - `JAVA_HOME=D:/minecraft/meta/java_versions/mojang-java-runtime-delta-windows-x64-cb4394a27089`（JDK 21）
 - 构建：`./gradlew :cloudxmusic-client:build --offline`（引入新依赖那次去掉 --offline）
 - 安装（用户已授权覆盖、不备份）：
-  `cp cloudxmusic-client/build/libs/CloudXMusic-2.6.0.jar "D:/minecraft/profiles/生电客户端 Fabric 1.21.11/mods/"`
+  `cp cloudxmusic-client/build/libs/CloudXMusic-2.6.0-alpha.1.jar "D:/minecraft/profiles/生电客户端 Fabric 1.21.11/mods/"`
 - 离线 UI 预览：`./gradlew :cloudxmusic-client:renderUiPreview`
 - 预期编译错误量：20~60 个（Lombok 差异、`LyricLine.words` 字段面、少量映射差异），逐个修。
 

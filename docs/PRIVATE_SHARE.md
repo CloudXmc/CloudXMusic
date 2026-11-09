@@ -1,6 +1,6 @@
 # 模组专用歌曲分享
 
-本功能对应客户端 2.6.0、服务端插件 1.0.6。客户端通过 `v2.6.0` 标签触发 CI 发布；服务端插件仍仅在本地构建。
+本功能对应客户端 2.6.0-alpha.1、服务端插件 1.0.6。客户端通过 `v2.6.0-alpha.1` 标签触发 CI 发布；服务端插件仍仅在本地构建。
 
 ## 可见范围
 
@@ -37,7 +37,7 @@
 ## 安装与验证
 
 1. 服务端停服后，将 `CloudXMusic-Server-1.0.6.jar` 放入 `plugins` 并替换旧插件，再正常启动。不要依赖 `/reload` 替换 Java 代码。
-2. 退出游戏，将 `CloudXMusic-2.6.0.jar` 放入目标实例 `mods` 并替换旧 CloudXMusic JAR。
+2. 退出游戏，将 `CloudXMusic-2.6.0-alpha.1.jar` 放入目标实例 `mods` 并替换旧 CloudXMusic JAR。
 3. 使用两名新版模组玩家和一名未安装模组的玩家加入同一服务器。两名模组玩家应看到带链接的分享，普通玩家聊天中应没有该条内容。
 4. 分别检查网易云与 QQ 分享、点击播放、未安装插件时的本地提示、重连后的重新握手，以及旧版文字分享的彩色头衔与自定义字体。
 
@@ -45,6 +45,6 @@
 
 2026-11-03 本地验证：客户端 443 项、协议 16 项、服务端 19 项测试全部通过，共 478 项，无失败、错误或跳过。客户端与服务端构建通过，已核对安装包内版本和分享通道类，客户端使用的协议库与本次协议构建产物 SHA-256 一致。
 
-本地产物：`cloudxmusic-client/build/libs/CloudXMusic-2.6.0.jar` 与 `music-server/build/libs/CloudXMusic-Server-1.0.6.jar`。客户端发布结果以 GitHub Actions / Release 为准。
+本地产物：`cloudxmusic-client/build/libs/CloudXMusic-2.6.0-alpha.1.jar` 与 `music-server/build/libs/CloudXMusic-Server-1.0.6.jar`。客户端发布结果以 GitHub Actions / Release 为准。
 
 服务端与协议源码仍保留在本地；远端客户端通过更新后的 `libs/cloudxmusic-protocol.jar` 独立构建。

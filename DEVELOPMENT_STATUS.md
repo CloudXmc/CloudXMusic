@@ -2,8 +2,8 @@
 
 更新时间：2026-11-03
 开发者：Lzasn,xWtree,xiaota888
-当前版本：2.6.0（正式版，发布结果以 CI / Release 为准）
-发版方式：推送主线后推送 `v2.6.0` 标签，由 GitHub Actions 构建并发布客户端 Release。
+当前版本：2.6.0-alpha.1（开发版，3D 世界歌词稳定性未达预期）
+发版方式：推送主线后推送 `v2.6.0-alpha.1` 标签，由 GitHub Actions 构建并发布客户端 Pre-release。
 服务端插件版本：1.0.6（本地构建，需配套更新）
 上次确认发布：2.5.2（2026-11-03，CI 构建及 Release 发布成功）
 目标环境：Minecraft 1.21.11、Fabric 客户端、Java 21

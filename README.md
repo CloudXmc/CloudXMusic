@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.6.0-D96A91?style=flat-square" alt="版本 2.6.0">
+  <img src="https://img.shields.io/badge/Version-2.6.0--alpha.1-D96A91?style=flat-square" alt="版本 2.6.0-alpha.1">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -27,7 +27,7 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 
 开发者：Lzasn（客户端、网易云音源与解码）、xiaota888（QQ 音乐音源、双音源架构与逐字歌词）、xWtree（早期界面开发、项目宣传者）。
 
-当前源码版本为 `2.6.0`，重点新增完整的 3D 世界歌词系统，并带来分享自动降级、设置页扩展与多项稳定性修复；更新日志见 [CHANGELOG.md](CHANGELOG.md)，发布构建由 `v2.6.0` 标签触发 CI 完成。
+当前源码版本为 `2.6.0-alpha.1`，基于 2.6.0 代码，3D 世界歌词因稳定性与实际表现仍未达到预期而重新标记为 Alpha；更新日志见 [CHANGELOG.md](CHANGELOG.md)，后续发布构建由 `v2.6.0-alpha.1` 标签触发 CI 完成。
 
 歌曲分享会先尝试 CloudXMusic 服务端插件 `1.0.6+` 的专用握手：握手成功时由插件转发，显示名优先沿用玩家列表样式。单人、局域网主机或无插件服务器会自动降级为普通公开聊天分享，末尾携带短机器标记；本机和其他安装模组的客户端会将它解析为可点击的「点击播放」，普通聊天插件与系统提示仍照常显示。
 
@@ -66,6 +66,9 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 音乐房间需要服务端插件 `CloudXMusic-Server`（本地 `music-server` 模块构建）。房主创建房间时，当前个人队列会按房间音源过滤后作为房间队列，之后房主的加歌/移除/播放全部会实时同步；成员加入后看到的是房间队列（只读）。房主控播放/暂停、上下首、进度、循环三档，成员只能本地「暂停跟听」，不影响其他人。
 
 ### 3D 世界歌词（MuoniumPlayer 移植）
+
+> [!IMPORTANT]
+> 3D 世界歌词目前仍不稳定，可能存在字形缓存与排版错位、动效间距异常、字体加载失败、Iris / 光影兼容问题，以及不同设备、窗口尺寸和 GUI 缩放下显示不一致等情况。实际表现尚未达到预期范围，相关功能仍在持续修复中，请勿将其作为核心功能或正式展示场景使用，并留意游戏日志与问题反馈。
 
 在设置页的「3D 世界歌词」双列分组里开关并调整布局、翻译、发光和动效。渲染器使用 MuoniumPlayer 的世界歌词子系统，在世界渲染尾部按相机朝向生成公告牌：
 
