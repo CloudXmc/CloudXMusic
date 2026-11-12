@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.6.0--alpha.1-D96A91?style=flat-square" alt="版本 2.6.0-alpha.1">
+  <img src="https://img.shields.io/badge/Version-2.6.0--alpha.2-D96A91?style=flat-square" alt="版本 2.6.0-alpha.2">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
@@ -27,7 +27,7 @@ CloudXMusic（云朵音乐盒）是一款面向 Minecraft 1.21.11 的 Fabric 客
 
 开发者：Lzasn（客户端、网易云音源与解码）、xiaota888（QQ 音乐音源、双音源架构与逐字歌词）、xWtree（早期界面开发、项目宣传者）。
 
-当前源码版本为 `2.6.0-alpha.1`，基于 2.6.0 代码，3D 世界歌词因稳定性与实际表现仍未达到预期而重新标记为 Alpha；更新日志见 [CHANGELOG.md](CHANGELOG.md)，后续发布构建由 `v2.6.0-alpha.1` 标签触发 CI 完成。
+当前源码版本为 `2.6.0-alpha.2`，基于 2.6.0 代码，3D 世界歌词因稳定性与实际表现仍未达到预期而保持 Alpha 标记；本版集中处理世界歌词与拖尾的渲染开销，并修复网易云 MP3 提前切歌。更新日志见 [CHANGELOG.md](CHANGELOG.md)，后续发布构建由 `v2.6.0-alpha.2` 标签触发 CI 完成。
 
 歌曲分享会先尝试 CloudXMusic 服务端插件 `1.0.6+` 的专用握手：握手成功时由插件转发，显示名优先沿用玩家列表样式。单人、局域网主机或无插件服务器会自动降级为普通公开聊天分享，末尾携带短机器标记；本机和其他安装模组的客户端会将它解析为可点击的「点击播放」，普通聊天插件与系统提示仍照常显示。
 
