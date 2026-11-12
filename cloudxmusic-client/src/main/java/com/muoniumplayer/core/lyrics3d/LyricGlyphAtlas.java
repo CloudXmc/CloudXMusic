@@ -102,8 +102,19 @@ public final class LyricGlyphAtlas {
     /** 页边长（烘焙像素）。CJK 50px 字形连发光留白约 150px 见方，一页约 36 格。 */
     public static final int PAGE_SIZE = 1024;
 
-    /** 页上限（每页 4MB 显存，8 页 ≈ 32MB 封顶）。LRU 逐出。 */
-    public static final int MAX_PAGES = 8;
+    /**
+     * 页上限（每页 4MB 显存）。LRU 逐出。
+     *
+     * <p><b>8 → 16 的原因</b>：页是<b>按需创建</b>的，调高上限对用不到的工作集
+     * 一字节都不多占；而 8 页 ≈ 8.4M 像素，对「心象分块色 / 绘光冷暗+暖亮双档 /
+     * 封面渐变」这些每字一色的动效模式来说偏紧 —— 一行 40 字的墨格 + 晕格就能
+     * 顶满，下一行开始时整页逐出，再靠「4 格/帧、8ms/帧」预算补烘，表现为持续掉帧。
+     * 调高后同一首歌的常用字形能常驻，补烘只发生在前几句。</p>
+     *
+     * <p>可用 {@code -Dmuonium.maxGlyphPages=N} 覆盖（低显存机器可回到 8）。</p>
+     */
+    public static final int MAX_PAGES = Math.max(2,
+            Integer.getInteger("muonium.maxGlyphPages", 16));
 
     /** 树侧纹理宿主；null = 现代档不可用（渲染层回退像素字）。 */
     public interface Host {

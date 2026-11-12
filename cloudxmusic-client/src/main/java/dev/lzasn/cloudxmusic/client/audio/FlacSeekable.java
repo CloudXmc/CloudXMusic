@@ -75,6 +75,21 @@ final class FlacSeekable implements Closeable {
         return frameByte.length;
     }
 
+    /** 索引覆盖到的时长（ms，按最后一帧起始采样估算）——诊断「提前结束」用。 */
+    int indexedMs() {
+        if (frameSample.length == 0 || info.sampleRate <= 0) return 0;
+        return (int) (frameSample[frameSample.length - 1] * 1000L / info.sampleRate);
+    }
+
+    /** 落盘文件的字节数（诊断用；失败返回 -1）。 */
+    long fileBytes() {
+        try {
+            return input.getLength();
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
     /** 跳到指定毫秒；下一次 readFrame 从该位置开始。 */
     void seekToMs(long ms) {
         long target = Math.max(0, ms) * (long) info.sampleRate / 1000L;

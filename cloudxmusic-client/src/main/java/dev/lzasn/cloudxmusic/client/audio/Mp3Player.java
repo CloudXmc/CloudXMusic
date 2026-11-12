@@ -343,6 +343,9 @@ public final class Mp3Player {
     private void runLoop(Engine e) {
         long startAt = positionMs;
         int retries = 0;
+        // 提前 EOF 的续传计数：JLayer 把「同步窗口内找不到帧头」也报成 STREAM_EOF，
+        // 所以「读到末尾」不等于「歌放完了」——脏数据/截断走的是同一条出口。
+        int earlyEofRetries = 0;
         while (!stale(e.gen)) {
             boolean ranged;
             try {
@@ -370,9 +373,25 @@ public final class Mp3Player {
                         if (stale(e.gen)) break;
                         if ((header = bitstream.readFrame()) == null) {
                             if (stale(e.gen)) break;
+                            // ---- 提前结束判定 ----
+                            // JLayer 的 Bitstream 在「同步窗口里找不到可解码帧头」时抛
+                            // STREAM_EOF，readFrame() 一并吞掉返回 null —— 所以
+                            // 「读到流末尾」既可能是歌真的放完了，也可能是 CDN 截断/
+                            // 中间一段脏数据。用户反馈的「进度条走到四五成就切歌」就是
+                            // 后者：实测日志里 175s/249s（70%）、224s/249s（90%）。
+                            // 明显短于标称时按断流处理：从断点续传（Range），不是切歌。
+                            if (earlyEofRetries < 3 && totalMs > 0 && decodedMs + 2000 < totalMs) {
+                                earlyEofRetries++;
+                                CloudXMusicClient.LOGGER.warn(
+                                        "[播放] 流在 {} ms 提前结束（标称 {} ms），从断点续传（第 {} 次）",
+                                        decodedMs, totalMs, earlyEofRetries);
+                                startAt = Math.max(0, decodedMs - 300);   // 回退一点保证落在帧边界
+                                throw new RestartStream();
+                            }
                             drainLine(e);
                             if(stale(e.gen)){e.close();return;}
                             e.close();
+                            logTrackEnd(decodedMs, "MP3 读到流末尾");
                             finished = true;
                             active = false;
                             return;
@@ -418,6 +437,7 @@ public final class Mp3Player {
                     if (stale(e.gen)) break;
                     drainLine(e);
                     if(stale(e.gen))break;
+                    logTrackEnd(decodedMs, "MP3 解码循环结束");
                     finished = true;
                     active = false;
                 }
@@ -443,6 +463,22 @@ public final class Mp3Player {
             }
         }
         e.close();
+    }
+
+    /**
+     * 曲末诊断：实际解码时长 vs 标称时长。
+     *
+     * <p>「进度条走到四五成就切歌」这类提前结束问题的第一现场 —— 实际解码明显短于
+     * 标称，说明音频流本身短了（CDN 截断 / 无损帧索引不完整）；实际≈标称而进度条
+     * 仍停在半途，说明进度计算有偏差。每次曲末打一行，便于用户复现后直接对账。</p>
+     */
+    private void logTrackEnd(long decodedMs, String why) {
+        long nominal = totalMs;
+        String ratio = nominal > 0
+                ? String.format(java.util.Locale.ROOT, "%.0f%%", decodedMs * 100.0 / nominal)
+                : "?";
+        CloudXMusicClient.LOGGER.warn("[播放] 曲末（{}）：实际解码 {} ms / 标称 {} ms（{}）",
+                why, decodedMs, nominal, ratio);
     }
 
     /**
@@ -476,6 +512,12 @@ public final class Mp3Player {
                 int rate = info.sampleRate;
                 int channels = info.numChannels;
                 if (info.numSamples > 0) totalMs = info.numSamples * 1000L / rate;
+                // 曲末提前切换的第一现场：STREAMINFO 标称时长 / 实际索引覆盖 / 落盘字节数
+                // 三者一比就能分清「文件短了」还是「标称时长长了」。
+                CloudXMusicClient.LOGGER.info("[播放] FLAC 就绪：{} 帧，索引覆盖约 {} ms，"
+                                + "STREAMINFO {} 采样 / {} ms，落盘 {} 字节",
+                        track.frameCount(), track.indexedMs(), info.numSamples, totalMs,
+                        track.fileBytes());
                 int[][] planes = new int[channels][65536];
                 short[] pcm = new short[65536 * channels];
                 long decodedMs = Math.max(0, startAt);
@@ -502,6 +544,7 @@ public final class Mp3Player {
                     if (frames == 0) {
                         drainLine(e);
                         if(stale(e.gen))return;
+                        logTrackEnd(decodedMs, "FLAC 无更多帧");
                         finished = true;
                         active = false;
                         return;

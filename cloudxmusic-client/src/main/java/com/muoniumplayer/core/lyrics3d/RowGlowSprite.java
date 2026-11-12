@@ -47,6 +47,66 @@ public final class RowGlowSprite {
     private static int[] cachedPixels;
     private static CFontRenderer bakeFont;
 
+    /**
+     * 多槽烘焙缓存（LRU）：<b>辉光形态下每帧至少两行在取用</b>——主行与翻译副行
+     * 各调一次 {@code drawGlowBackdrop}，单槽缓存会互相顶掉，导致两行每帧都整行
+     * 重烘（Skija 光栅 + 金字塔 = 数毫秒）。多留几槽就能全部命中，观感零变化。
+     */
+    private static final int MAX_CACHE_ENTRIES = 4;
+    /** 像素总量上限（int 个数，约 32MB 封顶），超了先逐最旧槽。 */
+    private static final long MAX_CACHED_PIXELS = 8_000_000L;
+    private static long cachedPixelTotal;
+
+    private static final java.util.LinkedHashMap<String, Snapshot> CACHE =
+            new java.util.LinkedHashMap<String, Snapshot>(8, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, Snapshot> eldest) {
+                    if (size() > MAX_CACHE_ENTRIES
+                            || (cachedPixelTotal > MAX_CACHED_PIXELS && size() > 1)) {
+                        cachedPixelTotal -= (long) eldest.getValue().pixels.length;
+                        return true;
+                    }
+                    return false;
+                }
+            };
+
+    /** 一槽烘焙结果（像素 + 对位尺寸），命中时回填静态尺寸字段。 */
+    private static final class Snapshot {
+        final int[] pixels;
+        final int w, h;
+        final float textW;
+
+        Snapshot(int[] pixels, int w, int h, float textW) {
+            this.pixels = pixels;
+            this.w = w;
+            this.h = h;
+            this.textW = textW;
+        }
+    }
+
+    /** 命中：把尺寸/字宽回填到 getter 读的静态字段（调用方紧接着就读它们）。 */
+    private static int[] applySnapshot(Snapshot s) {
+        width = s.w;
+        height = s.h;
+        textW2x = s.textW;
+        cachedPixels = s.pixels;
+        return s.pixels;
+    }
+
+    /** 存槽：写缓存 + 回填尺寸字段，返回像素（与旧 cachedPixels 行为一致）。 */
+    private static int[] store(String key, int[] px, int w, int h, float textW) {
+        Snapshot s = new Snapshot(px, w, h, textW);
+        Snapshot old = CACHE.put(key, s);
+        if (old != null) cachedPixelTotal -= (long) old.pixels.length;
+        cachedPixelTotal += (long) px.length;
+        cachedKey = key;
+        cachedPixels = px;
+        width = w;
+        height = h;
+        textW2x = textW;
+        return px;
+    }
+
     private RowGlowSprite() {
     }
 
@@ -66,8 +126,9 @@ public final class RowGlowSprite {
         String key = CACHE_VERSION + "|" + text + "|" + Integer.toHexString(glowColor & 0xFFFFFF)
                 + "|" + Math.round(strength * 64f)
                 + "|" + Math.round(spread * 16f);
-        if (key.equals(cachedKey) && cachedPixels != null) {
-            return cachedPixels;
+        Snapshot hit = CACHE.get(key);
+        if (hit != null) {
+            return applySnapshot(hit);
         }
         CFontRenderer font = ensureBakeFont();
         if (font == null) return null;
@@ -111,9 +172,7 @@ public final class RowGlowSprite {
             int[] px = TextGlow.bakeRowGlowPixels(mask, pw, ph,
                     (float) font.sizePx, spread, strength, glowColor & 0xFFFFFF);
             if (px == null) return null;
-            cachedPixels = px;
-            cachedKey = key;
-            return cachedPixels;
+            return store(key, px, pw, ph, textW2x);
         } catch (Throwable t) {
             return null;
         }
@@ -137,19 +196,16 @@ public final class RowGlowSprite {
                 + "|" + Integer.toHexString(glowColor & 0xFFFFFF)
                 + "|" + Math.round(strength * 64f)
                 + "|" + Math.round(spread * 16f);
-        if (key.equals(cachedKey) && cachedPixels != null) {
-            return cachedPixels;
+        Snapshot hit = CACHE.get(key);
+        if (hit != null) {
+            return applySnapshot(hit);
         }
         int[] px = TextGlow.bakeRowGlowPixels(mask, w, h, fontPx, spread, strength,
                 glowColor & 0xFFFFFF);
         if (px == null) return null;
-        width = w;
-        height = h;
         // 掩码自带留白时，quad 宽度按掩码宽 / SS 反推，textW2x 存的是「掩码宽 - 两侧 pad」
-        textW2x = Math.max(0f, (w / (float) SS - padPx * 2f)) * SS;
-        cachedPixels = px;
-        cachedKey = key;
-        return cachedPixels;
+        float textW = Math.max(0f, (w / (float) SS - padPx * 2f)) * SS;
+        return store(key, px, w, h, textW);
     }
 
     /** 掩码指纹：只采样少量点，缓存键只需要区分「内容变了」而不是精确哈希。 */
@@ -265,5 +321,7 @@ public final class RowGlowSprite {
         cachedKey = "";
         cachedPixels = null;
         textW2x = 0;
+        CACHE.clear();
+        cachedPixelTotal = 0;
     }
 }

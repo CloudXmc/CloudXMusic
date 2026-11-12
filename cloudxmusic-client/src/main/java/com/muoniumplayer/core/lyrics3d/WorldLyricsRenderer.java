@@ -114,6 +114,26 @@ public final class WorldLyricsRenderer {
                              float glowMul, boolean glowOn, int glowColorRgb, int inkRgb);
 
         /**
+         * 一行字形的收集边界（可选优化钩子，默认空实现 = 逐字即时发射，行为不变）。
+         *
+         * <p>为什么给宿主这个钩子：晕格（加色）与墨格（alpha）RenderType 不同，
+         * 逐字「晕→墨→晕→墨」交替会让宿主的顶点缓冲每换一次类型收一次批 ——
+         * 一行 40 字 = 80 次 draw call。宿主可以在 begin/end 之间只记录字形，
+         * 结束后先整行发晕（同页连续累加）、再整行发墨，批次降到每页一次，
+         * 顶点内容与相对顺序都不变。</p>
+         *
+         * <p>渲染层保证：begin 与 end 严格配对（end 走 finally），between 期间
+         * 只调用 {@link #drawSmoothGlyph}、{@link #drawStar} 等逐字入口，
+         * 不会穿插 push/pop 公告牌。</p>
+         */
+        default void beginGlyphRow() {
+        }
+
+        /** 与 {@link #beginGlyphRow()} 配对：结束收集并把记录的字形按顺序发射。 */
+        default void endGlyphRow() {
+        }
+
+        /**
          * 绘光拖尾（径迹）：把一条折线画成圆头描边（folia trackLayer 的
          * stroke(width 1.2, round, round) 等价物）。xs/ys 是折线顶点（文字像素
          * 坐标、公告牌平面系），count 为点数；argb 已含整条径迹的透明度；
@@ -153,6 +173,7 @@ public final class WorldLyricsRenderer {
                                         int slot) {
             return false;
         }
+
 
         /**
          * 绘光逐字光晕（folia halos：每字一枚径向渐变柔光点垫在字下）。
@@ -661,9 +682,17 @@ public final class WorldLyricsRenderer {
                 //      取代逐字 quad 带的几十次收批；各径迹的 alpha 已烘进像素）。
                 //      宿主不吃下（未实现/熔断）→ 累计失败并停用画布通路：
                 //      之后整帧直接走 quad 带，不再每帧白做光栅化与像素拷贝。
-                if (trailCanvasActive) {
+                //      本帧一个径迹都没画（画布已清成全透明）→ 整块跳过：
+                //      读全图像素 + 逐像素写纹理 + 上传是本模式最贵的一步，
+                //      而「全透明的 quad」画出来和没画完全一样。
+                if (trailCanvasActive && !HuiguangTrailCanvas.isEmpty()) {
                     // ABGR 直出（像素换位在 Skija 读出时一次完成）：宿主写入
-                    // 退化纯拷贝，拖尾活跃帧省一整遍逐像素位运算扫描
+                    // 退化纯拷贝，拖尾活跃帧省一整遍逐像素位运算扫描。
+                    // 整块上传：子矩形上传（drawTrailCanvasRegion）实测把拖尾画成了
+                    // 撕裂的错位条纹 —— 根因是「上一帧脏矩形」是画布里的<b>单份静态状态</b>，
+                    // 而同帧可能有 active + 淡出两行共用同一块画布、各自 begin()/取像素，
+                    // 跨槽位把并集算错，旧径迹没被擦掉 → 残影一帧帧叠成条纹。
+                    // 要开这条路必须把 prev 改成按 slot 记账，先关掉。
                     int[] px = HuiguangTrailCanvas.readPixelsAbgr();
                     boolean accepted = false;
                     if (px != null) {
@@ -726,6 +755,8 @@ public final class WorldLyricsRenderer {
                             backdropAlpha, canvasSlot);
                 }
             }
+            // 整行字形收集：宿主按「先整行晕、再整行墨」重排，把每字两次收批压到每页一次
+            host.beginGlyphRow();
             for (int gi = 0; gi < glyphs.glyphs.size(); gi++) {
                 WorldLyricsState.LyricGlyph g = glyphs.glyphs.get(gi);
                 // g.pop 恒生效的弹性缩放（入场飞入回弹 / word pop 回弹 / 出场收拢），
@@ -867,6 +898,7 @@ public final class WorldLyricsRenderer {
                 }
             }
         } finally {
+            host.endGlyphRow();
             host.popBillboard();
         }
     }

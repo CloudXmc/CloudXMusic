@@ -72,6 +72,8 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
     // 同页字形合批：当前挂起的页句柄与字形数（endBatch 延迟到页切换/帧尾）
     private Object pendingGlyphPage;
     private int pendingGlyphCount;
+    // 同页晕格合批：晕趟（加色）挂起的页句柄（见 beginGlyphRow）
+    private Object pendingGlowPage;
     private boolean tracedOnce;
     private boolean tracedSmooth;
     private WorldBillboard() {
@@ -174,11 +176,16 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
         this.camZ = camZ;
         // 帧间模式翻转（用户中途开关光影包）时，挂起的合批记录若残留，
         // end() 会用新模式收旧模式的批 —— 直接清掉，下一帧重新合批（无观感差异）
-        if (pendingEffectRl != null || pendingGlyphPage != null) {
+        if (pendingEffectRl != null || pendingGlyphPage != null || pendingGlowPage != null) {
             pendingEffectRl = null;
             pendingGlyphPage = null;
             pendingGlyphCount = 0;
+            pendingGlowPage = null;
         }
+        // 上一帧若在行中途异常退出，收集态必须复位（否则本帧只记录不发射 → 整帧无字）
+        recording = false;
+        recCount = 0;
+        starCount = 0;
     }
 
     public void end() {
@@ -187,6 +194,8 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
         // 下一帧 —— 否则下一帧 begin 丢弃记录后，这批孤儿顶点会被原版在任意时点
         // 以错误状态冲刷（幽灵字形）。
         try {
+            // 晕格先于字形收批（晕在字下）；正常路径已在 endGlyphRow 里收过，这里是兜底
+            flushGlowPage();
             if (buffers != null && pendingGlyphPage != null) {
                 buffers.endBatch(currentGlyphType(
                         ((LyricGlyphAtlasBridge.PageHandle) pendingGlyphPage).resourceLocation()));
@@ -198,6 +207,7 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
             pendingGlyphPage = null;
             pendingGlyphCount = 0;
             pendingEffectRl = null;
+            pendingGlowPage = null;
         }
         this.poseStack = null;
         this.buffers = null;
@@ -266,13 +276,199 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
                                 int rgb, float alpha, float rot, float dx, float dy, float sc,
                                 float glowMul, boolean glowOn, int glowColorRgb, int inkRgb) {
         if (poseStack == null || buffers == null) return;
-        // 发光参数取本帧快照（Bridge 在帧头装配好；没装配时按无发光查格）
+        if (recording && recCount < MAX_GLYPH_RECS) {
+            putGlyphRec(recCount++, c, x, y, sizePx, rgb, alpha, rot, dx, dy, sc,
+                    glowMul, glowOn, glowColorRgb, inkRgb);
+            return;
+        }
+        // 未成行（外部直接调用）或记录溢出：当场按「晕 → 墨」发射，行为与旧实现一致
+        putGlyphRec(SCRATCH, c, x, y, sizePx, rgb, alpha, rot, dx, dy, sc,
+                glowMul, glowOn, glowColorRgb, inkRgb);
+        emitGlyphGlow(SCRATCH);
+        flushGlowPage();
+        emitGlyphInk(SCRATCH);
+    }
+
+    // ==================== 逐字重放：晕/墨两趟合批 ====================
+
+    /**
+     * 一行最多记录多少个字形（40 字 × 最多 2 次绘制 ≈ 80；256 是余量）。
+     * 记录的意义见 {@link #beginGlyphRow()}。
+     */
+    private static final int MAX_GLYPH_RECS = 256;
+    /** 直接发射（未成行/记录溢出）用的临时槽下标。 */
+    private static final int SCRATCH = MAX_GLYPH_RECS;
+
+    private final char[] recCh = new char[MAX_GLYPH_RECS + 1];
+    /** 每槽几何 9 项：x, y, sizePx, alpha, rot, dx, dy, sc, glowMul。 */
+    private final float[] recGeom = new float[(MAX_GLYPH_RECS + 1) * 9];
+    private final int[] recRgb = new int[MAX_GLYPH_RECS + 1];
+    private final int[] recGlowRgb = new int[MAX_GLYPH_RECS + 1];
+    private final int[] recInkRgb = new int[MAX_GLYPH_RECS + 1];
+    private final boolean[] recGlowOn = new boolean[MAX_GLYPH_RECS + 1];
+    private int recCount;
+    /** beginGlyphRow..endGlyphRow 之间为 true（此期间只记录、不发射）。 */
+    private boolean recording;
+    /**
+     * 兜底开关：{@code -Dmuonium.disableGlyphBatch=true} 退回逐字即时发射
+     * （老路径，性能差但行为与 2.6.0 完全一致）—— 万一某台机器上合批出现观感差异，
+     * 用户不用等版本更新就能回到旧行为。
+     */
+    private static final boolean DISABLE_BATCH = Boolean.getBoolean("muonium.disableGlyphBatch");
+
+    /** 四芒闪点也要跟着重放（否则会排到字下面，观感变化）。 */
+    private static final int MAX_STAR_RECS = 64;
+    private final float[] starGeom = new float[MAX_STAR_RECS * 4];
+    private final int[] starArgbRec = new int[MAX_STAR_RECS];
+    private int starCount;
+
+    /**
+     * 开始收集一行的字形 —— <b>晕/墨两趟合批的前提</b>。
+     *
+     * <p>为什么必须收集：晕格是加色混合、墨格是 alpha 混合，两者 RenderType 不同。
+     * 逐字「晕→墨→晕→墨」交替时，原版 {@code BufferSource.getBuffer} 每检测到
+     * 类型切换就收一次批 —— 一行 40 字 = <b>80 次 draw call</b>。收集后先整行发晕
+     * （同页连续累加 → 每页一次收批）、再整行发墨，批次降到 ~4 次，顶点集合与
+     * 逐字顺序都不变（只是把「晕在墨下」从逐字保证变成整行保证，重叠区差异
+     * 在 1px 内，肉眼不可见）。</p>
+     */
+    @Override
+    public void beginGlyphRow() {
+        if (poseStack == null || buffers == null || DISABLE_BATCH) return;
+        recording = true;
+        recCount = 0;
+        starCount = 0;
+    }
+
+    /** 结束收集：晕趟 → 墨趟 → 闪点趟。异常也必须收尾，否则顶点残留到下一帧。 */
+    @Override
+    public void endGlyphRow() {
+        if (!recording) return;
+        recording = false;
+        try {
+            for (int i = 0; i < recCount; i++) {
+                emitGlyphGlow(i);
+            }
+            flushGlowPage();
+            for (int i = 0; i < recCount; i++) {
+                emitGlyphInk(i);
+            }
+            for (int i = 0; i < starCount; i++) {
+                int g = i * 4;
+                emitStar(starGeom[g], starGeom[g + 1], starGeom[g + 2], starGeom[g + 3],
+                        starArgbRec[i]);
+            }
+        } finally {
+            recCount = 0;
+            starCount = 0;
+        }
+    }
+
+    private void putGlyphRec(int i, char c, float x, float y, float sizePx,
+                             int rgb, float alpha, float rot, float dx, float dy, float sc,
+                             float glowMul, boolean glowOn, int glowColorRgb, int inkRgb) {
+        recCh[i] = c;
+        int g = i * 9;
+        recGeom[g] = x;
+        recGeom[g + 1] = y;
+        recGeom[g + 2] = sizePx;
+        recGeom[g + 3] = alpha;
+        recGeom[g + 4] = rot;
+        recGeom[g + 5] = dx;
+        recGeom[g + 6] = dy;
+        recGeom[g + 7] = sc;
+        recGeom[g + 8] = glowMul;
+        recRgb[i] = rgb;
+        recGlowRgb[i] = glowColorRgb;
+        recInkRgb[i] = inkRgb;
+        recGlowOn[i] = glowOn;
+    }
+
+    /** 晕格趟：只发加色光形（查晕格 → 四顶点），同页连续累加不逐字收批。 */
+    private void emitGlyphGlow(int i) {
         WorldLyricsSettings settings = WorldLyricsBridge.currentSettings;
         float glowStrength = settings != null ? settings.glowStrength : 0f;
         float glowSpread = settings != null ? settings.glowSpread : 1f;
         // 心象的发光脉冲：正在唱的块满档、其余块压档 —— 查格前乘上去（缓存键已量化）。
-        glowStrength *= glowMul;
-        boolean glowActive = glowOn && glowStrength > 0.004f;
+        glowStrength *= recGeom[i * 9 + 8];
+        if (!recGlowOn[i] || glowStrength <= 0.004f) return;
+
+        char c = recCh[i];
+        float x = recGeom[i * 9];
+        float y = recGeom[i * 9 + 1];
+        float alpha = recGeom[i * 9 + 3];
+        float rot = recGeom[i * 9 + 4];
+        float sc = recGeom[i * 9 + 7];
+        int rgb = recRgb[i];
+
+        // 绕字中心的旋转中心按墨格几何算 —— 晕格必须与墨格同中心
+        LyricGlyphAtlas.GlyphCell cell = LyricGlyphAtlas.getInkCell(c, rgb & 0xFFFFFF);
+        if (cell == null || !(cell.page instanceof LyricGlyphAtlasBridge.PageHandle)) return;
+
+        LyricGlyphAtlas.GlyphCell glowCell = LyricGlyphAtlas.getGlowCell(c, glowStrength, glowSpread,
+                recGlowRgb[i] & 0xFFFFFF, rgb & 0xFFFFFF,
+                settings != null ? settings.glowTier : TextGlow.GLOW_TIER_DEFAULT);
+        if (glowCell == null || !(glowCell.page instanceof LyricGlyphAtlasBridge.PageHandle)) return;
+
+        float pageF = LyricGlyphAtlas.PAGE_SIZE;
+        float halfTexel = 0.5f / pageF;
+        float inv = 1f / cell.scale;
+        float cx = x + (cell.advance * inv) * 0.5f;
+        float cy = y + (cell.inkHeight * inv) * 0.5f;
+        boolean transformed = rot != 0f || sc != 1f;
+        float cos = transformed ? (float) Math.cos(Math.toRadians(rot)) : 1f;
+        float sin = transformed ? (float) Math.sin(Math.toRadians(rot)) : 0f;
+        float s = transformed ? sc : 1f;
+
+        float gInv = 1f / glowCell.scale;
+        float gLeft = x - glowCell.inkX * gInv;
+        float gTop = y - glowCell.inkY * gInv;
+        float gRight = gLeft + glowCell.w * gInv;
+        float gBottom = gTop + glowCell.h * gInv;
+        // 晕的顶点色 = 墨色（不是晕色！）：晕色已烘进晕格像素，顶点色沿用旧实现的
+        // 「墨色 × 晕格」口径 —— 改成晕色会让整层发光换色调。
+        // alpha 用墨格同一进出场 alpha，晕格能量已按 strength 烘进像素。
+        int glowArgb = (((int) (alpha * 255f) & 0xFF) << 24) | (rgb & 0xFFFFFF);
+
+        // 同页合批：只有页切换才收批（晕→墨的类型切换统一在闸口 flush）
+        if (pendingGlowPage != glowCell.page) {
+            flushGlowPage();
+            pendingGlowPage = glowCell.page;
+        }
+
+        Identifier glowRl = ((LyricGlyphAtlasBridge.PageHandle) glowCell.page).resourceLocation();
+        Matrix4f gmat = poseStack.last().pose();
+        VertexConsumer gvc = buffers.getBuffer(glowType(glowRl));
+        putGlyphVertex(gvc, gmat, gLeft, gTop, cx, cy, cos, sin, s, glowArgb,
+                glowCell.x / pageF + halfTexel, glowCell.y / pageF + halfTexel);
+        putGlyphVertex(gvc, gmat, gLeft, gBottom, cx, cy, cos, sin, s, glowArgb,
+                glowCell.x / pageF + halfTexel, (glowCell.y + glowCell.h) / pageF - halfTexel);
+        putGlyphVertex(gvc, gmat, gRight, gBottom, cx, cy, cos, sin, s, glowArgb,
+                (glowCell.x + glowCell.w) / pageF - halfTexel, (glowCell.y + glowCell.h) / pageF - halfTexel);
+        putGlyphVertex(gvc, gmat, gRight, gTop, cx, cy, cos, sin, s, glowArgb,
+                (glowCell.x + glowCell.w) / pageF - halfTexel, glowCell.y / pageF + halfTexel);
+    }
+
+    /** 收掉挂起的晕格批（晕趟结束 / 晕→墨切换 / 帧尾）。 */
+    private void flushGlowPage() {
+        Object page = pendingGlowPage;
+        if (page == null || buffers == null) return;
+        pendingGlowPage = null;
+        if (page instanceof LyricGlyphAtlasBridge.PageHandle) {
+            buffers.endBatch(glowType(((LyricGlyphAtlasBridge.PageHandle) page).resourceLocation()));
+        }
+    }
+
+    /** 墨格趟：阴影 + 字身（同 text 类型，页切换才收批）。 */
+    private void emitGlyphInk(int i) {
+        char c = recCh[i];
+        float x = recGeom[i * 9];
+        float y = recGeom[i * 9 + 1];
+        float alpha = recGeom[i * 9 + 3];
+        float rot = recGeom[i * 9 + 4];
+        float sc = recGeom[i * 9 + 7];
+        int rgb = recRgb[i];
+        WorldLyricsSettings settings = WorldLyricsBridge.currentSettings;
 
         // 墨格：无发光留白（晕在独立晕格，墨格回归防裁切最小 pad）
         LyricGlyphAtlas.GlyphCell cell = LyricGlyphAtlas.getInkCell(c, rgb & 0xFFFFFF);
@@ -285,26 +481,14 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
                 return;
             }
             // 图集不可用/超尺寸：像素字兜底（带阴影 —— 与平滑档的立体感语义一致）
-            int argb = ((int) (alpha * 255f) << 24) | (rgb & 0xFFFFFF);
-            drawPixelText(String.valueOf(c), x, y, argb, true);
+            int fbArgb = ((int) (alpha * 255f) << 24) | (rgb & 0xFFFFFF);
+            drawPixelText(String.valueOf(c), x, y, fbArgb, true);
             return;
         }
         if (!(cell.page instanceof LyricGlyphAtlasBridge.PageHandle)) {
             return;
         }
         Identifier inkRl = ((LyricGlyphAtlasBridge.PageHandle) cell.page).resourceLocation();
-
-        // 晕格：独立烘焙（只含高斯光形，TextGlow.drawGlowOn）。晕格未就绪（预算/页满）
-        // 只丢晕不丢字。
-        LyricGlyphAtlas.GlyphCell glowCell = glowActive
-                ? LyricGlyphAtlas.getGlowCell(c, glowStrength, glowSpread,
-                        glowColorRgb & 0xFFFFFF, rgb & 0xFFFFFF,
-                        settings != null ? settings.glowTier : TextGlow.GLOW_TIER_DEFAULT)
-                : null;
-        Identifier glowRl = null;
-        if (glowCell != null && glowCell.page instanceof LyricGlyphAtlasBridge.PageHandle) {
-            glowRl = ((LyricGlyphAtlasBridge.PageHandle) glowCell.page).resourceLocation();
-        }
 
         // 同页合批：页切换（或首次）时把上一页的字形批次收掉 —— 一句 40 字
         // 从每字一次 endBatch 降到每页一次。页内 endBatch 省略不影响正确性：
@@ -347,33 +531,6 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
 
         int argb = (((int) (alpha * 255f) & 0xFF) << 24) | (rgb & 0xFFFFFF);
 
-        // 1.21.11：textSeeThrough 工厂在 RenderTypes（RenderType 本体只剩 draw/format，
-        // javap 核对），参数类型是 Identifier。
-        // 晕格先画（加色 currentEffectType），墨格后进挂起合批 —— 观感上晕在字下。
-        if (glowRl != null) {
-            float gInv = 1f / glowCell.scale;
-            float gLeft = x - glowCell.inkX * gInv;
-            float gTop = y - glowCell.inkY * gInv;
-            float gRight = gLeft + glowCell.w * gInv;
-            float gBottom = gTop + glowCell.h * gInv;
-            // 晕的顶点 alpha 用墨格同一进出场 alpha —— 晕格能量已按 strength 烘进像素
-            int glowArgb = argb & 0x00FFFFFF | (((int) (alpha * 255f) & 0xFF) << 24);
-            Matrix4f gmat = poseStack.last().pose();
-            VertexConsumer gvc = buffers.getBuffer(glowType(glowRl));
-            putGlyphVertex(gvc, gmat, gLeft, gTop, cx, cy, cos, sin, s, glowArgb,
-                    glowCell.x / pageF + halfTexel, glowCell.y / pageF + halfTexel);
-            putGlyphVertex(gvc, gmat, gLeft, gBottom, cx, cy, cos, sin, s, glowArgb,
-                    glowCell.x / pageF + halfTexel, (glowCell.y + glowCell.h) / pageF - halfTexel);
-            putGlyphVertex(gvc, gmat, gRight, gBottom, cx, cy, cos, sin, s, glowArgb,
-                    (glowCell.x + glowCell.w) / pageF - halfTexel, (glowCell.y + glowCell.h) / pageF - halfTexel);
-            putGlyphVertex(gvc, gmat, gRight, gTop, cx, cy, cos, sin, s, glowArgb,
-                    (glowCell.x + glowCell.w) / pageF - halfTexel, glowCell.y / pageF + halfTexel);
-            // 加色批立即收：currentEffectType 与墨格的 textSeeThrough 不同类型，
-            // getBuffer 换类型时原版会自动收前一批，但显式 endBatch 保证晕层
-            // 不与后续特效（halo/burst 同类型）串页
-            buffers.endBatch(glowType(glowRl));
-        }
-
         // 阴影：墨格同格重画、右下偏移、半透明黑（游戏实测字色压暗在加色晕垫底
         // 下读作重影）—— 同 text 类型挂起合批，画在晕上、被墨盖住，只露右下缘
         int shadowArgb = (int) (((argb >>> 24) & 0xFF) * SHADOW_STRENGTH) << 24;
@@ -407,7 +564,7 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
         if (TRACE && !tracedSmooth) {
             tracedSmooth = true;
             System.out.println("[WorldLyrics/trace] 现代档字形 quad 已发: '" + c
-                    + "' cell=" + cell.w + "x" + cell.h + (glowRl != null ? " +glow" : ""));
+                    + "' cell=" + cell.w + "x" + cell.h);
         }
     }
 
@@ -880,25 +1037,45 @@ public final class WorldBillboard implements WorldLyricsRenderer.Host {
     @Override
     public void drawStar(float cx, float cy, float sizePx, float rotDeg, int argb) {
         if (poseStack == null || buffers == null || (argb >>> 24) == 0) return;
+        // 成行收集期间延后到墨趟之后发射：闪点必须仍压在字上面（观感不变）
+        if (recording) {
+            if (starCount >= MAX_STAR_RECS) return;
+            int i = starCount++;
+            int g = i * 4;
+            starGeom[g] = cx;
+            starGeom[g + 1] = cy;
+            starGeom[g + 2] = sizePx;
+            starGeom[g + 3] = rotDeg;
+            starArgbRec[i] = argb;
+            return;
+        }
+        emitStar(cx, cy, sizePx, rotDeg, argb);
+    }
+
+    /** 星芒实际发射（收集期内延后到行尾，避免排到字形下面）。 */
+    private void emitStar(float cx, float cy, float sizePx, float rotDeg, int argb) {
+        if (poseStack == null || buffers == null || (argb >>> 24) == 0) return;
         Identifier rl = starTexture();
         if (rl == null) return;
         float half = Math.max(1f, sizePx * 0.5f);
 
-        // 贴图旋转（folia star.rotation）：绕星心转四角
+        // 贴图旋转（folia star.rotation）：绕星心转四角（就地算，不再每次分配 float[]）
         float cos = (float) Math.cos(Math.toRadians(rotDeg));
         float sin = (float) Math.sin(Math.toRadians(rotDeg));
         VertexConsumer vc = buffers.getBuffer(currentEffectType(rl));
         Matrix4f mat = poseStack.last().pose();
-        putHaloVertex(vc, mat, cx + rot2(-half, -half, cos, sin)[0], cy + rot2(-half, -half, cos, sin)[1], 0f, 0f, argb);
-        putHaloVertex(vc, mat, cx + rot2(-half, half, cos, sin)[0], cy + rot2(-half, half, cos, sin)[1], 0f, 1f, argb);
-        putHaloVertex(vc, mat, cx + rot2(half, half, cos, sin)[0], cy + rot2(half, half, cos, sin)[1], 1f, 1f, argb);
-        putHaloVertex(vc, mat, cx + rot2(half, -half, cos, sin)[0], cy + rot2(half, -half, cos, sin)[1], 1f, 0f, argb);
+        putRotatedVertex(vc, mat, cx, cy, -half, -half, cos, sin, 0f, 0f, argb);
+        putRotatedVertex(vc, mat, cx, cy, -half, half, cos, sin, 0f, 1f, argb);
+        putRotatedVertex(vc, mat, cx, cy, half, half, cos, sin, 1f, 1f, argb);
+        putRotatedVertex(vc, mat, cx, cy, half, -half, cos, sin, 1f, 0f, argb);
         flushEffectBatch(rl);
     }
 
-    /** 局部偏移 (ox, oy) 旋转 rot 后的分量。 */
-    private static float[] rot2(float ox, float oy, float cos, float sin) {
-        return new float[] {ox * cos - oy * sin, ox * sin + oy * cos};
+    /** 绕 (cx, cy) 旋转的 quad 顶点（星芒用；等价 putHaloVertex 的旋转版）。 */
+    private static void putRotatedVertex(VertexConsumer vc, Matrix4f mat,
+                                         float cx, float cy, float ox, float oy,
+                                         float cos, float sin, float u, float v, int argb) {
+        putHaloVertex(vc, mat, cx + (ox * cos - oy * sin), cy + (ox * sin + oy * cos), u, v, argb);
     }
 
     /**
