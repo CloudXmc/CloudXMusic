@@ -8,8 +8,6 @@
   <strong>把音乐带进方块世界</strong>  
   
   Minecraft Java Edition · Fabric 客户端音乐播放器  
-  
-  <strong>2.6.0-alpha.3</strong> · Minecraft 1.21.11 · Java 21 · GPL-3.0-only  
 </p>
 
 <p align="center">
