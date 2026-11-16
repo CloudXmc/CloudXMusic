@@ -53,12 +53,12 @@ CloudXMusic 将网易云音乐、QQ 音乐与酷狗音乐接入同一套游戏�
 
 1. 准备 Minecraft Java Edition **1.21.11** 与 **Java 21**。
 2. 安装 Fabric Loader 和对应 Minecraft 版本的 Fabric API。当前构建使用 Loader `0.20.1`、Fabric API `0.141.6+1.21.11`；模组声明的 Loader 最低版本为 `0.18.1`，建议使用当前构建版本或兼容的新版本。
-3. 将发行物 **`CloudXMusic-2.6.0-alpha.3.jar`** 放入该游戏实例的 `mods/` 目录。
+3. 将发行物 **`CloudXMusic-<version>.jar`** 放入该游戏实例的 `mods/` 目录。
 4. 启动游戏，默认按 **H** 打开或关闭音乐盒，可在游戏按键设置中修改。
 5. 首次进入时阅读统一的《用户使用协议与免责声明》，滚动到底部后选择“同意并继续”。“拒绝并退出”会离开音乐界面。
 6. 在左侧账号区选择音源并登录，再使用发现、搜索、我的收藏和播放队列。
 
-**不要将 `-sources.jar` 或源码 ZIP 放入 `mods/`。** Gradle 生成的 sources JAR 用于阅读源码，不是可运行模组
+**不要将 `-sources.jar` 或源码 ZIP 放入 `mods/`** ，Gradle 生成的 sources JAR 用于阅读源码，不是可运行模组
 
 播放使用 Java Sound，运行时需要 `java.desktop` 模块及可用声卡。当前发行包内置 Windows x64 Skija；Linux、macOS 和其他架构需要适配相应原生运行库。
 
