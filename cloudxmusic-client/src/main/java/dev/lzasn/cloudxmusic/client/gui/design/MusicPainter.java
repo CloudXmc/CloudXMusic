@@ -809,10 +809,10 @@ public final class MusicPainter {
 
     private static void settings(FrostCanvas c,MusicView v,MusicLayout l) {
         sectionTitle(c, l.box("lyric").y() - 8, "灵动岛");
-        setting(c,v,l,"lyric","灵动岛歌词",v.lyricMode());
-        setting(c,v,l,"island","灵动岛显示",v.islandEnabled()?"已开启":"已关闭");
-        setting(c,v,l,"islandScale","灵动岛缩放",Math.round(v.islandScale()*100)+"%");
-        setting(c,v,l,"islandPos","灵动岛位置","更改位置");
+        setting(c,v,l,"lyric","歌词",v.lyricMode());
+        setting(c,v,l,"island","显示",v.islandEnabled()?"已开启":"已关闭");
+        setting(c,v,l,"islandScale","缩放",Math.round(v.islandScale()*100)+"%");
+        setting(c,v,l,"islandPos","位置","更改位置");
 
         sectionTitle(c, l.box("darkMode").y() - 12, "界面");
         setting(c,v,l,"darkMode","暗黑模式",v.darkMode()?"已开启":"已关闭");
