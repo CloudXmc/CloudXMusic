@@ -12,7 +12,7 @@
  </p> 
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-2.6.0--alpha.3-D96A91?style=flat-square" alt="版本 2.6.0-alpha.3">
+  <img src="https://img.shields.io/badge/Version-2.6.0-D96A91?style=flat-square" alt="版本 2.6.0">
   <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
   <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
   <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
