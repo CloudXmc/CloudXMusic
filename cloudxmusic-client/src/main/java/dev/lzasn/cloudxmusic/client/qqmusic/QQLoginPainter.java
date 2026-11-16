@@ -35,8 +35,9 @@ public final class QQLoginPainter {
             Color color=account.profile().membership()==QQAccountProfile.Membership.SVIP?
                     (dark?new Color(0xF5CD76):new Color(0xA57316)):(dark?new Color(0x70D8AE):new Color(0x26815D));
             c.round(bx,462,badgeWidth,16,5,new Color(color.getRed(),color.getGreen(),color.getBlue(),28));
-            c.g.setColor(color);c.g.draw(shape(bx,462,badgeWidth,16,5));
-            c.center(badge,bx+badgeWidth/2,474,9,true,color,badgeWidth-6);
+            Stroke stroke=c.g.getStroke();c.g.setStroke(new BasicStroke(1));
+            c.g.setColor(color);c.g.draw(shape(bx+.5f,462.5f,badgeWidth-1,15,5));c.g.setStroke(stroke);
+            QQVipBadge.centeredText(c,badge,bx,462,badgeWidth,16,color);
         }
         dev.lzasn.cloudxmusic.client.gui.design.SidebarTextLayout.draw(c,account.loggedIn() ? "QQ 音乐 · 切换音源 / 管理" : account.error() ? "QQ 音乐 · 登录异常" : "QQ 音乐 · 切换 / 登录",
                 82, 495, 11, false, account.error() ? QQSearchPainter.errorColor() : MUTED, 151);
@@ -52,9 +53,10 @@ public final class QQLoginPainter {
             c.round(0, 0, WIDTH, HEIGHT, 38, new Color(0, 0, 0, 115));
             c.round(295, 86, 700, 512, 24, dark ? new Color(38, 46, 51) : new Color(255, 248, 252));
             c.text("QQ 音乐扫码登录", 325, 127, 20, true, INK, 560);
+            button(c,dev.lzasn.cloudxmusic.client.gui.login.CookieLoginDialog.ENTRY,"Cookie 登录",DEEP);
             c.center("×", CLOSE.cx(), CLOSE.cy() + 6, 22, false, MUTED, 28);
             c.center(account.loggedIn() ? "当前账号：" + (account.nickname().isBlank() ? "QQ 音乐用户" : account.nickname())
-                    : "请使用手机 QQ 音乐 App 扫码", 645, 160, 14, true, INK, 630);
+                    : "请使用手机 QQ 音乐 App 扫码", 645, 160, 14, true, INK, 340);
             c.round(521, 174, 248, 248, 12, Color.WHITE);
             if (login.qr() != null) {
                 BufferedImage qr = login.qr();

@@ -11,6 +11,8 @@ import dev.lzasn.cloudxmusic.client.netease.QrLogin;
 import dev.lzasn.cloudxmusic.client.room.MusicRoomClient;
 import dev.lzasn.cloudxmusic.client.room.RoomAudioFollower;import dev.lzasn.cloudxmusic.client.hud.DynamicIslandHud;
 import dev.lzasn.cloudxmusic.client.netease.NeteaseSession;
+import dev.lzasn.cloudxmusic.client.kugou.KugouIntegration;
+import dev.lzasn.cloudxmusic.client.omni.MusicPlayback;
 import dev.lzasn.cloudxmusic.client.state.MusicState;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -62,8 +64,9 @@ public final class CloudXMusicClient implements ClientModInitializer {
             dev.lzasn.cloudxmusic.client.chat.ShareNetwork.tick();
             MusicRoomClient.INSTANCE.tick();
             RoomAudioFollower.INSTANCE.tick();
+            KugouIntegration.tick(client.level != null, client.screen instanceof net.minecraft.client.gui.screens.TitleScreen);
             com.muoniumplayer.core.ncm.music.CloudMusic.update(
-                    dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.snapshot(),
+                    MusicPlayback.snapshot(),
                     dev.lzasn.cloudxmusic.client.worldlyrics.WorldLyricConfig.from(STATE));
         });
 
@@ -71,6 +74,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             dev.lzasn.cloudxmusic.client.chat.ShareNetwork.joined();
             dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.worldJoined();
+            KugouIntegration.joined();
             MusicRoomClient.INSTANCE.joinedWorld();
             if(dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.neteaseActive())STATE.refreshLibraryIfNeeded();
         });
@@ -85,6 +89,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
             // 播放状态和纹理清理统一回客户端线程，避免断开回调跨线程修改会话。
             dev.lzasn.cloudxmusic.client.util.Async.main(() -> {
                 dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.stopForMenu();
+                KugouIntegration.disconnect();
                 DynamicIslandHud.clear();
                 FrostCanvas.clearCaches();
             });
@@ -92,6 +97,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             dev.lzasn.cloudxmusic.client.chat.ShareNetwork.disconnected();
             dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.stopForMenu();
+            KugouIntegration.close();
             QrLogin.cancel();
             MusicRoomClient.INSTANCE.disconnected();
             CoverCache.close();
@@ -105,6 +111,7 @@ public final class CloudXMusicClient implements ClientModInitializer {
         net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback.EVENT.register(
                 (graphics, delta) -> com.muoniumplayer.compat.mc.WorldLyricsBridge.hudPhaseDraw());
         dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration.register();
+        KugouIntegration.register();
         dev.lzasn.cloudxmusic.client.chat.ShareCommands.register();
         dev.lzasn.cloudxmusic.client.chat.ShareNetwork.register();
         // 分享消息：挡下原消息，自己往聊天栏放一条带 ClickEvent 的组件。

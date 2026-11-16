@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 
-/** QQ 公网匿名搜索；对应 DangoMusic 的无 sign 搜索路径，只能在后台线程调用。 */
+/** QQ 公网匿名搜索使用无 sign 路径，只能在后台线程调用；来源及许可见 THIRD_PARTY_NOTICES.md。 */
 public final class QQProvider implements OnlineMusicProvider {
     private static final int MAX_LIMIT = 100;
     private static final int UPSTREAM_PAGE_SIZE = 40;
@@ -147,7 +147,7 @@ public final class QQProvider implements OnlineMusicProvider {
     QQTimedLyrics timedLyrics(UnifiedSong song)throws IOException,InterruptedException{return new QQLyricsApi().loadDetailed(song);}
 
     private URI buildSearchUri(String keyword, long page) {
-        // DangoMusic 的此搜索入口不计算 sign；不要混入酷狗签名或登录态 g_tk。
+        // 此搜索入口不计算 sign；不要混入酷狗签名或登录态 g_tk。
         String query = "format=json&p=" + page + "&n=" + UPSTREAM_PAGE_SIZE
                 + "&w=" + URLEncoder.encode(keyword.strip(), StandardCharsets.UTF_8);
         return URI.create(searchEndpoint + "?" + query);

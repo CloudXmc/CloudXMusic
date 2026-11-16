@@ -17,7 +17,6 @@ public final class QQMusicIntegration {
     private static NeteasePlaybackAdapter netease;
     private static QQPresentation presentation;
     private static QQPreferences preferences;
-    private static QQTermsConsent terms;
     private static QQArtworkCache artwork;
     private static QQQueueMetadata queueMetadata;
     private static PlaybackLifecycle lifecycle;
@@ -59,7 +58,6 @@ public final class QQMusicIntegration {
                 ()->lifecycle.allowsPlayback()&&coordinator.allowsPlayback(MusicSource.NETEASE));
         QQMusicConfig config=QQMusicConfig.forCurrentInstance();
         preferences=new QQPreferences(config,Async::main,view->{playback.quality(view.quality());playback.volume(view.volume());});
-        terms=new QQTermsConsent(config,Async::main,accounts::restore);
         playback.neteaseFailure(dev.lzasn.cloudxmusic.client.CloudXMusicClient.STATE::playbackHandoffFailed);
         dev.lzasn.cloudxmusic.client.CloudXMusicClient.STATE.playbackHandoff(playback::beforeNetease);
         // START 先于原有 END tick 的自动切歌；TitleScreen 及无世界状态均撤销播放权。
@@ -78,8 +76,8 @@ public final class QQMusicIntegration {
             presentation.close();
             queueMetadata.close();
             QQCatalogController.closeAll();
+            dev.lzasn.cloudxmusic.client.gui.playlist.PlaylistController.closeAll();
             artwork.close();
-            terms.close();
             preferences.close();
             playback.close();
             login.close();
@@ -90,10 +88,11 @@ public final class QQMusicIntegration {
             QQSearchPainter.clear();
         });
         registered = true;
+        accounts.restore();
     }
     public static QQLoginUi createLoginUi() {
         if (!registered) throw new IllegalStateException("QQ 模块尚未初始化");
-        return new QQLoginUi(accounts,login,artwork::image,terms);
+        return new QQLoginUi(accounts,login,artwork::image);
     }
     public static boolean qqLoggedIn() {
         return registered && accounts != null && accounts.view().loggedIn();
@@ -119,6 +118,12 @@ public final class QQMusicIntegration {
     public static String queueStatus(){return queueMetadata.status();}
     public static QQAccountManager.View account(){return accounts.view();}
     public static long accountRevision(){return accounts.revision();}
+    public static dev.lzasn.cloudxmusic.client.gui.playlist.PlaylistController createPlaylists(java.util.function.Consumer<String> notice){
+        return new dev.lzasn.cloudxmusic.client.gui.playlist.PlaylistController(active->{
+            var session=accounts.snapshot();
+            return new QQPlaylistSource(session.credentials(),playback,()->active.getAsBoolean()&&accounts.isCurrent(session)&&coordinator.allowsPlayback(MusicSource.QQ));
+        },Async::main,accounts::revision,QQMusicIntegration::qqLoggedIn,notice);
+    }
     public static void quality(QQQuality value){playback.quality(value);savePreferences();}
     public static void volume(float value){
         if(!Float.isFinite(value))return;

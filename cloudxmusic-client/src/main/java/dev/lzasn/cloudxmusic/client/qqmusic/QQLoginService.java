@@ -37,6 +37,7 @@ public final class QQLoginService implements AutoCloseable {
     private boolean closed;
     QQLoginService(QQAccountManager accounts, Consumer<Runnable> main) {
         this(accounts, main, QQAuthHttp::post, QQLoginChannel::new, new QQSessionVerifier());
+        accounts.notices(message->main.accept(()->dev.lzasn.cloudxmusic.client.gui.login.LoginNotice.show("QQ 音乐",message)));
     }
     QQLoginService(QQAccountManager accounts, Consumer<Runnable> main, QQAuthHttp.Transport transport,
                    Function<String, Channel> channels, QQSessionVerifier verifier) {

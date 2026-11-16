@@ -193,6 +193,7 @@ public final class MusicRoomClient {
      * seed 会按房间音源过滤，混源部分丢弃。
      */
     public void createRoom(MusicSourceType source, boolean loggedIn, List<SongView> seed) {
+        if (dev.lzasn.cloudxmusic.client.omni.MusicPlayback.isKugou()) { status = "酷狗暂不支持房间联机"; return; }
         if (!ready) {
             status = "尚未连接房间服务";
             return;
@@ -214,6 +215,7 @@ public final class MusicRoomClient {
     }
 
     public void joinRoom(String roomCode, MusicSourceType source, boolean loggedIn) {
+        if (dev.lzasn.cloudxmusic.client.omni.MusicPlayback.isKugou()) { status = "酷狗暂不支持房间联机"; return; }
         if (source == null) {
             status = "未选择房间音源";
             return;
@@ -246,7 +248,8 @@ public final class MusicRoomClient {
     private static List<Packet.RoomTrack> filterSeed(List<SongView> songs, MusicSourceType roomSource) {
         if (songs == null || songs.isEmpty()) return List.of();
         return songs.stream()
-                .filter(song -> song != null && songSource(song) == roomSource)
+                .filter(song -> song != null && song.source()!=dev.lzasn.cloudxmusic.client.omni.MusicSource.KUGOU
+                        && songSource(song) == roomSource)
                 .map(MusicRoomClient::toRoomTrack)
                 .filter(java.util.Objects::nonNull)
                 .toList();
@@ -969,7 +972,8 @@ public final class MusicRoomClient {
 
     /** 个人队列里的歌曲转成房间条目；缺少平台 ID 的占位行直接丢弃。 */
     private static Packet.RoomTrack toRoomTrack(SongView song) {
-        if (song == null || song.platformId() == null || song.platformId().isBlank()) return null;
+        if (song == null || song.source()==dev.lzasn.cloudxmusic.client.omni.MusicSource.KUGOU
+                || song.platformId() == null || song.platformId().isBlank()) return null;
         try {
             return new Packet.RoomTrack(
                     new dev.lzasn.cloudxmusic.protocol.SongRef(songSource(song), song.platformId()),
@@ -981,6 +985,7 @@ public final class MusicRoomClient {
     }
 
     private static MusicSourceType songSource(SongView song) {
+        if (song.source() == dev.lzasn.cloudxmusic.client.omni.MusicSource.KUGOU) return null;
         return song.source() == dev.lzasn.cloudxmusic.client.omni.MusicSource.QQ
                 ? MusicSourceType.QQ : MusicSourceType.NETEASE;
     }

@@ -7,6 +7,11 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class QQSessionVerifierTest {
+    @Test void qrRenewalFieldsSurviveExchangeWhichOmitsThem()throws Exception{
+        var original=payload("old-key");original.addProperty("refresh_token","root-refresh");original.addProperty("refresh_key","root-key");
+        var verifier=new QQSessionVerifier((r,c)->r.getAsJsonObject("req_0").get("method").getAsString().equals("Login")?reply(0,"{\"musicid\":123456,\"musickey\":\"new-key\"}"):reply(0,"{\"musicid\":123456}"));
+        var result=verifier.complete(original,"qr-id");assertEquals("root-refresh",result.renewal().refreshToken());assertEquals("root-key",result.renewal().refreshKey());
+    }
     static JsonObject json(String text) { return JsonParser.parseString(text).getAsJsonObject(); }
     static JsonObject reply(long code, String data) {
         return json("{\"code\":0,\"req_0\":{\"code\":" + code + ",\"data\":" + data + "}}");
@@ -17,17 +22,21 @@ class QQSessionVerifierTest {
         JsonObject token = new JsonObject(); token.addProperty("value", key); values.add("qqmusic_key", token);
         JsonObject payload = new JsonObject(); payload.add("cookies", values); return payload;
     }
-    @Test void directlyUsableKeyIsNeverExchanged() throws Exception {
+    @Test void directlyUsableQrKeyStillExchangesToRetainRenewalFields() throws Exception {
         List<JsonObject> calls = new ArrayList<>();
         QQSessionVerifier verifier = new QQSessionVerifier((request, cookies) -> {
             calls.add(request);
+            if(request.getAsJsonObject("req_0").get("method").getAsString().equals("Login")){
+                assertTrue(cookies.getCookieStore().getCookies().isEmpty());
+                return reply(0,"{\"musicid\":123456,\"musickey\":\"renewable-key\",\"refresh_key\":\"renew-key\",\"refresh_token\":\"renew-token\"}");
+            }
             assertEquals(5, cookies.getCookieStore().getCookies().size());
             assertEquals("GetLoginUserInfo", request.getAsJsonObject("req_0").get("method").getAsString());
             assertEquals(19, request.getAsJsonObject("comm").get("ct").getAsInt());
             return reply(0, "{\"musicid\":123456,\"info\":{\"base\":{\"nick\":\"测试昵称\"}}}");
         });
         QQCredentials result = verifier.complete(payload("usable-key"), "qr-id");
-        assertEquals(1, calls.size()); assertEquals("测试昵称", result.nickname()); assertEquals("usable-key", result.musicKey());
+        assertEquals(3, calls.size()); assertEquals("测试昵称", result.nickname()); assertEquals("renewable-key", result.musicKey());assertEquals("renew-token",result.renewal().refreshToken());assertTrue(result.renewal().available());
     }
     @Test void ticketExchangeUsesFreshJarAndIsVerifiedBeforeSuccess() throws Exception {
         List<String> methods = new ArrayList<>();
@@ -97,6 +106,7 @@ class QQSessionVerifierTest {
     @Test void wechatTypeAndGtkMatchReference() throws Exception {
         assertEquals(5381, QQSessionVerifier.hash33("")); assertEquals(193485963, QQSessionVerifier.hash33("abc"));
         QQCredentials value = new QQSessionVerifier((r, cookies) -> {
+            if(r.getAsJsonObject("req_0").get("method").getAsString().equals("Login"))return reply(104401,"{}");
             assertEquals(1, r.getAsJsonObject("comm").get("tmeLoginType").getAsInt());
             assertTrue(cookies.getCookieStore().getCookies().stream().anyMatch(c -> c.getName().equals("login_type") && c.getValue().equals("2")));
             return reply(0, "{\"musicid\":123456}");

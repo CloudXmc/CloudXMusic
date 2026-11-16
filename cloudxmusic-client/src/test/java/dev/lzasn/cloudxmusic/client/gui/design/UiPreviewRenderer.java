@@ -3,6 +3,9 @@ package dev.lzasn.cloudxmusic.client.gui.design;
 import dev.lzasn.cloudxmusic.client.state.Track;
 import dev.lzasn.cloudxmusic.client.omni.SongView;
 import dev.lzasn.cloudxmusic.client.gui.MojangAvatarCache;
+import dev.lzasn.cloudxmusic.client.kugou.KugouSourcePainter;
+import dev.lzasn.cloudxmusic.client.omni.MusicSource;
+import dev.lzasn.cloudxmusic.client.omni.MusicSourceCoordinator;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -13,6 +16,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import static dev.lzasn.cloudxmusic.client.gui.design.MusicLayout.*;
 import static dev.lzasn.cloudxmusic.client.gui.design.MusicView.Page;
+import static dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas.*;
 
 /** Java21-only offline painter and alignment smoke check for the shipped interface. */
 public final class UiPreviewRenderer {
@@ -94,8 +98,41 @@ public final class UiPreviewRenderer {
                 false,"","","",2,phoneValues,3,true,"",45);
         render(out,"cloudxmusic-account-phone.png",Page.ACCOUNT,"",false,0,false,phoneForm);
         render(out,"cloudxmusic-account-phone-dark.png",Page.ACCOUNT,"",false,0,true,phoneForm);
+        for(Page page:List.of(Page.NOW,Page.SEARCH,Page.FAVORITES,Page.QUEUE,Page.ROOM))
+            renderKugou(out,"cloudxmusic-kugou-"+page.name().toLowerCase()+".png",page,false);
+        renderKugou(out,"cloudxmusic-kugou-now-dark.png",Page.NOW,true);
+        renderKugouSources(out);
         renderNotice(out);
         System.out.println("Java "+Runtime.version()+"; layout smoke check passed; previews: "+out);
+    }
+
+    private static MusicView kugouView(Page page,boolean dark){
+        var current=new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F90","春日序曲","雲與微光","微光花園",258,"",true);
+        List<SongView> tracks=List.of(
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F91","雨中的花开","雲與微光","柔软时刻",216,"",true),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F92","安静的清晨","星","打开的窗",242,"",false),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F93","远方的世界","森","云图",231,"",true),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F94","晚风吹过花园","橙子海","风的来信",205,"",false),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F95","玻璃海岸","时雨","夏日地图",187,"",true),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F96","回家的路","白日梦","北方的风",223,"",false),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F97","夜色慢慢降落","木棉","灯火温柔",198,"",true));
+        List<MusicView.LyricRow> lyrics=List.of(new MusicView.LyricRow("夜色慢慢降落","",false),new MusicView.LyricRow("灯火温柔地摇曳","",false),new MusicView.LyricRow("雨滴轻轻落在叶片上","",false),new MusicView.LyricRow("把黄昏染成柔粉色","染成温柔的颜色",true),new MusicView.LyricRow("轻柔的旋律陪伴方块世界","",false),new MusicView.LyricRow("风穿过打开的窗","",false),new MusicView.LyricRow("云图在远方缓缓展开","",false));
+        MusicView.RoomView room=MusicView.RoomView.empty();
+        return new MusicView(page,current,page==Page.NOW||page==Page.SETTINGS?List.of():tracks,
+                page==Page.NOW?tracks:List.of(),lyrics,102,true,true,"酷狗用户",page==Page.SEARCH?"春日序曲":"",page==Page.SEARCH,true,
+                "搜索到 7 首酷狗歌曲","无损音质","原文 + 翻译",true,dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,
+                "2.6.0-alpha.3","",0,-1,.72f,"",dark,.8f,1f,.5f,.06f,"H",0,7,room);
+    }
+    private static void renderKugou(Path out,String file,Page page,boolean dark)throws Exception{
+        FrostCanvas.setDark(dark);MusicView view=kugouView(page,dark);MusicLayout layout=new MusicLayout(page,view.tracks().size(),3);
+        BufferedImage image=MusicPainter.paint(view,layout,1,url->null,c->{c.round(34,461,36,36,18,SOFT);UiIcons.draw(c,"user",52,479,20,DEEP);c.text("酷狗用户",82,474,14,true,INK,151);c.text("酷狗音乐 · 切换音源 / 管理",82,495,11,false,MUTED,151);});
+        Graphics2D g=image.createGraphics();
+        if(page==Page.NOW){var cover=MusicPainter.paintCover(view,1,.97f,url->null);var r=coverRegion();g.drawImage(cover,r.x()+PAD,r.y()+PAD,null);var lyrics=MusicPainter.paintLyrics(view,1,true);r=lyricRegion();g.drawImage(lyrics,r.x()+PAD,r.y()+PAD,null);var bar=MusicPainter.paintPlaybackBar(view,new MusicPainter.PlaybackBarView(view.current().title(),view.current().artist(),258,102,true,.72f,"无损音质",true,true),1);r=MusicPainter.playbackBarRegion();g.drawImage(bar,r.x()+PAD,r.y()+PAD,null);}
+        g.dispose();ImageIO.write(image,"png",out.resolve(file).toFile());
+    }
+    private static void renderKugouSources(Path out)throws Exception{
+        FrostCanvas.setDark(false);var route=new MusicSourceCoordinator.View(MusicSource.KUGOU,MusicSource.KUGOU,3,false,false,"");
+        ImageIO.write(KugouSourcePainter.menu(1,route,"小云","QQ 用户","酷狗用户"),"png",out.resolve("cloudxmusic-kugou-sources.png").toFile());
     }
 
     private static void validateLayout() {

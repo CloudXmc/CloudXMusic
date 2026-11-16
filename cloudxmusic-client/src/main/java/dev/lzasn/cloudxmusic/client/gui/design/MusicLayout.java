@@ -1,5 +1,6 @@
 package dev.lzasn.cloudxmusic.client.gui.design;
 
+import dev.lzasn.cloudxmusic.client.omni.MusicSource;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -219,6 +220,14 @@ public final class MusicLayout {
         add(id, action, index, box.x(), box.y(), box.w(), box.h());
     }
     public List<Hit> hits() { return List.copyOf(hits); }
+    public static boolean qualitySelectable(MusicSource source) {
+        return source != MusicSource.KUGOU;
+    }
+    /** 隐藏的音质控件也必须失去命中区域，绘制和输入共用同一音源策略。 */
+    public Hit hit(double x, double y, MusicSource source) {
+        Hit hit=hit(x,y);
+        return hit!=null&&hit.action()==Action.QUALITY&&!qualitySelectable(source)?null:hit;
+    }
     public Hit hit(double x, double y) {
         for (Hit hit : hits) if (hit.box.contains(x, y)) return hit;
         return null;

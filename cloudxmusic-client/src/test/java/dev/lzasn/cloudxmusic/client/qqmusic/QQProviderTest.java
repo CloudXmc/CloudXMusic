@@ -93,7 +93,7 @@ class QQProviderTest {
     }
 
     @Test
-    void mapsModernFieldsAndUsesDangoFallbackOrder() throws Exception {
+    void mapsModernFieldsAndUsesProtocolFallbackOrder() throws Exception {
         replies = uri -> new Reply(200, wrapped("""
                 [{"songmid":"","mid":"Modern123","songname":"","title":"标题优先","name":"名称",
                   "singer":[{"name":"甲"},{"name":""},{"name":"乙"}],"album":{"name":"新专辑"}},

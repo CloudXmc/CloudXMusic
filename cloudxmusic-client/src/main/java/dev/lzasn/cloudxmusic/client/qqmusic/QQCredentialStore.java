@@ -31,8 +31,10 @@ public final class QQCredentialStore {
             if (QQAuthHttp.integer(json, "schema") != 1) throw new IOException("QQ 账号文件版本不支持");
             QQCredentials value = new QQCredentials(QQAuthHttp.string(json, "userId"),
                     QQAuthHttp.string(json, "musicKey"), Math.toIntExact(QQAuthHttp.integer(json, "loginType")),
-                    QQAuthHttp.string(json, "nickname"), QQAuthHttp.integer(json, "expiresAtMillis"));
-            return value.expired() ? Optional.empty() : Optional.of(value);
+                    QQAuthHttp.string(json, "nickname"), QQAuthHttp.integer(json, "expiresAtMillis"),QQAccountProfile.EMPTY,
+                    json.has("loginMethod")?dev.lzasn.cloudxmusic.client.gui.login.LoginMethod.valueOf(QQAuthHttp.string(json,"loginMethod")):dev.lzasn.cloudxmusic.client.gui.login.LoginMethod.QR,
+                    json.has("renewal")?new com.google.gson.Gson().fromJson(json.get("renewal"),QQRenewal.class):QQRenewal.empty());
+            return value.expired()&&!value.renewal().available() ? Optional.empty() : Optional.of(value);
         } catch (IllegalArgumentException | ArithmeticException e) {
             throw new IOException("QQ 账号文件内容无效，原文件已保留");
         }
@@ -54,6 +56,7 @@ public final class QQCredentialStore {
             json.addProperty("loginType", account.loginType());
             json.addProperty("nickname", account.nickname());
             json.addProperty("expiresAtMillis", account.expiresAtMillis());
+            json.addProperty("loginMethod",account.method().name());json.add("renewal",new com.google.gson.Gson().toJsonTree(account.renewal()));
             byte[] bytes = new GsonBuilder().setPrettyPrinting().create().toJson(json).getBytes(StandardCharsets.UTF_8);
             try (FileChannel out = FileChannel.open(temp, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);

@@ -8,16 +8,16 @@ import dev.lzasn.cloudxmusic.client.state.LyricMode;
 import static org.junit.jupiter.api.Assertions.*;
 
 class QQPreferencesTest {
-    @Test void savingAudioPreferencesMustNotOverwriteASeparatelyConfirmedAgreement()throws Exception{
+    @Test void savingAudioPreferencesMustNotOverwriteUnknownConfigurationKeys()throws Exception{
         var config=new QQMusicConfig(root.resolve("config.json"));CountDownLatch loaded=new CountDownLatch(1);
         try(var preferences=new QQPreferences(config,Runnable::run,v->loaded.countDown())){
             assertTrue(loaded.await(2,TimeUnit.SECONDS));
-            var current=config.load();current.addProperty("agreedTerms",true);current.addProperty("termsVersion",1);config.save(current);
+            var current=config.load();current.addProperty("customAgreementMarker","global-only");config.save(current);
             preferences.update(QQQuality.HQ,.4f,LyricMode.ORIGINAL);
         }
         QQAudioPlayerTest.waitFor(()->{try{return config.load().has("quality");}catch(Exception e){return false;}});
-        assertTrue(config.load().has("agreedTerms"),"旧偏好快照不能覆盖刚保存的协议同意状态");
-        assertTrue(config.load().get("agreedTerms").getAsBoolean());
+        assertTrue(config.load().has("customAgreementMarker"),"旧偏好快照不能覆盖未知配置字段");
+        assertEquals("global-only",config.load().get("customAgreementMarker").getAsString());
     }
     @TempDir Path root;
     @Test void everyTierAndTranslationPreferenceSurvivesSaveAndRestore()throws Exception{

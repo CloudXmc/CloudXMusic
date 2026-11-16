@@ -31,7 +31,7 @@ final class QQCatalogService implements QQCatalogController.DataSource {
         if(credentials==null)throw new IOException("请先登录 QQ 音乐后读取每日推荐");
         return QQDailyDiscovery.parse(get(URI.create("https://c.y.qq.com/node/musicmac/v6/index.html"),true));
     }
-    private String profileId()throws IOException,InterruptedException{
+    String profileId()throws IOException,InterruptedException{
         if(!encrypted.isBlank())return encrypted;
         JsonObject data=call("music.UserInfo.userInfoServer","GetLoginUserInfo",new JsonObject());encrypted=findProfileId(data);
         if(encrypted.isBlank()){

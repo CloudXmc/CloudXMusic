@@ -42,6 +42,7 @@ public final class ShareCodec {
     private ShareCodec() {}
 
     public static ShareWire.Song wireSong(SongView song) {
+        if(song.source()==MusicSource.KUGOU)throw new IllegalArgumentException("酷狗暂不支持歌曲分享");
         return new ShareWire.Song(new SongRef(song.source() == MusicSource.QQ ? MusicSourceType.QQ : MusicSourceType.NETEASE,
                 song.platformId()), song.title().isBlank() ? "未知歌曲" : trim(song.title(), 48), trim(song.artist(), 48),
                 Math.max(0, Math.min(86_400, song.durationSeconds())), song.vip());
@@ -50,6 +51,7 @@ public final class ShareCodec {
     /** 旧版格式兼容工具：{@code 分享了 歌名 · 歌手 [点击播放] #cxm:n:id#}。
      * 正文不带「（VIP）」——VIP 只在悬停提示里提一句，聊天正文保持干净。 */
     public static String compose(SongView song) {
+        if(song.source()==MusicSource.KUGOU)throw new IllegalArgumentException("酷狗暂不支持歌曲分享");
         String title = trim(song.title(), MAX_TITLE);
         String artist = trim(song.artist(), MAX_ARTIST);
         String name = artist.isBlank() ? title : title + SEP + artist;

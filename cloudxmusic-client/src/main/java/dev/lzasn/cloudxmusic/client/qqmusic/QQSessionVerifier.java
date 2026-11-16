@@ -30,9 +30,9 @@ final class QQSessionVerifier {
         QQCredentials original = candidate(QQAuthHttp.string(QQAuthHttp.object(cookies, "qqmusic_uin"), "value"),
                 QQAuthHttp.string(QQAuthHttp.object(cookies, "qqmusic_key"), "value"), new JsonObject());
         original=withProfile(original,payload);
+        original=new QQCredentials(original.userId(),original.musicKey(),original.loginType(),original.nickname(),original.expiresAtMillis(),original.profile(),original.method(),QQRenewal.from(payload).merge(original.renewal()));
         Reply first = verifyReply(original, null);
-        if (first.code == 0) return withProfile(original, first.data);
-        if (!authExpired(first.code)) throw new Rejected(first.code);
+        if (first.code != 0 && !authExpired(first.code)) throw new Rejected(first.code);
         JsonObject params = new JsonObject();
         params.addProperty("musicid", Long.parseLong(original.userId())); params.addProperty("qrCodeID", qrId);
         params.addProperty("token", original.musicKey()); params.addProperty("loginType", 6); params.addProperty("needCookie", 1);
@@ -40,23 +40,41 @@ final class QQSessionVerifier {
         request.getAsJsonObject("comm").addProperty("tmeLoginType", 6);
         // 拒绝过的票据不装入换票请求的 authst 或 Cookie。
         CookieManager exchangedCookies = QQAuthHttp.emptyCookies();
-        Reply exchanged = call(request, exchangedCookies);
+        Reply exchanged;
+        try{exchanged=call(request,exchangedCookies);}catch(IOException e){if(first.code==0)return withProfile(original,first.data);throw e;}
         if (exchanged.code == 0) {
+            if(first.code==0&&(exchanged.data==null||QQAuthHttp.text(exchanged.data,"musickey").isBlank()))return withProfile(original,first.data);
             if (exchanged.data == null) throw new IOException("QQ 换票响应缺少账号资料");
             String id = QQAuthHttp.text(exchanged.data, "musicid");
             if (id.isEmpty()) id = QQAuthHttp.text(exchanged.data, "str_musicid");
-            QQCredentials converted = candidate(id, QQAuthHttp.string(exchanged.data, "musickey"), exchanged.data);
+            QQCredentials candidate = candidate(id, QQAuthHttp.string(exchanged.data, "musickey"), exchanged.data);
+            QQCredentials converted = new QQCredentials(candidate.userId(),candidate.musicKey(),candidate.loginType(),candidate.nickname(),candidate.expiresAtMillis(),candidate.profile(),candidate.method(),candidate.renewal().merge(original.renewal()));
             if (!converted.userId().equals(original.userId())) throw new IOException("QQ 换票账号与扫码账号不一致");
             Reply confirmed = verifyReply(converted, exchangedCookies);
             if (authExpired(confirmed.code)) { Thread.sleep(300); confirmed = verifyReply(converted, exchangedCookies); }
             if (confirmed.code == 0) return withProfile(converted, confirmed.data);
             throw new Rejected(confirmed.code);
         }
+        // 可用的手机票据仍可登录，但只有换票成功并返回 refresh_key 才能续期。
+        if(first.code==0)return withProfile(original,first.data);
         if (authExpired(exchanged.code)) {
             Thread.sleep(300);
             return verify(original); // 只读复查一次，不重复执行登录写操作。
         }
         throw new Rejected(exchanged.code);
+    }
+    QQCredentials renew(QQCredentials value)throws IOException,InterruptedException{
+        if(value.cookieLogin()||!value.renewal().available())return value;
+        var request=QQAuthHttp.request("music.login.LoginServer","Login",value.renewal().params(value));
+        var comm=request.getAsJsonObject("comm");comm.addProperty("uin",value.userId());comm.addProperty("authst",value.musicKey());comm.addProperty("g_tk",hash33(value.musicKey()));comm.addProperty("tmeLoginType",value.loginType());
+        var cookies=QQAuthHttp.emptyCookies();installCookies(value,cookies);var reply=call(request,cookies);
+        if(reply.code!=0)throw new Rejected(reply.code);if(reply.data==null)throw new IOException("QQ 续期返回空资料");
+        String id=QQAuthHttp.text(reply.data,"musicid");if(id.isEmpty())id=QQAuthHttp.text(reply.data,"str_musicid");if(id.isEmpty())id=value.userId();
+        if(!id.equals(value.userId()))throw new IOException("QQ 续期账号不一致");
+        var data=reply.data.deepCopy();if(!data.has("loginType"))data.addProperty("loginType",value.loginType());
+        var candidate=candidate(id,QQAuthHttp.string(data,"musickey"),data);
+        var renewed=new QQCredentials(candidate.userId(),candidate.musicKey(),candidate.loginType(),value.nickname(),candidate.expiresAtMillis(),value.profile(),value.method(),candidate.renewal().merge(value.renewal()));
+        return verify(renewed);
     }
     private Reply verifyReply(QQCredentials value, CookieManager cookies) throws IOException, InterruptedException {
         JsonObject request = QQAuthHttp.request("music.UserInfo.userInfoServer", "GetLoginUserInfo", new JsonObject());
@@ -67,13 +85,7 @@ final class QQSessionVerifier {
         comm.addProperty("g_tk_new_20200303", csrf);
         comm.addProperty("tmeLoginType", value.loginType());
         if (cookies == null) cookies = QQAuthHttp.emptyCookies();
-        for (String[] pair : new String[][]{{"qqmusic_uin", value.userId()}, {"qqmusic_key", value.musicKey()},
-                {"uin",value.userId()},{"qm_keyst",value.musicKey()},
-                {"login_type", value.loginType() == 1 ? "2" : "1"}}) {
-            HttpCookie cookie = new HttpCookie(pair[0], pair[1]);
-            cookie.setDomain(".qq.com"); cookie.setPath("/"); cookie.setSecure(true); cookie.setVersion(0);
-            cookies.getCookieStore().add(URI.create("https://u.y.qq.com/"), cookie);
-        }
+        installCookies(value,cookies);
         Reply reply = call(request, cookies);
         if (reply.code == 0) {
             if (reply.data == null || reply.data.size() == 0) throw new IOException("QQ 账号验证返回空资料，未接受登录");
@@ -82,6 +94,15 @@ final class QQSessionVerifier {
             if (!id.isEmpty() && !id.equals(value.userId())) throw new IOException("QQ 账号验证身份不一致");
         }
         return reply;
+    }
+    private static void installCookies(QQCredentials value,CookieManager cookies){
+        for (String[] pair : new String[][]{{"qqmusic_uin", value.userId()}, {"qqmusic_key", value.musicKey()},
+                {"uin",value.userId()},{"qm_keyst",value.musicKey()},
+                {"login_type", value.loginType() == 1 ? "2" : "1"}}) {
+            HttpCookie cookie = new HttpCookie(pair[0], pair[1]);
+            cookie.setDomain(".qq.com"); cookie.setPath("/"); cookie.setSecure(true); cookie.setVersion(0);
+            cookies.getCookieStore().add(URI.create("https://u.y.qq.com/"), cookie);
+        }
     }
     private Reply call(JsonObject request, CookieManager cookies) throws IOException, InterruptedException {
         if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
@@ -96,7 +117,9 @@ final class QQSessionVerifier {
     private static QQCredentials candidate(String id, String key, JsonObject data) throws IOException {
         int type = key.startsWith("W_X") ? 1 : 2;
         if (data.has("loginType")) type = Math.toIntExact(QQAuthHttp.integer(data, "loginType"));
-        try { return new QQCredentials(id, key, type, "", 0,QQAccountProfile.login(data)); }
+        long expires=0;
+        try{long created=Long.parseLong(QQAuthHttp.text(data,"musickeyCreateTime")),lifetime=Long.parseLong(QQAuthHttp.text(data,"keyExpiresIn"));long until=Math.multiplyExact(Math.addExact(created,lifetime),1000);if(until>System.currentTimeMillis()&&until-System.currentTimeMillis()<=java.util.concurrent.TimeUnit.DAYS.toMillis(7))expires=until;}catch(NumberFormatException|ArithmeticException ignored){}
+        try { return new QQCredentials(id, key, type, "", expires,QQAccountProfile.login(data),dev.lzasn.cloudxmusic.client.gui.login.LoginMethod.QR,QQRenewal.from(data)); }
         catch (IllegalArgumentException e) { throw new IOException("QQ 返回的登录凭证无效"); }
     }
     private static QQCredentials withProfile(QQCredentials value, JsonObject data) {
@@ -104,7 +127,7 @@ final class QQSessionVerifier {
         QQAccountProfile profile=QQAccountProfile.login(data);
         if(profile.avatarUrl().isBlank()&&!value.profile().avatarUrl().isBlank())profile=value.profile();
         return new QQCredentials(value.userId(), value.musicKey(), value.loginType(),
-                nickname.isEmpty() ? value.nickname() : nickname, value.expiresAtMillis(), profile);
+                nickname.isEmpty() ? value.nickname() : nickname, value.expiresAtMillis(), profile,value.method(),value.renewal());
     }
     private static String nickname(JsonObject data) {
         if (data == null) return "";

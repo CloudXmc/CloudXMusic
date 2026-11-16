@@ -53,10 +53,9 @@ class QQLoginPainterTest {
         var store = new QQCredentialStore(directory.resolve("account.json"));
         try (var accounts = new QQAccountManager(store,new QQSessionVerifier());
              var login = new QQLoginService(accounts,Runnable::run,(r,c)->{fail("logged in entry must not create QR");return null;},
-                     id -> {fail("must not connect");return null;},new QQSessionVerifier());
-             var consent=new QQTermsConsent(new QQMusicConfig(directory.resolve("config.json")),Runnable::run,()->{})) {
+                     id -> {fail("must not connect");return null;},new QQSessionVerifier())) {
             accounts.acceptVerified(new QQCredentials("123","key",2,"昵称",0));
-            QQLoginUi ui = new QQLoginUi(accounts,login,url->null,consent); assertFalse(ui.click(100,100));
+            QQLoginUi ui = new QQLoginUi(accounts,login,url->null); assertFalse(ui.click(100,100));
             assertTrue(ui.click(100,474)); assertTrue(ui.isOpen()); assertTrue(ui.click(10,10)); assertTrue(ui.isOpen());
             ui.dismiss(); assertFalse(ui.isOpen()); assertTrue(accounts.view().loggedIn());
             BufferedImage base = new BufferedImage(10,10,BufferedImage.TYPE_INT_ARGB);

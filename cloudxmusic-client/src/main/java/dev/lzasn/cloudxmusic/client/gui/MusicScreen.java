@@ -14,6 +14,8 @@ import dev.lzasn.cloudxmusic.client.state.PlaybackMode;
 import dev.lzasn.cloudxmusic.client.state.Track;
 import dev.lzasn.cloudxmusic.client.qqmusic.*;
 import dev.lzasn.cloudxmusic.client.omni.*;
+import dev.lzasn.cloudxmusic.client.kugou.*;
+import dev.lzasn.cloudxmusic.client.gui.playlist.*;
 import dev.lzasn.cloudxmusic.client.qqmusic.QQSearchPainter;
 import dev.lzasn.cloudxmusic.client.qqmusic.QQLoginUi;
 import dev.lzasn.cloudxmusic.client.qqmusic.QQMusicIntegration;
@@ -47,6 +49,8 @@ public final class MusicScreen extends Screen {
     private final QQNowLyricsRenderer qqLyrics=new QQNowLyricsRenderer();
     private final QQPlaybackController qqPlayback=QQMusicIntegration.playback();
     private final QQCatalogController qqCatalog=QQMusicIntegration.createCatalog();
+    private final PlaylistController qqPlaylists=QQMusicIntegration.createPlaylists(this::showQueueToast);
+    private PlaylistController kugouPlaylists;
     private final QQPlaylistSearchController playlistSearch=new QQPlaylistSearchController(Async::main,()->painted=null,QQMusicIntegration::accountRevision);
     private MusicPainter.PlaybackBarView paintedQqBar;
     private int lastBarArtwork=-1;
@@ -56,6 +60,11 @@ public final class MusicScreen extends Screen {
     private boolean overlayQq,qqVolumeDrag;
     private boolean sourceMenuOpen;
     private MusicSource displayedSource;
+    private final KugouLoginUi kugouLogin=new KugouLoginUi();
+    private final KugouNowLyricsRenderer kugouLyrics=new KugouNowLyricsRenderer();
+    private List<KugouTrack> kugouRows=List.of();
+    private String kugouDraft="";
+    private int kugouSearchScroll;
     private final UiTexture modalSurface = new UiTexture();
     private String paintedModalKey;
     private List<UnifiedSong> qqRows = List.of();
@@ -165,9 +174,11 @@ public final class MusicScreen extends Screen {
 
     /** 关闭：先播下滑动画，动画结束再真正退出界面。 */
     @Override public void onClose() {
+        if(kugouLogin.isOpen()){kugouLogin.dismiss();painted=null;return;}
         if (qqLogin.isOpen()) { qqLogin.dismiss(); painted = null; return; }
         if (sourceMenuOpen) {sourceMenuOpen=false;return;}
         if (closing) return;
+        if(KugouIntegration.ready())KugouIntegration.module().recommendations().update(false);
         closing = true;
         panelClosing = true;
         closeAt = System.nanoTime();
@@ -205,7 +216,7 @@ public final class MusicScreen extends Screen {
     }
 
     private List<Track> source() {
-        if(QQMusicIntegration.isQq())return List.of();
+        if(QQMusicIntegration.isQq()||MusicPlayback.isKugou())return List.of();
         return switch (page) {
             case DISCOVER -> state.library(); case SEARCH -> search.isQq() ? List.of() : search.neteaseTracks();
             case FAVORITES -> state.favorites();
@@ -218,6 +229,13 @@ public final class MusicScreen extends Screen {
     }
 
     private void rebuildLayout() {
+        if(MusicPlayback.isKugou()){
+            var source=kugouTracks();int visible=7;
+            scroll=Math.max(0,Math.min(scroll,Math.max(0,source.size()-visible)));
+            kugouRows=List.copyOf(source.subList(scroll,Math.min(source.size(),scroll+visible)));
+            rows=List.of();qqRows=List.of();upcoming=List.of();totalRows=source.size();
+            layout=new MusicLayout(page,kugouRows.size(),0,settingsScroll,navScroll,false,false);return;
+        }
         List<Track> source = source();
         qqRows=List.of();
         if(QQMusicIntegration.isQq()&&page==Page.QUEUE){
@@ -245,24 +263,42 @@ public final class MusicScreen extends Screen {
     private void syncSource(){
         MusicSource selected=QQMusicIntegration.coordinator().source();
         if(displayedSource==selected)return;
-        if(displayedSource==null)input=search.draft();
+        if(displayedSource==MusicSource.KUGOU){kugouDraft=input;if(page==Page.SEARCH)kugouSearchScroll=scroll;}
+        else if(displayedSource!=null)search.remember(input,page==Page.SEARCH&&!search.isQq()?scroll:search.scroll());
+        if(displayedSource==null){input=search.draft();if(KugouIntegration.ready())kugouDraft=KugouIntegration.search().view().keyword();}
         displayedSource=selected;
-        search.switchTo(selected==MusicSource.QQ?QQSearchController.Source.QQ:QQSearchController.Source.NETEASE,
-                input,page==Page.SEARCH&&!search.isQq()?scroll:search.scroll());
-        input=search.draft();scroll=search.isQq()?0:search.scroll();
+        if(selected==MusicSource.KUGOU){input=kugouDraft;scroll=page==Page.SEARCH?kugouSearchScroll:0;}
+        else{
+            search.switchTo(selected==MusicSource.QQ?QQSearchController.Source.QQ:QQSearchController.Source.NETEASE,
+                    search.draft(),search.scroll());
+            input=search.draft();scroll=search.isQq()?0:search.scroll();
+        }
         focused=false;selectAll=false;drag=null;seekPreview=-1;qualityMenuOpen=false;qqVolumeDrag=false;
         accountFocus=-1;accountSelectAll=false;
-        if(selected==MusicSource.QQ&&page==Page.ACCOUNT)page=Page.NOW;
+        if(selected!=MusicSource.NETEASE&&page==Page.ACCOUNT)page=Page.NOW;
         qqLyrics.close();
+        kugouLyrics.close();
         painted=null;paintedDynamic=null;paintedQqBar=null;paintedLyrics=null;paintedCoverKey=null;
         paintedModalKey=null;paintedQualityKey=null;paintedAccountKey=null;
     }
-    private boolean sharedQqBar(){return QQMusicIntegration.isQq()&&page!=Page.SETTINGS&&page!=Page.ACCOUNT&&page!=Page.ROOM;}
-    private int artworkRevision(){return CoverCache.revision()+MojangAvatarCache.revision()+QQMusicIntegration.artwork().revision();}
+    private boolean sharedQqBar(){return (QQMusicIntegration.isQq()||MusicPlayback.isKugou())&&page!=Page.SETTINGS&&page!=Page.ACCOUNT&&page!=Page.ROOM;}
+    private int artworkRevision(){return MojangAvatarCache.revision()+MusicPlayback.artworkRevision();}
     private java.awt.image.BufferedImage artwork(String url){
         if(!FirstRunNotice.accepted())return null;
-        return QQMusicIntegration.isQq()?QQMusicIntegration.artwork().image(url):CoverCache.image(url);
+        return MusicPlayback.artwork(url);
     }
+    private List<KugouTrack> kugouTracks(){
+        if(!KugouIntegration.ready())return List.of();
+        var module=KugouIntegration.module();
+        return switch(page){
+            case SEARCH->KugouIntegration.search().view().songs();
+            case DISCOVER->KugouIntegration.module().recommendations().view().songs();
+            case FAVORITES->KugouIntegration.module().favorites().tracks();
+            case QUEUE->module.playback().queue().stream().map(module.provider()::track).toList();
+            default->List.of();
+        };
+    }
+    private KugouPlaybackController kugouPlayback(){return KugouIntegration.module().playback();}
     private MusicView snapshot(String hover,PlaybackSnapshot playback) {
         NeteaseSession session=NeteaseSession.INSTANCE;
 
@@ -278,23 +314,27 @@ public final class MusicScreen extends Screen {
                 lines.add(i<0||i>=lyrics.size()?new MusicView.LyricRow("","",false):
                         new MusicView.LyricRow(lyrics.get(i).text(),playback.source()==MusicSource.QQ
                                 ?QQTranslationControl.translation(lyrics.get(i),playback.lyricMode())
+                                :playback.source()==MusicSource.KUGOU?(playback.lyricMode()==dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL?lyrics.get(i).translated():"")
                                 :NeteaseSession.INSTANCE.playbackTranslation()?lyrics.get(i).translated():"",i==active));
             }
         }
         boolean qq=playback.source()==MusicSource.QQ;
-        String status=page==Page.SEARCH?search.view().status():playback.status();
+        boolean kg=playback.source()==MusicSource.KUGOU;
+        String status=page==Page.SEARCH?(kg?KugouIntegration.search().view().status():search.view().status())
+                :kg&&page==Page.DISCOVER?KugouIntegration.module().recommendations().view().status():playback.status();
+        if(kg&&page==Page.FAVORITES)status=KugouIntegration.module().favorites().status();
         var route=QQMusicIntegration.coordinator().view();
         if(route.switching()||route.error())status=route.status();
         else if(qq&&(playback.loading()||playback.error()))status=playback.status();
         if(qq&&page==Page.QUEUE)status=QQMusicIntegration.queueStatus();
         var account=QQMusicIntegration.account();
-        List<SongView> displayRows=qq?qqRows.stream().map(song->playback.song()!=null&&song.platformId().equals(playback.song().platformId())?playback.song():QQMusicIntegration.queueSong(song)).toList():rows.stream().map(SongView::from).toList();
+        List<SongView> displayRows=kg?kugouRows.stream().map(KugouTrack::view).toList():qq?qqRows.stream().map(song->playback.song()!=null&&song.platformId().equals(playback.song().platformId())?playback.song():QQMusicIntegration.queueSong(song)).toList():rows.stream().map(SongView::from).toList();
         boolean roomPage=page==Page.ROOM;
         String activeInput=roomPage?roomCodeInput:input;
         boolean activeFocused=roomPage?roomCodeFocused:focused;
         // 在房间里「正在播放」页展示和操作的都是房间时间轴，退出房间才回到自己的队列。
         SongView roomSong=MusicRoomClient.INSTANCE.nowSong();
-        boolean inRoom=roomSong!=null;
+        boolean inRoom=!kg&&roomSong!=null;
         SongView nowSong=inRoom?roomSong:playback.song();
         int nowPositionTenths=inRoom?MusicRoomClient.INSTANCE.positionTenths():(int)(playback.position()*10);
         boolean nowPlaying=inRoom?MusicRoomClient.INSTANCE.playing():playback.playing();
@@ -302,12 +342,12 @@ public final class MusicScreen extends Screen {
         boolean nowFavorite=inRoom?MusicRoomClient.INSTANCE.favoriteCurrent():playback.favorite();
         // 房间跟播会真的解码出声，歌词跟着本地解码走，不需要再留白。
         List<MusicView.LyricRow> shownLyrics=List.copyOf(lines);
-        return new MusicView(page,nowSong,displayRows,qq?List.of():upcoming.stream().map(SongView::from).toList(),shownLyrics,
-                nowPositionTenths,nowPlaying,qq?account.loggedIn():session.loggedIn(),
-                qq?account.nickname():session.nickname().isBlank()?"已登录":session.nickname(),activeInput,activeFocused,
+        return new MusicView(page,nowSong,displayRows,qq||kg?List.of():upcoming.stream().map(SongView::from).toList(),shownLyrics,
+                nowPositionTenths,nowPlaying,kg?KugouIntegration.module().account().loggedIn():qq?account.loggedIn():session.loggedIn(),
+                kg?KugouIntegration.module().details().profile().nickname():qq?account.nickname():session.nickname().isBlank()?"已登录":session.nickname(),activeInput,activeFocused,
                 activeFocused&&System.currentTimeMillis()/500%2==0,status,playback.quality(),playback.lyricMode().label,
                 state.islandEnabled(),nowMode,nowFavorite,VERSION,hover,artworkRevision(),seekPreview,
-                playback.volume(),qq?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel(),scroll,totalRows,
+                playback.volume(),qq||kg?"":session.avatar(),state.darkMode(),state.panelScale(),state.islandScale(),state.islandX(),state.islandY(),CloudXMusicClient.openKeyLabel(),scroll,totalRows,
                 MusicRoomClient.INSTANCE.view().withQueueScroll(roomQueueScroll).withMemberScroll(roomMemberScroll),
                 new MusicView.WorldLyricView(
                         state.worldLyrics(), state.worldLyricDistance(), state.worldLyricScale(),
@@ -321,8 +361,13 @@ public final class MusicScreen extends Screen {
     }
 
     private java.awt.image.BufferedImage paintMain(MusicView still,QQPlaybackController.View qqView){
+        java.util.function.Consumer<FrostCanvas> playlists=playlistPage()?canvas->PlaylistPainter.paint(canvas,activePlaylists().view(),this::artwork,MusicPlayback.isKugou()?kugouPlayback().view().song():qqView.song()):null;
+        if(MusicPlayback.isKugou()){
+            var image=MusicPainter.paint(still,layout,rasterScale,this::artwork,kugouLogin.sidebar(still,true),playlists);
+            return page==Page.SEARCH||page==Page.DISCOVER?KugouSearchPainter.decorate(image,rasterScale,still.status()):image;
+        }
         var image=QQSearchPainter.decoratePlayback(MusicPainter.paint(still,layout,rasterScale,this::artwork,
-                qqLogin.sidebarPainter(still,QQMusicIntegration.isQq()),QQMusicIntegration.isQq()&&catalogPage()?canvas->QQCatalogPainter.paint(canvas,qqCatalog.view(),this::artwork,qqView.song(),qqQueueActions(still)):null),rasterScale,still,search.view(),qqView,searchMetadata::song,this::artwork);
+                qqLogin.sidebarPainter(still,QQMusicIntegration.isQq()),playlists!=null?playlists:QQMusicIntegration.isQq()&&catalogPage()?canvas->QQCatalogPainter.paint(canvas,qqCatalog.view(),this::artwork,qqView.song(),qqQueueActions(still)):null),rasterScale,still,search.view(),qqView,searchMetadata::song,this::artwork);
         if(QQMusicIntegration.isQq()&&page==Page.SEARCH&&!qqCatalog.searchDetail())image=QQPlaylistSearchPainter.decorate(image,rasterScale,still,playlistSearch.playlists(),playlistSearch.view(),this::artwork);
         if(QQMusicIntegration.isQq()&&page==Page.SEARCH&&qqCatalog.searchDetail())image=QQSearchPainter.panel(image,rasterScale,canvas->QQCatalogPainter.paint(canvas,qqCatalog.view(),this::artwork,qqView.song(),qqQueueActions(still)));
         if(QQMusicIntegration.isQq()&&page==Page.QUEUE)image=QQQueuePainter.notice(image,rasterScale,QQMusicIntegration.queueStatus());
@@ -341,7 +386,7 @@ public final class MusicScreen extends Screen {
         }
         syncSource();
         syncCatalog();
-        if(searchMetadata.update(search.view(),search.isQq()&&page==Page.SEARCH))painted=null;
+        if(searchMetadata.update(search.view(),QQMusicIntegration.isQq()&&page==Page.SEARCH))painted=null;
         rebuildLayout();
         // 关闭时不再铺原版模糊：renderBlurredBackground 内部带一层固定不透明度的暗色，
         // 无法随动画渐隐，只要还在调用，遮罩就一定比面板晚走。改为只用可调 alpha 的纯色遮罩，
@@ -352,22 +397,22 @@ public final class MusicScreen extends Screen {
         }
         int dim = (int) Math.round(0x19 * (1 - slide));
         graphics.fill(0, 0, width, height, (dim << 24) | 0x2C2430);
-        PlaybackSnapshot framePlayback=QQMusicIntegration.snapshot();
+        PlaybackSnapshot framePlayback=MusicPlayback.snapshot();
         MusicView view = snapshot("",framePlayback);
         // 老版本持久化的账号可能没有头像地址，静默补一次。
-        if (!QQMusicIntegration.isQq() && view.loggedIn() && NeteaseSession.INSTANCE.avatar().isBlank() && !avatarSynced) {
+        if (displayedSource==MusicSource.NETEASE && view.loggedIn() && NeteaseSession.INSTANCE.avatar().isBlank() && !avatarSynced) {
             avatarSynced = true;
             syncAccountQuietly();
         }
         // 静态层只在页面、列表、封面等真正变化时重画；播放进度不再驱动整幅重绘。
-        qqLogin.checkTerms(QQMusicIntegration.isQq());
-        if(qqLogin.isOpen())sourceMenuOpen=false;
+        if(qqLogin.isOpen()||kugouLogin.isOpen())sourceMenuOpen=false;
         boolean qqLoginChanged = qqLogin.changed();
         QQPlaybackController.View qqView=qqPlayback.view();
         boolean qqBar=sharedQqBar();
         search.visibleRows(qqBar?7:8);
         playlistSearch.update(QQMusicIntegration.isQq()&&page==Page.SEARCH&&playlistSearch.playlists()&&!qqCatalog.searchDetail());
         String qqKey=(qqBar&&qqView.song()!=null?qqView.song().platformId():"")+"|"+qqView.loading()+"|"+qqView.playing()+"|"+qqView.status()+"|"+qqView.error();
+        if(MusicPlayback.isKugou())qqKey+="|"+KugouIntegration.module().details().profile();
         if (!qqKey.equals(paintedQqStatus)||qqLoginChanged) {painted=null;paintedQqStatus=qqKey;}
         if(overlayQq!=qqBar){overlayQq=qqBar;paintedDynamic=null;paintedQqBar=null;}
         if (lastRoomJoined != MusicRoomClient.INSTANCE.joined()) {
@@ -386,7 +431,7 @@ public final class MusicScreen extends Screen {
         }
         // 动态层只有播放页的进度条与音量，尺寸很小，按进度以 10Hz 刷新。
         boolean nowPage = page == Page.NOW;
-        boolean accountPage = page == Page.ACCOUNT && !QQMusicIntegration.isQq();
+        boolean accountPage = page == Page.ACCOUNT && displayedSource==MusicSource.NETEASE;
         if (accountPage) {
             // 账号页整块内容单独成纹理，打字/倒计时只重画这一块。
             boolean blink = accountFocus >= 0 && System.currentTimeMillis() / 500 % 2 == 0;
@@ -420,8 +465,9 @@ public final class MusicScreen extends Screen {
         }
         if(qqBar) {
             PlaybackSnapshot pb=framePlayback;
+            String quality=MusicPlayback.isKugou()?"":pb.quality();
             MusicPainter.PlaybackBarView bar=new MusicPainter.PlaybackBarView(pb.song().title(),pb.song().artist(),(int)Math.ceil(pb.duration()),
-                    seekPreview>=0?seekPreview:pb.position(),pb.playing(),pb.volume(),pb.quality(),true,pb.song().vip(),pb.song().coverUrl());
+                    seekPreview>=0?seekPreview:pb.position(),pb.playing(),pb.volume(),quality,true,pb.song().vip(),pb.song().coverUrl());
             boolean styleChanged=paintedQqMode!=pb.playbackMode()||paintedQqDark!=view.darkMode()||lastBarArtwork!=artworkRevision()||paintedQqFavorite!=pb.favorite();
             if((!bar.equals(paintedQqBar)||styleChanged)&&(paintedQqBar==null||styleChanged||now-lastOverlayPaint>=100_000_000L)) {
                 overlay.update(MusicPainter.paintPlaybackBar(view,bar,rasterScale,this::artwork));paintedQqBar=bar;lastOverlayPaint=now;
@@ -431,7 +477,7 @@ public final class MusicScreen extends Screen {
         if (nowPage) {
             // 歌词层：内容变化（当前行走了）才重画，滚动动效只移动贴图。
             if (!view.lyrics().equals(paintedLyrics)) {
-                lyricSurface.update(MusicPainter.paintLyrics(view,rasterScale,QQMusicIntegration.isQq()));
+                lyricSurface.update(MusicPainter.paintLyrics(view,rasterScale,QQMusicIntegration.isQq()||MusicPlayback.isKugou()));
                 paintedLyrics = view.lyrics();
                 lyricAnimStart = now;
             }
@@ -448,10 +494,10 @@ public final class MusicScreen extends Screen {
                 paintedCoverKey = coverKey;
             }
         }
-        if ((nowPage || qqBar) && qualityMenuOpen) {
+        if ((nowPage || qqBar) && !MusicPlayback.isKugou() && qualityMenuOpen) {
             int hoverRow = qualityHover(mx, my);
             int selected = QQMusicIntegration.isQq()?QQQualityMenu.selected(qqView,qqPlayback.preferredQuality()):NeteaseSession.INSTANCE.quality().ordinal();
-            String key = QQMusicIntegration.isQq()+"|"+view.darkMode()+"|"+selected + "|" + hoverRow;
+            String key = displayedSource+"|"+view.darkMode()+"|"+selected + "|" + hoverRow;
             if (!key.equals(paintedQualityKey)) {
                 qualitySurface.update(QQMusicIntegration.isQq()?QQQualityMenu.paint(selected,hoverRow,rasterScale):MusicPainter.paintQualityMenu(selected, hoverRow, rasterScale, neteaseQualityNames()));
                 paintedQualityKey = key;
@@ -496,16 +542,17 @@ public final class MusicScreen extends Screen {
                     (int) Math.round(originY + lyric.y() * scale + lyricOffset),
                     (int) Math.round(lyric.w() * scale), (int) Math.round(lyric.h() * scale));
             graphics.disableScissor();
-            if(QQMusicIntegration.isQq()){
+            if(QQMusicIntegration.isQq()||MusicPlayback.isKugou()){
                 graphics.pose().pushMatrix();
                 try{
                     graphics.pose().translate((float)originX,(float)(originY+lyricOffset));
                     graphics.pose().scale((float)scale,(float)scale);
                     var lyricPlayback=framePlayback;
-                    qqLyrics.draw(graphics,view,rasterScale,lyricPlayback);
+                    if(MusicPlayback.isKugou())kugouLyrics.draw(graphics,view,rasterScale,lyricPlayback);
+                    else qqLyrics.draw(graphics,view,rasterScale,lyricPlayback);
                 }finally{graphics.pose().popMatrix();}
             }
-        }else qqLyrics.close();
+        }else {qqLyrics.close();kugouLyrics.close();}
         if (nowPage || qqBar) {
             Box band = qqBar?MusicPainter.playbackBarRegion():dynamicRegion(page);
             overlay.draw(graphics, (int) Math.round(originX + band.x() * scale),
@@ -525,7 +572,7 @@ public final class MusicScreen extends Screen {
                     (int) Math.round(originY + ar.y() * scale),
                     (int) Math.round(ar.w() * scale), (int) Math.round(ar.h() * scale));
         }
-        if ((nowPage || qqBar) && qualityMenuOpen) {
+        if ((nowPage || qqBar) && !MusicPlayback.isKugou() && qualityMenuOpen) {
             Box qm = QQMusicIntegration.isQq()?QQQualityMenu.region()
                     :MusicPainter.qualityMenuRegion(NeteaseQuality.values().length);
             qualitySurface.draw(graphics, (int) Math.round(originX + qm.x() * scale),
@@ -533,13 +580,15 @@ public final class MusicScreen extends Screen {
                     (int) Math.round(qm.w() * scale), (int) Math.round(qm.h() * scale));
         }
         // 模态层最后绘制，封面、歌词、控制栏均不能覆盖二维码或穿透点击。
-        if(sourceMenuOpen||qqLogin.isOpen()){
+        if(sourceMenuOpen||qqLogin.isOpen()||kugouLogin.isOpen()){
             var route=QQMusicIntegration.coordinator().view();var account=QQMusicIntegration.account();
-            String key=sourceMenuOpen+"|"+route+"|"+account+"|"+qqLoginChanged+"|"+view.darkMode();
+            String kgAccount=KugouIntegration.ready()?(KugouIntegration.module().account().loggedIn()?KugouIntegration.module().account().nickname():"未登录"):"正在初始化";
+            String key=sourceMenuOpen+"|"+route+"|"+account+"|"+kgAccount+"|"+qqLoginChanged+"|"+view.darkMode()+"|"+kugouLogin.revision()+"|"+(kugouLogin.isOpen()?KugouIntegration.login().view():"");
             if(qqLoginChanged||!key.equals(paintedModalKey)){
-                java.awt.image.BufferedImage modal=sourceMenuOpen?QQSourcePainter.menu(rasterScale,route,
-                        NeteaseSession.INSTANCE.loggedIn()?NeteaseSession.INSTANCE.nickname():"访客模式",account.loggedIn()?account.nickname():"未登录"):
-                        qqLogin.decorate(new java.awt.image.BufferedImage(drawWForRaster(),drawHForRaster(),java.awt.image.BufferedImage.TYPE_INT_ARGB),rasterScale,view,true);
+                java.awt.image.BufferedImage blank=new java.awt.image.BufferedImage(drawWForRaster(),drawHForRaster(),java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                java.awt.image.BufferedImage modal=sourceMenuOpen?KugouSourcePainter.menu(rasterScale,route,
+                        NeteaseSession.INSTANCE.loggedIn()?NeteaseSession.INSTANCE.nickname():"访客模式",account.loggedIn()?account.nickname():"未登录",kgAccount):
+                        kugouLogin.isOpen()?kugouLogin.decorate(blank,rasterScale):qqLogin.decorate(blank,rasterScale,view,true);
                 modalSurface.update(modal);paintedModalKey=key;
             }
             modalSurface.draw(graphics,x,y,drawW,drawH);
@@ -585,26 +634,33 @@ public final class MusicScreen extends Screen {
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean handled) {
         if (closing) return true;
+        if(kugouLogin.isOpen()){if(event.button()==0)kugouLogin.click(localX(event.x()),localY(event.y()));painted=null;return true;}
         if (qqLogin.isOpen()) {
             if (event.button() == 0) qqLogin.click(localX(event.x()), localY(event.y()));
             painted = null; return true;
         }
         // 音质菜单是模态浮层，任何非左键也必须在这里消费，不能落到列表或 Screen 默认处理。
+        if(MusicPlayback.isKugou())qualityMenuOpen=false;
         if (qualityMenuOpen && event.button() != 0) return true;
         if (event.button() != 0) return super.mouseClicked(event, handled);
         rebuildLayout();
         syncSource();
         double x=localX(event.x()),y=localY(event.y());
         if(sourceMenuOpen){
-            if(QQSourcePainter.NETEASE.contains(x,y))QQMusicIntegration.coordinator().select(MusicSource.NETEASE);
-            else if(QQSourcePainter.QQ.contains(x,y))QQMusicIntegration.coordinator().select(MusicSource.QQ);
-            else if(QQSourcePainter.CLOSE.contains(x,y))sourceMenuOpen=false;
-            else if(QQSourcePainter.MANAGE.contains(x,y)&&!QQMusicIntegration.coordinator().view().switching()){
-                sourceMenuOpen=false;if(QQMusicIntegration.isQq())qqLogin.open();else setPage(Page.ACCOUNT);
+            if(KugouSourcePainter.NETEASE.contains(x,y))QQMusicIntegration.coordinator().select(MusicSource.NETEASE);
+            else if(KugouSourcePainter.QQ.contains(x,y))QQMusicIntegration.coordinator().select(MusicSource.QQ);
+            else if(KugouSourcePainter.KUGOU.contains(x,y)){
+                if(MusicRoomClient.INSTANCE.joined())showQueueToast("请先退出音乐房间，再切换酷狗音乐");
+                else if(KugouIntegration.ready())QQMusicIntegration.coordinator().select(MusicSource.KUGOU);
+                else showQueueToast("酷狗模块正在初始化，请稍后重试");
+            }
+            else if(KugouSourcePainter.CLOSE.contains(x,y))sourceMenuOpen=false;
+            else if(KugouSourcePainter.MANAGE.contains(x,y)&&!QQMusicIntegration.coordinator().view().switching()){
+                sourceMenuOpen=false;if(MusicPlayback.isKugou())kugouLogin.open();else if(QQMusicIntegration.isQq())qqLogin.open();else setPage(Page.ACCOUNT);
             }
             paintedModalKey=null;return true;
         }
-        if(qualityMenuOpen){
+        if(qualityMenuOpen&&!MusicPlayback.isKugou()){
             int count=QQMusicIntegration.isQq()?QQQuality.values().length:NeteaseQuality.values().length;
             for(int i=0;i<count;i++)if((QQMusicIntegration.isQq()?QQQualityMenu.row(i):MusicPainter.qualityRow(i,count)).contains(x,y)){
                 if(QQMusicIntegration.isQq())QQMusicIntegration.quality(QQQuality.values()[i]);
@@ -616,8 +672,12 @@ public final class MusicScreen extends Screen {
         if(QQMusicIntegration.isQq()&&page==Page.NOW&&QQTranslationControl.BUTTON.contains(x,y)){
             QQMusicIntegration.toggleTranslation();painted=null;paintedLyrics=null;return true;
         }
+        if(MusicPlayback.isKugou()&&page==Page.NOW&&layout.box("translate").contains(x,y)){
+            var mode=KugouIntegration.module().snapshot().lyricMode();KugouIntegration.lyricMode(mode==dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL?dev.lzasn.cloudxmusic.client.state.LyricMode.ORIGINAL:dev.lzasn.cloudxmusic.client.state.LyricMode.BILINGUAL);painted=null;paintedLyrics=null;return true;
+        }
+        if(playlistPage()&&MusicPainter.playbackBarRegion().contains(x,y))activePlaylists().cancelPlayAll();
         // QQ 所有页面共用的底栏统一走房间控制；等待首个快照期间也不能启动个人播放。
-        if(sharedQqBar()&&MusicRoomClient.INSTANCE.joined()
+        if(sharedQqBar()&&!MusicPlayback.isKugou()&&MusicRoomClient.INSTANCE.joined()
                 &&MusicRoomClient.INSTANCE.roomSource()==dev.lzasn.cloudxmusic.protocol.MusicSourceType.QQ
                 &&MusicPainter.playbackBarRegion().contains(x,y)){
             if(QQPlaybackUi.nowPlayingAt(x,y)){setPage(Page.NOW);return true;}
@@ -625,9 +685,17 @@ public final class MusicScreen extends Screen {
         }
         if(page==Page.NOW&&MusicRoomClient.INSTANCE.joined()
                 &&MusicPainter.playbackBarRegion().contains(x,y)&&roomBarClick(x,y))return true;
-        if(sharedQqBar()&&QQPlaybackUi.nowPlayingAt(x,y)){setPage(Page.NOW);return true;}
+        if(sharedQqBar()&&MusicPainter.playbackInfoRegion().contains(x,y)){setPage(Page.NOW);return true;}
         if(sharedQqBar()&&MusicPainter.playbackBarRegion().contains(x,y)){
-            Action action=QQPlaybackUi.actionAt(x,y);focused=false;selectAll=false;
+            Action action=MusicPlayback.isKugou()?normalBarAction(x,y):QQPlaybackUi.actionAt(x,y);focused=false;selectAll=false;
+            if(MusicPlayback.isKugou()){
+                if(action!=null&&QQMusicIntegration.coordinator().allowsPlayback(MusicSource.KUGOU))switch(action){
+                    case PLAY->kugouPlayback().toggle();case STOP,FAVORITE->KugouIntegration.toggleFavorite();case PREVIOUS->kugouPlayback().previous();case NEXT->kugouPlayback().next();
+                    case PAGE->setPage(Page.QUEUE);case MODE_CYCLE->kugouPlayback().cycleMode();
+                    case VOLUME,SEEK->{drag=action;qqVolumeDrag=true;updateDrag(x);}default->{}
+                }
+                painted=null;return true;
+            }
             if(action!=null&&QQMusicIntegration.coordinator().allowsPlayback(MusicSource.QQ))switch(action){
                 case PLAY->qqPlayback.toggle();case STOP->qqPlayback.stop();case FAVORITE->{ }case PREVIOUS->qqPlayback.previous();case NEXT->qqPlayback.next();
                 case PAGE->setPage(Page.QUEUE);case QUALITY->qualityMenuOpen=true;
@@ -639,6 +707,27 @@ public final class MusicScreen extends Screen {
         }
         // 只在交接进行中吞点击；交接失败(error)要让界面继续可用，否则用户连切回音源都点不动。
         if(QQMusicIntegration.coordinator().view().switching()&&x>=MAIN_X)return true;
+        if(playlistPage()&&PlaylistLayout.CONTENT.contains(x,y)){
+            syncPlaylists();var controller=activePlaylists();var view=controller.view();
+            if(!view.playingAll()&&view.detail()){
+                int add=PlaylistLayout.addAt(x,y,view.scroll(),view.tracks().size());
+                if(add>=0){
+                    var t=view.tracks().get(add);
+                    if(QQMusicIntegration.isQq())enqueueQq(t.song());else{
+                        KugouIntegration.module().provider().remember(new KugouTrack(t.song(),t.albumId(),t.albumAudioId(),t.display().durationSeconds(),t.display().coverUrl()));
+                        kugouPlayback().enqueue(t.song());showQueueToast("已添加到播放队列");
+                    }
+                    painted=null;return true;
+                }
+                int share=PlaylistLayout.shareAt(x,y,view.scroll(),view.tracks().size());
+                if(share>=0){if(QQMusicIntegration.isQq())dev.lzasn.cloudxmusic.client.chat.ShareChat.send(view.tracks().get(share).display());return true;}
+            }
+            if(view.detail()&&MusicRoomClient.INSTANCE.joined()&&!MusicRoomClient.INSTANCE.owner()
+                    &&(PlaylistLayout.PLAY.contains(x,y)||PlaylistLayout.rowAt(x,y,view.scroll(),view.tracks().size())>=0)){
+                showQueueToast("房间成员暂不能替换播放队列");return true;
+            }
+            PlaylistPainter.click(controller,x,y);focused=false;painted=null;return true;
+        }
         if(QQMusicIntegration.isQq()&&catalogPage()){
             syncCatalog();
             int add = QQCatalogPainter.trackAddAt(x, y, qqCatalog.view().scroll(), qqCatalog.view().tracks().size());
@@ -675,11 +764,11 @@ public final class MusicScreen extends Screen {
             if(row>=0){qqPlayback.play(results.songs(),row);focused=false;selectAll=false;painted=null;return true;}
             if(QQSearchPainter.blocksQqClick(x,y)){focused=false;selectAll=false;return true;}
         }
-        if (page == Page.ACCOUNT && accountRegion().contains(localX(event.x()), localY(event.y()))) {
+        if (page == Page.ACCOUNT && displayedSource==MusicSource.NETEASE && accountRegion().contains(localX(event.x()), localY(event.y()))) {
             accountClick(localX(event.x()), localY(event.y()));
             return true;
         }
-        Hit hit = layout.hit(localX(event.x()), localY(event.y()));
+        Hit hit = layout.hit(localX(event.x()), localY(event.y()),QQMusicIntegration.coordinator().source());
         if (hit == null) { focused = false; return super.mouseClicked(event, handled); }
         if (hit.action() != Action.SEARCH_FIELD) focused = false;
         if (hit.action() != Action.ROOM_JOIN_FIELD) roomCodeFocused = false;
@@ -689,8 +778,13 @@ public final class MusicScreen extends Screen {
         activate(hit); return true;
     }
 
+    private Action normalBarAction(double x,double y){
+        Hit hit=new MusicLayout(Page.NOW,0,0).hit(x,y,QQMusicIntegration.coordinator().source());return hit==null?null:hit.action();
+    }
+
     /** 当前正在播放的曲目快照，供分享使用；两个音源各自的权威来源不同。 */
     private SongView currentSong() {
+        if(MusicPlayback.isKugou())return MusicPlayback.snapshot().song();
         if (QQMusicIntegration.isQq()) {
             var playing = qqPlayback.view();
             if (playing.song() == null) return SongView.empty(MusicSource.QQ);
@@ -700,6 +794,7 @@ public final class MusicScreen extends Screen {
     }
 
     private void activate(Hit hit) {
+        if(MusicPlayback.isKugou()&&activateKugou(hit))return;
         // 房间成员只读：任何来源的加歌、移除和清空按钮都不应继续修改个人队列。
         if (MusicRoomClient.INSTANCE.joined() && !MusicRoomClient.INSTANCE.owner()
                 && (hit.action() == Action.ADD || hit.action() == Action.CLEAR || hit.action()==Action.ROW)) return;
@@ -828,6 +923,28 @@ public final class MusicScreen extends Screen {
             default -> { }
         }
         painted = null;
+    }
+
+    /** 酷狗操作在共享导航处理前截获，禁止落入网易云数据操作。 */
+    private boolean activateKugou(Hit hit){
+        switch(hit.action()){
+            case PREVIOUS->kugouPlayback().previous();case PLAY->kugouPlayback().toggle();case NEXT->kugouPlayback().next();
+            case ROW->{var all=kugouTracks();int index=scroll+hit.index();if(index>=0&&index<all.size()){all.forEach(t->KugouIntegration.module().provider().remember(t));kugouPlayback().play(all.stream().map(KugouTrack::song).toList(),index);}}
+            case ADD->{if(hit.index()<kugouRows.size()){var track=kugouRows.get(hit.index());if(page==Page.QUEUE){kugouPlayback().remove(scroll+hit.index());showQueueToast("已从播放队列移除");}else{KugouIntegration.module().provider().remember(track);kugouPlayback().enqueue(track.song());showQueueToast("已添加到播放队列");}}}
+            case CLEAR->kugouPlayback().clearQueue();
+            case PLAY_ALL->{var all=kugouTracks();all.forEach(t->KugouIntegration.module().provider().remember(t));kugouPlayback().play(all.stream().map(KugouTrack::song).toList(),0);}
+            case FAVORITE->KugouIntegration.toggleFavorite();
+            case REFRESH->{if(page==Page.FAVORITES)KugouIntegration.module().favorites().refresh();else if(page==Page.DISCOVER)KugouIntegration.module().recommendations().refresh();}
+            case QUALITY->{return true;}
+            case LYRIC->KugouIntegration.lyricMode(KugouIntegration.module().snapshot().lyricMode().next());
+            case TRANSLATE->{return true;}
+            case STOP->kugouPlayback().stop();case MODE_CYCLE->kugouPlayback().cycleMode();
+            case PLAYBACK_MODE->kugouPlayback().mode(PlaybackMode.values()[hit.index()]);
+            case SHARE,SHARE_ROW->{showQueueToast("酷狗暂不支持歌曲分享");}
+            case ROOM_SOURCE,ROOM_CREATE,ROOM_JOIN,ROOM_JOIN_FIELD,ROOM_LIST_ENTRY->{showQueueToast("酷狗暂不支持房间联机");}
+            default->{return false;}
+        }
+        painted=null;return true;
     }
 
     /**
@@ -988,46 +1105,56 @@ public final class MusicScreen extends Screen {
         qqVolumeDrag=false;
         qualityMenuOpen=false;paintedQualityKey=null;
         paintedDynamic=null;paintedQqBar=null;paintedLyrics=null;paintedCoverKey=null;
-        if (page == Page.SEARCH) search.remember(input, search.isQq() ? search.scroll() : scroll);
+        if (page == Page.SEARCH) {if(MusicPlayback.isKugou()){kugouDraft=input;kugouSearchScroll=scroll;}else search.remember(input, search.isQq() ? search.scroll() : scroll);}
         if (next != page) pageTransitionAt = System.nanoTime();
         page = next; scroll = 0; settingsScroll = 0; seekPreview = -1; drag = null; focused = page == Page.SEARCH;
         roomCodeFocused = false;
-        if (focused) { input = search.draft(); scroll = search.isQq() ? 0 : search.scroll(); }
+        if (focused) {input=MusicPlayback.isKugou()?kugouDraft:search.draft();scroll=MusicPlayback.isKugou()?kugouSearchScroll:search.isQq()?0:search.scroll();}
         if (next == Page.ROOM) MusicRoomClient.INSTANCE.requestRooms();
-        if (!QQMusicIntegration.isQq() && next == Page.FAVORITES) state.ensureFavoritesLoaded();
-        if (!QQMusicIntegration.isQq() && next == Page.DISCOVER) state.refreshLibraryIfNeeded();
+        if (displayedSource==MusicSource.NETEASE && next == Page.FAVORITES) state.ensureFavoritesLoaded();
+        if (displayedSource==MusicSource.NETEASE && next == Page.DISCOVER) state.refreshLibraryIfNeeded();
         syncCatalog();
         rebuildLayout(); painted = null;
     }
-    private boolean catalogPage(){return page==Page.DISCOVER||page==Page.FAVORITES||page==Page.SEARCH&&qqCatalog.searchDetail();}
+    private boolean playlistPage(){return page==Page.FAVORITES&&(QQMusicIntegration.isQq()||MusicPlayback.isKugou());}
+    private PlaylistController activePlaylists(){return QQMusicIntegration.isQq()?qqPlaylists:kugouPlaylists;}
+    private void syncPlaylists(){
+        if(kugouPlaylists==null&&KugouIntegration.ready())kugouPlaylists=KugouIntegration.module().createPlaylists(this::showQueueToast);
+        if(qqPlaylists.update(page==Page.FAVORITES&&QQMusicIntegration.isQq()))painted=null;
+        if(kugouPlaylists!=null&&kugouPlaylists.update(page==Page.FAVORITES&&MusicPlayback.isKugou()))painted=null;
+    }
+    private boolean catalogPage(){return page==Page.DISCOVER||page==Page.SEARCH&&qqCatalog.searchDetail();}
     private void syncCatalog(){
-        var area=!QQMusicIntegration.isQq()?QQCatalogController.Area.NONE:page==Page.DISCOVER?QQCatalogController.Area.DISCOVER:page==Page.FAVORITES?QQCatalogController.Area.FAVORITES:page==Page.SEARCH?QQCatalogController.Area.SEARCH:QQCatalogController.Area.NONE;
+        syncPlaylists();
+        var area=!QQMusicIntegration.isQq()?QQCatalogController.Area.NONE:page==Page.DISCOVER?QQCatalogController.Area.DISCOVER:page==Page.SEARCH?QQCatalogController.Area.SEARCH:QQCatalogController.Area.NONE;
         if(qqCatalog.update(area))painted=null;
+        if(KugouIntegration.ready()&&KugouIntegration.module().recommendations().update(MusicPlayback.isKugou()&&page==Page.DISCOVER))painted=null;
     }
 
     private void updateDrag(double x) {
         if (drag == Action.VOLUME) {
             Box b = qqVolumeDrag?QQPlaybackUi.volumeBox():layout.box("volume");
             float ratio = (float) Math.max(0, Math.min(1, (x - b.x()) / b.w()));
-            if(qqVolumeDrag)QQMusicIntegration.volume(ratio);else state.volume(ratio);
+            if(MusicPlayback.isKugou())KugouIntegration.volume(ratio);else if(qqVolumeDrag)QQMusicIntegration.volume(ratio);else state.volume(ratio);
             return;
         }
         Box b = qqVolumeDrag?QQPlaybackUi.seekBox():layout.box("seek");
         float ratio = (float) Math.max(0, Math.min(1, (x - b.x()) / b.w()));
-        seekPreview = ratio * (float)QQMusicIntegration.snapshot().duration();
-        if (qqVolumeDrag && drag == Action.SEEK) qqPlayback.beginSeek(seekPreview);
+        seekPreview = ratio * (float)MusicPlayback.snapshot().duration();
+        if(MusicPlayback.isKugou()&&drag==Action.SEEK)kugouPlayback().beginSeek(seekPreview);
+        else if (qqVolumeDrag && drag == Action.SEEK) qqPlayback.beginSeek(seekPreview);
     }
     @Override public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        if (qqLogin.isOpen() || sourceMenuOpen || qualityMenuOpen) return true;
+        if (qqLogin.isOpen() || kugouLogin.isOpen() || sourceMenuOpen || qualityMenuOpen) return true;
         if (drag != null) { updateDrag(localX(event.x())); return true; }
         return super.mouseDragged(event, dx, dy);
     }
     @Override public boolean mouseReleased(MouseButtonEvent event) {
-        if (qqLogin.isOpen() || sourceMenuOpen || qualityMenuOpen) return true;
+        if (qqLogin.isOpen() || kugouLogin.isOpen() || sourceMenuOpen || qualityMenuOpen) return true;
         if (drag != null) {
             updateDrag(localX(event.x()));
             // 拖动只更新预览，松开再跳转，避免每次鼠标移动都重启解码。
-            if (drag == Action.SEEK) {if(qqVolumeDrag)qqPlayback.seek(seekPreview);else state.seek(seekPreview);}
+            if (drag == Action.SEEK) {if(MusicPlayback.isKugou())kugouPlayback().seek(seekPreview);else if(qqVolumeDrag)qqPlayback.seek(seekPreview);else state.seek(seekPreview);}
             drag = null;qqVolumeDrag=false; seekPreview = -1; painted = null; return true;
         }
         return super.mouseReleased(event);
@@ -1035,13 +1162,15 @@ public final class MusicScreen extends Screen {
 
     @Override public void mouseMoved(double mx, double my) {
         // 不让底层列表更新 hover；菜单自己的 hover 在 render 中按同一几何计算。
-        if (qualityMenuOpen || qqLogin.isOpen() || sourceMenuOpen) return;
+        if (qualityMenuOpen || qqLogin.isOpen() || kugouLogin.isOpen() || sourceMenuOpen) return;
         super.mouseMoved(mx, my);
     }
     @Override public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+        if(kugouLogin.isOpen())return true;
         if(qqLogin.isOpen()){qqLogin.scroll(localX(mx),localY(my),sy);return true;}
         if(sourceMenuOpen || qualityMenuOpen)return true;
         if (closing) return true;
+        if(playlistPage()&&PlaylistLayout.CONTENT.contains(localX(mx),localY(my))){if(sy!=0)activePlaylists().scroll(sy>0?-1:1);painted=null;return true;}
         if(page==Page.SEARCH&&QQMusicIntegration.isQq()&&playlistSearch.playlists()&&!qqCatalog.searchDetail()&&sy!=0&&new Box(282,190,778,390).contains(localX(mx),localY(my))){playlistSearch.scroll(sy>0?-1:1);painted=null;return true;}
         if(QQMusicIntegration.isQq()&&catalogPage()&&QQCatalogPainter.scroll(qqCatalog,localX(mx),localY(my),sx,sy)){painted=null;return true;}
         // 导航区滚动：项目多于可视高度时才生效，避免压到下面的账号组。
@@ -1056,7 +1185,8 @@ public final class MusicScreen extends Screen {
                     settingsScroll + (sy > 0 ? -1 : 1) * 28));
             rebuildLayout(); painted = null; return true;
         }
-        if (page == Page.SEARCH && search.isQq() && sy != 0
+        if(MusicPlayback.isKugou()&&(page==Page.SEARCH||page==Page.QUEUE||page==Page.FAVORITES||page==Page.DISCOVER)&&localX(mx)>=MAIN_X&&localX(mx)<=1070&&localY(my)>=ROW_TOP&&localY(my)<586&&sy!=0){scroll+=sy>0?-1:1;rebuildLayout();painted=null;return true;}
+        if (page == Page.SEARCH && QQMusicIntegration.isQq() && sy != 0
                 && QQSearchPainter.resultArea(localX(mx), localY(my))) {
             search.scrollQq(sy > 0 ? -1 : 1);
             painted = null; return true;
@@ -1085,8 +1215,10 @@ public final class MusicScreen extends Screen {
         return super.mouseScrolled(mx, my, sx, sy);
     }
     @Override public boolean keyPressed(KeyEvent event) {
+        if(kugouLogin.isOpen()){if(event.isEscape()){kugouLogin.dismiss();painted=null;}else kugouLogin.key(event,event.isPaste()?minecraft.keyboardHandler.getClipboard():"");return true;}
         if (qqLogin.isOpen()) {
             if (event.isEscape()) { qqLogin.dismiss(); painted = null; }
+            else qqLogin.key(event,event.isPaste()?minecraft.keyboardHandler.getClipboard():"");
             return true;
         }
         if (sourceMenuOpen){if(event.isEscape())sourceMenuOpen=false;return true;}
@@ -1149,13 +1281,15 @@ public final class MusicScreen extends Screen {
             if (CloudXMusicClient.matchesOpenKey(event)) { onClose(); return true; }
             if (event.key() == GLFW.GLFW_KEY_SPACE) {
                 if(MusicRoomClient.INSTANCE.joined())MusicRoomClient.INSTANCE.togglePlay();
-                else if(QQMusicIntegration.isQq())qqPlayback.toggle();else if(QQMusicIntegration.neteaseActive())state.togglePlaying();return true;
+                else if(MusicPlayback.isKugou())kugouPlayback().toggle();else if(QQMusicIntegration.isQq())qqPlayback.toggle();else if(QQMusicIntegration.neteaseActive())state.togglePlaying();return true;
             }
         }
         return super.keyPressed(event);
     }
     @Override public boolean charTyped(CharacterEvent event) {
-        if (qqLogin.isOpen() || sourceMenuOpen) return true;
+        if(qqLogin.isOpen()){if(event.isAllowedChatCharacter())qqLogin.text(event.codepointAsString());return true;}
+        if(kugouLogin.isOpen()){if(event.isAllowedChatCharacter())kugouLogin.text(event.codepointAsString());return true;}
+        if(sourceMenuOpen)return true;
         if (page == Page.ACCOUNT && accountFocus >= 0 && event.isAllowedChatCharacter()) {
             appendAccount(event.codepointAsString());
             return true;
@@ -1179,6 +1313,7 @@ public final class MusicScreen extends Screen {
     }
 
     private void submitRoomJoin() {
+        if(MusicPlayback.isKugou()){showQueueToast("酷狗暂不支持房间联机");return;}
         if (page != Page.ROOM || MusicRoomClient.INSTANCE.joined()) return;
         MusicSourceType source = MusicRoomClient.INSTANCE.selectedSource();
         MusicRoomClient.INSTANCE.joinRoom(roomCodeInput, source, loggedInFor(source));
@@ -1188,6 +1323,7 @@ public final class MusicScreen extends Screen {
     }
 
     private void joinPublicRoom(int index) {
+        if(MusicPlayback.isKugou()){showQueueToast("酷狗暂不支持房间联机");return;}
         if (index < 0 || index >= MusicRoomClient.INSTANCE.publicRooms().size()) return;
         var room = MusicRoomClient.INSTANCE.publicRooms().get(index);
         MusicRoomClient.INSTANCE.joinRoom(room.roomCode(), room.source(), loggedInFor(room.source()));
@@ -1215,6 +1351,7 @@ public final class MusicScreen extends Screen {
 
     /** 音质浮层里鼠标悬停到第几档。 */
     private int qualityHover(int mx, int my) {
+        if(MusicPlayback.isKugou())return -1;
         double lx = localX(mx), ly = localY(my);
         int count = QQMusicIntegration.isQq()?QQQuality.values().length:NeteaseQuality.values().length;
         for (int i = 0; i < count; i++)
@@ -1412,12 +1549,21 @@ public final class MusicScreen extends Screen {
         input += clean.substring(0, end);
     }
     private void submit() {
+        if(MusicPlayback.isKugou()){
+            if(page!=Page.SEARCH||input.isBlank())return;
+            kugouDraft=input.trim();KugouIntegration.search().search(kugouDraft,0,100);
+            scroll=0;kugouSearchScroll=0;focused=false;selectAll=false;painted=null;return;
+        }
         if(page==Page.SEARCH&&QQMusicIntegration.isQq()&&playlistSearch.playlists()){if(playlistSearch.submit(input)){focused=false;selectAll=false;painted=null;}return;}
         if (page != Page.SEARCH || !search.submit(input)) return;
         scroll = 0; focused = false; selectAll = false; painted = null;
     }
     @Override public void removed() {
+        if(KugouIntegration.ready()){kugouLogin.dismiss();kugouPlayback().cancelSeek();}
+        kugouLyrics.close();
         qqCatalog.close();
+        qqPlaylists.close();
+        if(kugouPlaylists!=null)kugouPlaylists.close();
         playlistSearch.close();
         qqLogin.close();
         search.close();

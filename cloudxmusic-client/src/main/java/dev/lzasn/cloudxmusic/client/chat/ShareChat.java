@@ -109,6 +109,7 @@ public final class ShareChat {
         Minecraft client = Minecraft.getInstance();
         var connection = client.getConnection();
         if (connection == null) return;
+        if(song!=null&&song.source()==dev.lzasn.cloudxmusic.client.omni.MusicSource.KUGOU){SharePlay.notify("酷狗暂不支持歌曲分享");return;}
         if (song == null || song.platformId().isBlank()) {
             SharePlay.notify("当前没有可以分享的歌曲");
             return;

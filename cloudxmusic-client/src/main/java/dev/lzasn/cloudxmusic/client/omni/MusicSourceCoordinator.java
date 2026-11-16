@@ -1,6 +1,8 @@
 package dev.lzasn.cloudxmusic.client.omni;
 
 import java.util.Objects;
+import java.util.EnumMap;
+import java.util.ArrayList;
 import java.util.concurrent.*;
 import java.util.function.*;
 
@@ -8,6 +10,7 @@ import java.util.function.*;
 public final class MusicSourceCoordinator implements AutoCloseable {
     public record View(MusicSource source,MusicSource requested,long revision,boolean switching,boolean error,String status){}
     private final Function<MusicSource,CompletableFuture<Void>> pause;
+    private final EnumMap<MusicSource,Supplier<CompletableFuture<Void>>> additional=new EnumMap<>(MusicSource.class);
     private final Consumer<Runnable> main;
     private final Consumer<MusicSource> committed;
     private volatile View view;
@@ -22,12 +25,27 @@ public final class MusicSourceCoordinator implements AutoCloseable {
     public View view(){return view;}
     public MusicSource source(){return view.source();}
     public boolean allowsPlayback(MusicSource source){View current=view;return !closed&&!current.switching()&&!current.error()&&current.source()==source;}
+    /** 初始化时在客户端线程登记额外音源，沿用原有唯一状态机和声卡屏障。 */
+    public void register(MusicSource source,Supplier<CompletableFuture<Void>> stop){
+        Objects.requireNonNull(source);Objects.requireNonNull(stop);
+        if(closed||view.switching()||source==MusicSource.NETEASE||source==MusicSource.QQ||additional.containsKey(source))throw new IllegalStateException("音源暂停接口不能重复登记或在交接期间修改");
+        additional.put(source,stop);
+    }
+    /** 给第三音源的恢复入口复用；Future 成功才表示其他声卡已交还。 */
+    public CompletableFuture<Void> pauseOthers(MusicSource owner){
+        var waits=new ArrayList<CompletableFuture<Void>>();
+        for(MusicSource source:MusicSource.values())if(source!=owner&&(source==MusicSource.NETEASE||source==MusicSource.QQ||additional.containsKey(source)))waits.add(quiet(source));
+        return CompletableFuture.allOf(waits.toArray(CompletableFuture[]::new)).orTimeout(8,TimeUnit.SECONDS);
+    }
     public void select(MusicSource target){
         Objects.requireNonNull(target);if(closed||(!view.switching()&&!view.error()&&view.source()==target))return;
+        if(target!=MusicSource.NETEASE&&target!=MusicSource.QQ&&!additional.containsKey(target))throw new IllegalStateException("音源尚未登记暂停接口");
         long token=++generation;view=new View(view.source(),target,token,true,false,"正在切换到"+target.label()+"…");
         // 交接必须有上限：任何一边的暂停迟迟不回调时，switching 会永久为 true，
         // 结果就是两边都放不了、主面板点击被全部吞掉。超时按失败处理，至少把界面解锁。
-        barrier=CompletableFuture.allOf(barrier,quiet(MusicSource.NETEASE),quiet(MusicSource.QQ))
+        var waits=new ArrayList<CompletableFuture<Void>>();waits.add(barrier);waits.add(quiet(MusicSource.NETEASE));waits.add(quiet(MusicSource.QQ));
+        additional.keySet().forEach(source->waits.add(quiet(source)));
+        barrier=CompletableFuture.allOf(waits.toArray(CompletableFuture[]::new))
                 .orTimeout(8,TimeUnit.SECONDS);
         barrier.whenComplete((v,failure)->main.accept(()->{
             if(closed||token!=generation)return;
@@ -36,7 +54,7 @@ public final class MusicSourceCoordinator implements AutoCloseable {
         }));
     }
     private CompletableFuture<Void> quiet(MusicSource source){
-        try{return Objects.requireNonNull(pause.apply(source));}catch(Exception e){return CompletableFuture.failedFuture(e);}
+        try{return Objects.requireNonNull(additional.containsKey(source)?additional.get(source).get():pause.apply(source));}catch(Exception e){return CompletableFuture.failedFuture(e);}
     }
-    @Override public void close(){closed=true;++generation;}
+    @Override public void close(){closed=true;++generation;additional.clear();}
 }

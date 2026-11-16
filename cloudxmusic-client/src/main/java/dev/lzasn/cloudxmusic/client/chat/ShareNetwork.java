@@ -56,6 +56,7 @@ public final class ShareNetwork {
         }
     }
     public static boolean share(SongView song) {
+        if(song==null||song.source()==dev.lzasn.cloudxmusic.client.omni.MusicSource.KUGOU)return false;
         try {
             // 单人/LAN 主机没有独立服务端插件，直接走公开聊天降级，不等待握手超时。
             if (Minecraft.getInstance().hasSingleplayerServer()) return false;

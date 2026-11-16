@@ -6,8 +6,6 @@ CloudXMusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 
 `libs/cloudxmusic-protocol.jar` 由本项目 `music-protocol` 源码构建，属于 CloudXMusic 自有代码的运行包；它随客户端构建合并，但对应源码目录不进入远端仓库。
 
-## 当前状态：内置 MP3 解码、二维码库与嵌套 FLAC 解码库
-
 ## 内置代码：JLayer (MP3 解码)
 
 - 文件：`libs/jlayer-1.0.1.jar`，类被直接合并进产物 jar（`javazoom.jl.*`）
@@ -39,27 +37,28 @@ CloudXMusic 的原创代码采用 **GNU GPL-3.0-only**，完整许可文本见 [
 - 构建：使用 Java 21 编译该提交的 `src/io/`；仅打包库代码和许可证，不打包上游演示程序。
 - 用途：供 `qqmusic/QQAudioDecoder` 和 `QQAudioPlayer` 顺序流式解码原生 FLAC；保留旧测试类作为手动实验入口，正式启动不再调用。
 
-## 参考实现：DangoMusic QQ 匿名搜索
+## 音乐服务协议与歌词格式参考
 
-- 参考本地 DangoMusic 的 `common/core/src/main/kotlin/me/sorihiko/dango/music/QqMusicSource.kt` 与 `SourceHttp.kt`。
-- 本地参考版本许可证为 GNU GPL v3，保留其项目名称和来源说明；未将 DangoMusic 作为运行依赖打包。
-- 参考范围：`client_search_cp` 无 sign 请求、MID/标题/歌手字段回退及搜索高亮清理；Java 超时、分页、响应限制和界面整合由本项目实现。
-- QQ 公网接口和网易云接口是独立远程服务；此说明不表示获得这些服务的官方授权。
+来源：[DangoMusic](https://github.com/Sorihiko/DangoMusic)，作者 Sorihiko 及贡献者，许可为 **GNU GPL v3**。参考范围集中列于下表，保留其作者、来源与许可信息。
 
-## 参考实现：DangoMusic QQ App 扫码登录
+参考版本：`7d1609d6b259a6b439542058b3f8f0c5969b6e2b`（酷狗接入、账号歌单与登录交互）；`42397a1c8b78138175cfba4781d35cc9ff8aca94`（QRC 解码与早期 QQ 目录）。文件名均指上游对应源码。
 
-- 参考本地 DangoMusic 的 `common/core/src/main/kotlin/me/sorihiko/dango/music/NativeLogin.kt`、`QqAppChannel.kt`、`QqAppSession.kt` 和 `NativeAccount.kt`。
-- 原项目许可为 GPL-3.0，本项目保留其来源及许可说明；未作为运行依赖打包。
-- 参考范围：CreateQRCode 参数、MQTT 5 登录订阅与状态、候选票据验证/换票顺序、QQ Cookie 与 hash33。
-- Java 21 HttpClient/WebSocket 传输、凭证权限与原子存储、会话取消和 CloudXMusic 界面接线由本项目实现。
-- 扫码登录阶段使用服务端返回的二维码图片，不增加二维码或网络依赖；播放地址、解码和播放由后续阶段另行接入。
+| 涉及范围 | 来源文件 | 使用方式 |
+| --- | --- | --- |
+| 酷狗普通版登录、取链与 KRC | `KugouWeb.kt`、`KugouPlayback.kt`、`KugouGateway.kt`、`KugouLyrics.kt`、`NativeLogin.kt` | 参考 Web/App 请求、签名、扫码 token 交换、hash/album_id 与歌词编码，适配为本项目的 Java 接口。 |
+| QQ 搜索、歌曲元数据、封面与取链 | `QqMusicSource.kt`、`SourceHttp.kt`、`QqPlayback.kt` | 参考匿名搜索、字段回退与高亮清理、media_mid、封面/LRC 地址、UrlGetVkey/CgiGetVkey 与 purl/sip 解析。 |
+| QQ 登录与续期 | `NativeLogin.kt`、`QqAppChannel.kt`、`QqAppSession.kt`、`NativeAccount.kt`、`QqRenewal.kt` | 参考 CreateQRCode、MQTT 5 登录订阅、票据验证/换票、Cookie/hash33 及续期字段。 |
+| 账号歌单、目录与酷狗发现页 | `QqCatalog.kt`、`KugouCatalog.kt` | 参考自建/收藏分类、加密 QQ 用户标识、推荐目录与 dirid=201、酷狗 H5 云目录、分页与排序，以及官网“新歌首发新”区块的 `dataobj` 元数据。 |
+| 登录交互 | `common/ui/.../LoginDialog.kt` | 参考交互流程；界面使用 CloudXMusic 的绘制组件。 |
+| QRC 格式解码 | `QqLyrics.kt` | 将 QQ 专用 DES 表、位序与密钥调度翻译为 `QQQrcCodec.java`，并参考逐字时间格式与歌词 XML 结构。此项属于代码移植，包含非标准 S 盒值与 PC2 位移，不能替换为标准 DESede。 |
 
-## 参考实现：DangoMusic QQ 元数据与取链
+CloudXMusic 负责 Java 21 网络适配、有界响应与超时、凭证存储、异步取消与代次隔离、分页缓存、完整队列提交及共享 UI 接线；QRC 移植另加有界解压、严格 UTF-8、取消检查与测试。酷狗流式播放器沿用本项目自有 QQ 播放引擎并保持包隔离；解码库的许可见对应条目。上述参考项目不作为运行库打包，也未接入概念版每日权益领取。第三方来源不表示获得音乐平台的官方授权。
 
-- 参考本地 DangoMusic 的 `common/core/src/main/kotlin/me/sorihiko/dango/music/QqPlayback.kt` 与 `QqMusicSource.kt`，保留 GPL-3.0 来源说明，不作为运行依赖打包。
-- 参考范围：get_song_detail_yqq 的 media_mid 补齐、桌面 UrlGetVkey/Web CgiGetVkey 参数、purl/sip 解析及无资源时的只读账号校验。
-- 本项目新增 F000 优先、M800 降级、账号代次隔离、URL 域名/文件匹配和无凭证 Range 音频头检查；取链接入后，QQ 解码、播放与队列已在后续版本完成接线。
-- 不增加依赖，不自动安装 Node.js 或外部 API 服务，不向音频 CDN 发送 QQ 登录 Cookie。
+## 酷狗资料、权益与云收藏协议参考：KuGouMusicApi
+
+- 来源：https://github.com/MakcRe/KuGouMusicApi ，固定提交 `443d4a416dd344ccf7b022b9fb932e324afc77b4`，Copyright (c) 2023 MakcRe，MIT License。
+- 参考 `module/user_detail.js`、`user_vip_detail.js`、`privilege_lite.js`、`user_playlist.js`、`playlist_tracks_add.js`、`playlist_tracks_del.js` 以及请求签名/加密协议字段。Java 实现不引入 Node.js 运行依赖，不复制按音质硬编码的会员映射或概念版免费听假设。
+- MIT 原许可文本随 `assets/cloudxmusic/licenses/kugou-api/LICENSE` 及 `META-INF/licenses/kugou-api/LICENSE` 提供；服务响应仍是权限与资源可用性的依据。
 
 ## vendored 代码：MuoniumPlayer 世界歌词
 
@@ -134,12 +133,6 @@ FLAC 测试依赖位于 `META-INF/jars/`；界面随模组提供下列开源字�
 
 > 2.4.11 起无损档恢复，但不再使用 jFLAC：改由 nayuki-flac 解码（见上表），并在播放前建立帧索引解决跳转问题。
 
-## 参考实现：DangoMusic QQ 封面与逐行歌词（2.9.0）
-
-- 参考 `common/core/src/main/kotlin/me/sorihiko/dango/music/QqMusicSource.kt` 的专辑 MID 封面地址和公网 LRC 歌词接口，来源许可 GPL-3.0，保留上述项目来源说明。
-- 本项目以 Java 21 实现有界 HTTP 响应、超时、HTML/Base64 歌词解析、独立展示快照、图片缓存及异步代次隔离。2.13.0 的 QRC 解密移植另见下节；未引入 DangoMusic 运行库或其网易云业务数据模型。
-- 不新增运行依赖；Nayuki、JLayer 和 ZXing 沿用现有声明与打包方式。
-
 ## QQ 会员资料接口契约参考
 
 - 接口名称与响应字段参考 QQMusicApi 的公开文档/模型说明（https://github.com/l-1124/QQMusicApi，PyPI qqmusic-api-python 0.8.2）。
@@ -151,11 +144,8 @@ FLAC 测试依赖位于 `META-INF/jars/`；界面随模组提供下列开源字�
 - 本项目独立实现 Java 请求、格式探测与降级、账号/音源代次隔离、固定期次分页及测试；未复制 Python 运行代码、未加入 Python 依赖。母带实际可用性受账号权益、歌曲及服务端返回限制，不把其他编码格式标记为已支持。
 - QQ 收藏写入已因腾讯风控停用；当前只保留 `GetPlaylistByUin` / `CgiGetDiss` 的“我的收藏”读取。
 
-## 2.13.0：QRC 解码与目录接口参考
+## 其他 QQ 推荐接口与测试样本
 
-- DangoMusic，Sorihiko 及贡献者，GPL-3.0；本项目遵守原 GPL-3.0-only 许可，保留原项目来源。固定参考提交 `42397a1c8b78138175cfba4781d35cc9ff8aca94`：https://github.com/Sorihiko/DangoMusic/tree/42397a1c8b78138175cfba4781d35cc9ff8aca94 。
-- `QQQrcCodec.java` 由 `common/core/src/main/kotlin/me/sorihiko/dango/music/QqLyrics.kt` 的 QQ 专用 DES 表、位序及密钥调度翻译为 Java；包含 QQ 对标准 DES 的非标准 S 盒值和 PC2 位移，不能替换为标准 DESede。词后绝对时间格式及歌词 XML 结构参考同文件，增加有界解压、严格 UTF-8、取消检查及独立测试。
-- `QQCatalogApi.java` 的推荐歌单与私人 dirid=201 取歌契约参考同目录 `QqCatalog.kt`；Java 的异步会话、分页、缓存与 UI 单独实现。
 - 历史参考（2.13.0–2.13.4，2.13.5 已移除）：个性电台接口契约曾参考 luren-dc/QQMusicApi 的 `qqmusic_api/modules/recommend.py`、`models/recommend.py`（GPL-3.0）：https://github.com/luren-dc/QQMusicApi 。保留来源记录；当前源码与成品已无相关接口实现，未加入 Python 或 Node.js 运行依赖。
 - 每日30首/今日私享资源发现参考 jsososo/QQMusicApi 的 `routes/recommend.js` 中 `/daily` 对官方 `https://c.y.qq.com/node/musicmac/v6/index.html` 登录态页面的读取方式：https://github.com/jsososo/QQMusicApi/blob/master/routes/recommend.js 。Java 使用 JDK HTML 解析器，只读取明确标记的每日资源，不复制该 JavaScript 实现或引入其运行依赖。
 - `src/test/resources/qq-qrc-public.hex` 是用于验证解密协议的 QQ 公网返回测试样本，歌曲 MID `0039MnYb0qxYhV`，2026-10-30 获取，仅在测试源码中提供，不打入运行 JAR；不含账号、Cookie 或 Token。歌词内容的著作权归相应权利人。

@@ -20,13 +20,21 @@ run/
 logs/
 *.log
 
+# 凭证即使被复制到非默认数据目录，也不得提交；测试使用内存中的虚构凭证。
+**/account.json
+**/account.json.*
+**/cookies.json
+**/cookies.json.*
+**/netease.json
+**/netease.json.*
+
 # Local development notes and generated previews
 .workbuddy/
 outputs/
 $null
 *.tmp
 
-# 参考实现项目（DangoMusic），非本仓库代码
+# 本地参考实现目录，非本仓库代码
 DangoMusic-main/
 
 # Obsolete bundled Modern UI / config-port jars

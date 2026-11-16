@@ -71,7 +71,7 @@ public final class DynamicIslandHud {
         boolean musicUi = (client.screen instanceof MusicScreen && !MusicScreen.panelClosing())
                 || client.screen instanceof FirstRunNoticeScreen;
 
-        var playback=QQMusicIntegration.snapshot();
+        var playback=dev.lzasn.cloudxmusic.client.omni.MusicPlayback.snapshot();
         if (!eligible(client, state, playback)) {
             if (musicUi) {
                 musicUiOpen = true;
@@ -192,12 +192,12 @@ public final class DynamicIslandHud {
         // 3 倍也只占约 94 万像素，放宽上限的代价可以忽略。
         double raster = Math.max(.75, Math.min(3, display * client.getWindow().getGuiScale()));
         long now = System.nanoTime();
-        String artwork=playback.source()+"|"+playback.song().coverUrl()+"|"+(QQMusicIntegration.isQq()?QQMusicIntegration.artwork().revision():CoverCache.revision());
+        String artwork=playback.source()+"|"+playback.song().coverUrl()+"|"+dev.lzasn.cloudxmusic.client.omni.MusicPlayback.artworkRevision();
         double scrollSeconds=Math.max(0,playback.position()-(hasLine?line.timeMs()/1000.0:0));
         // 背景/时间低频更新；文字每帧走矩阵，切句立即替换，不再重绘整岛来模拟滚动。
         if ((!view.equals(previous)||raster!=previousScale||previousDark!=state.darkMode()||!artwork.equals(previousArtwork))
                 && (previous==null||now-lastPaint>=100_000_000L)) {
-            SURFACE.update(IslandPainter.paintBackdrop(view,raster,QQMusicIntegration.isQq()?QQMusicIntegration.artwork().image(playback.song().coverUrl()):CoverCache.image(playback.song().coverUrl())));
+            SURFACE.update(IslandPainter.paintBackdrop(view,raster,dev.lzasn.cloudxmusic.client.omni.MusicPlayback.artwork(playback.song().coverUrl())));
             previous=view;previousArtwork=artwork;previousScale=raster;previousDark=state.darkMode();lastPaint=now;
         }
 
