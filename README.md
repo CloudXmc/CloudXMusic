@@ -6,9 +6,10 @@
 
 <p align="center">  
   <strong>把音乐带进方块世界</strong>  
-  
-  Minecraft Java Edition · Fabric 客户端音乐播放器  
-</p>
+ </p> 
+ <p align="center">
+   <strong>Minecraft Java Edition · Fabric 客户端音乐播放器</strong>
+ </p> 
 
 <p align="center">
   <img src="https://img.shields.io/badge/Version-2.6.0--alpha.3-D96A91?style=flat-square" alt="版本 2.6.0-alpha.3">
@@ -168,14 +169,4 @@ JUnit XML 位于 `cloudxmusic-client/build/test-results/test/`，HTML 报告位�
 ## 贡献、资料与许可证
 
 原作者与贡献者：**Lzasn**（客户端、网易云音源与解码）、**xWtree**（早期界面与宣传）、**xiaota888**（QQ 音源、聚合架构与逐字歌词等）。保留既有作者信息与第三方来源声明。
-
-- [本版本与历史更新](CHANGELOG.md)
-- [本次发布构建与验证记录](docs/RELEASE_VALIDATION_2.6.0-alpha.3.md)
-- [酷狗自动音质定稿](docs/KUGOU_AUTOMATIC_QUALITY.md) · [取链验证](docs/KUGOU_PLAYBACK_REVIEW.md) · [播放恢复记录](docs/KUGOU_PLAYBACK_RECOVERY.md)
-- [酷狗核心结构](docs/KUGOU_CORE.md) · [接线验证](docs/KUGOU_VALIDATION.md) · [歌单验证](docs/PLAYLIST_VALIDATION.md)
-- [统一协议说明](docs/USER_AGREEMENT.md) · [QQ 徽章验证](docs/QQ_BADGE_VALIDATION.md)
-- [3D 世界歌词移植记录](docs/WORLD_LYRICS_MUONIUM_PORT.md) · [房间与 Folia 联机](docs/FOLIA_DEVELOPMENT.md) · [私聊分享](docs/PRIVATE_SHARE.md)
-
-历史开发文档包含当时的设计与实验结论，当前功能以本 README、本版本 CHANGELOG 和最终代码为准。提交问题时请提供版本、系统、复现步骤与已脱敏错误摘要，不上传账号文件。
-
 原创代码采用 [GNU GPL-3.0-only](LICENSE)。解码、二维码、世界歌词和字体等第三方组件分别遵循各自许可。完整来源、固定版本和随包声明见 [THIRD\_PARTY\_NOTICES.md](THIRD_PARTY_NOTICES.md)；第三方许可证、NOTICE 和规定提供的源码归档随发行包保留。
