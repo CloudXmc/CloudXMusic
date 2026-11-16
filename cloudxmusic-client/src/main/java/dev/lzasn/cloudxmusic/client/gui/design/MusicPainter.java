@@ -22,8 +22,6 @@ public final class MusicPainter {
     private static final String[] TITLES = {"正在播放", "发现音乐", "搜索", "我的收藏", "播放队列",
             "音乐房间", "设置与关于", "账号"};
     private static final String[] ICONS = {"play", "discover", "search", "heart", "list", "group"};
-    /** 音乐房间在导航里的序号；BETA 胶囊只贴在这一项和页面大标题后面。 */
-    private static final int ROOM_INDEX = MusicView.Page.ROOM.ordinal();
     private static final Dev[] DEVELOPERS = {
             new Dev("Lzasn", "@Lzasn", "代码架构开发 · 主要开发者", "lzasn.png"),
             new Dev("xWtree", "@xWtree", "UI 美化 · 后期维护者", "xwtree.png"),
@@ -56,9 +54,6 @@ public final class MusicPainter {
             navigation(c, v, layout, covers, accountPainter);
             // 标题独占标题带（0~92），基线按视觉重心对齐带中轴，不再挂副标题。
             c.text(TITLES[v.page().ordinal()], 292, 54, 21, true, INK, 600);
-            if (v.page() == MusicView.Page.ROOM) {
-                betaTag(c, 292 + c.width(TITLES[ROOM_INDEX], 21, true) + 6, 47, 21, 10);
-            }
             c.g.setColor(LINE);
             c.g.drawLine(272, 92, 1070, 92);
             button(c, v, layout, "close", "close", false);
@@ -156,9 +151,6 @@ public final class MusicPainter {
             Color color = on ? DEEP : hover ? INK : MUTED;
             UiIcons.draw(c, ICONS[i], b.x()+20, b.cy(), 18, color);
             c.text(TITLES[i], b.x()+44, b.cy()+5, 14, on, color, 150);
-            if (i == ROOM_INDEX) {
-                betaTag(c, b.x() + 44 + c.width(TITLES[i], 14, on) + 4, b.cy(), 16, 9);
-            }
         }
         c.g.setClip(navClip);
         c.g.setColor(LINE); c.g.drawLine(24,412,252,412);
@@ -211,13 +203,6 @@ public final class MusicPainter {
                 c.center("译", b.cx(), b.cy() + 5, 13, true, on ? PINK : MUTED, b.w() - 8);
             }
         }
-    }
-
-    /** 小号 BETA 胶囊：浅粉底 + 粉字，贴在导航项或页面大标题右侧。 */
-    private static void betaTag(FrostCanvas c, double x, double centerY, double h, float fontSize) {
-        double w = c.width("BETA", fontSize, true) + fontSize;
-        c.round(x, centerY - h / 2, w, h, h / 2, SOFT);
-        c.text("BETA", (float) (x + fontSize / 2.0), (float) (centerY + fontSize * .36), fontSize, true, PINK, (float) w);
     }
 
     /** 音乐房间：未加入显示创建/加入入口，已加入显示同步播放、队列和成员。 */
