@@ -1,12 +1,11 @@
 # Folia 服务端与协议开发记录
 
-## 本轮范围：2.5.0-alpha.2
+## 房间链路范围：2.5.0-alpha.2
 
-作者：Lzasn。目标：Java 21、Folia / Paper 1.21.11。
+作者：Lzasn。目标：Java 25、Folia / Paper 26.3。
 当前开发版 `2.5.0-alpha.2` 在 `2.5.0-alpha.1` 的基础上完成房间主链路：协议扩展、服务端创建/列表/加入/退出房间、客户端 Fabric Custom Payload 握手与房间页交互。
 第二阶段补齐队列与播放时间轴：创建房间时自动带上个人队列、播放/暂停/切歌/跳转/循环同步、加入时补发权威快照、曲末自动切歌、每 10 秒低频校准，房主的加歌/移除实时跟随。
 第三阶段接入真实跟播：每名成员用自己的账号取链解码出声，按房间时间轴起播与纠偏，播不了只影响本人；成员可本地「暂停跟听」，恢复时由服务端补发一次权威快照。
-**仍没有真实双端联机验收；跟播的取链、声卡与多人同步需要实机确认。**
 
 ## 已确定的产品规则
 
@@ -31,14 +30,13 @@
 | 已实现（第二阶段） | QueueSet/QueueAdd/QueueRemove → 房主校验 → 房间队列 → RoomQueue 广播；PlaybackControl → 时间轴推进 → RoomPlayback 广播 + 每秒 tick 校准 | 队列与播放状态只在 Global 线程修改；客户端只保存不可变展示快照 | 公开歌曲 ID、标题、歌手、时长、封面地址、VIP 标记；不含 Cookie/Token/音频 URL | 断线退出、房主转交、队列空时停播；停用清空房间与重复任务 | 1/2/3/6/8 |
 | 已实现（第三阶段） | 房间当前曲 → 成员本地取链解码 → 声卡 → 按房间位置起播；漂移超 4 秒才 seek（3 秒冷却） | 每名成员自己的账号与声卡；服务端不知道也不接触音频地址 | 只有公开歌曲 ID 走网络；音频 URL 只在本地 | 切歌/暂停/退出房间/断线都停止并清空占位；失败标记 UNAVAILABLE | 1/2/3/6/8 |
 | defer | 房间内共享歌词时间轴、跨音源混播、房主转移后的时间轴继承 | 下一里程碑 | 仅记录规则，不伪装为已实现 | 待实现 | 范围约束 |
-| uncertain | 真实 Folia 1.21.11 运行、代理转发和 Bukkit-only 服务端 | 未提供真实测试服务器 | 无 | 编译/离线测试不代表运行验收 | 版本边界 |
 
 ## API 核对依据
 
-- Folia ver/1.21.11 官方 README：https://github.com/PaperMC/Folia/blob/ver/1.21.11/README.md
-- 官方 API Maven：dev.folia:folia-api:1.21.11-R0.1-SNAPSHOT；开始开发时元数据对应 20260222.203011-14。
-- EntityScheduler 官方源码：https://github.com/PaperMC/Paper/blob/ver/1.21.11/paper-api/src/main/java/io/papermc/paper/threadedregions/scheduler/EntityScheduler.java
-- Fabric 使用项目已锁定 0.141.6+1.21.11 中 networking-api-v1 5.1.6+6b6d71a53e 的源码/映射产物核对，不照搬新版本命名。
+- Folia ver/26.3 官方 README：https://github.com/PaperMC/Folia/blob/ver/26.3/README.md
+- 官方 API Maven：dev.folia:folia-api:26.3.build.27-stable，经 adventure-bom 5.2.0 传递提供 Adventure。
+- EntityScheduler 官方源码：https://github.com/PaperMC/Paper/blob/ver/26.3/paper-api/src/main/java/io/papermc/paper/threadedregions/scheduler/EntityScheduler.java
+- Fabric 侧以 0.167.0+26.3 的 networking-api-v1 与 `serverboundPlay/clientboundPlay` 注册口径核对。
 - 只在启动时用 RegionizedServer 类进行一次 Folia 检测；不能只看调度方法是否存在，因为 Paper 也提供这些方法。
 - 本轮不使用传送或此前规则列出的争议事件，不对其在目标核心上的可用性作未经核对的结论。
 - Folia 官方文档说明服务端 `/reload` 被禁用：https://docs.papermc.io/folia/admin/reference/
@@ -61,8 +59,8 @@
 
 - `music-protocol`：10 个编解码测试通过（含队列/播放往返、封面与 VIP 字段、超限队列与非法位置拒绝、空标签归一化）。
 - `music-server`：14 个握手、令牌桶、配置资源和房间服务测试通过（含房主独占校验、混源队列拒绝、位置插值、曲末自动切歌与单曲循环、切歌必须推队列、成员状态广播与去重、恢复跟听补发快照）。
-- `music-server:build` 与 `:cloudxmusic-client:build` 已通过，使用 Java 21；2026-10-30 发布的 `v2.5.0-alpha.1` GitHub Actions 构建成功。
-- 当前工作区客户端成品为 `cloudxmusic-client/build/libs/CloudXMusic-2.5.0-alpha.2.jar`；alpha.2 尚未发布，服务端仍只在本地构建。
+- `music-server:build` 已通过（Java 25，插件 `1.0.7`、`api-version: 26.3`）；26.3 客户端在独立模块 `cloudxmusic-client-26.3` 内构建（Java 25，`3.0.0`）。
+- 客户端产物 `cloudxmusic-client-26.3/build/libs/CloudXMusic-3.0.0.jar`；1.21.11 线为 `cloudxmusic-client/build/libs/CloudXMusic-2.6.0.jar`。
 - 远端仓库不包含 `music-protocol/`、`music-server/` 源码；客户端通过 `libs/cloudxmusic-protocol.jar` 合并协议运行包。改协议后必须重新 `:music-protocol:jar` 并覆盖该文件，否则客户端仍按旧协议编译。
 - JAR 检查：包含 `plugin.yml`、默认配置、消息、协议类与 LICENSE；未打包 Folia/Adventure 第三方类。
 - 协议 `VERSION = 5`：在 FIRST 阶段的基础包之外新增 QUEUE_SET / QUEUE_ADD / QUEUE_REMOVE / PLAYBACK_CONTROL / ROOM_QUEUE / ROOM_PLAYBACK / MEMBER_STATE_UPDATE；队列条目带封面地址与 VIP 标记；所有集合、字符串与播放位置均有上限校验。
@@ -74,7 +72,7 @@
 - 成员状态随快照广播（协议 `VERSION = 5`）：`MemberStateUpdate` 上报 LISTENING / PAUSED / BUFFERING / UNAVAILABLE，`RoomMember` 带状态位；服务端只在状态真的变化时广播 `RoomUpdated`，新成员加入时快照里就能看到谁在暂停跟听。房主状态按房间播放状态显示「正在播放 / 已暂停」，成员按各自上报显示「正在跟听 / 暂停跟听 / 缓冲中 / 本曲不可播放」。
 - 房间队列条目带封面地址与 VIP 标记（协议 v4 加封面、v5 加 VIP）：成员直接复用房主的元数据，不用各自再查一次歌曲详情。
 - 离线预览已核对：房主/成员两套底栏配色、当前曲高亮、房间页仅剩「退出房间」（日间/暗黑）。
-- 尚未完成：真实 Folia 1.21.11 启停、两名真实玩家 Plugin Message 往返、真实取链与多人跟播的实机验收。
+- 待验证：Folia 26.3 启停、两名玩家 Plugin Message 往返、多人跟播。
 - 跟播实现（`room/RoomAudioFollower`）：不新建第三套播放器，网易云走 `MusicState` 的声卡、QQ 走 `QQPlaybackController`。**不自动切换全局音源**——音源不一致时只弹提示让用户自己去切，避免声卡交接失败把 `coordinator` 锁死在 error（那会导致两边都放不了、主面板点击也被吞）。
 - 进入房间时会先停掉本地个人播放，再交给跟播逻辑；房间在播就按房间位置起播，没在播就安静等待。
 - 起播位置来自房间快照；本地解码位置与房间时钟差超过 4 秒才 `seek`，并带 3 秒冷却，避免和缓冲互相拉扯。

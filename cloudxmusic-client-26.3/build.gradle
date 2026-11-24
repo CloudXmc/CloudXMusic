@@ -1,0 +1,116 @@
+plugins {
+    id "net.fabricmc.fabric-loom" version "${loom_version}"
+}
+
+def repoRoot = file("..")
+
+base {
+    archivesName = project.archives_base_name
+}
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+    // 本地专用坐标只指向 libs/，不向远程仓库请求该实验依赖。
+    exclusiveContent {
+        forRepository {
+            flatDir {
+                name = "LocalNayukiFlac"
+                dirs new File(repoRoot, "libs")
+            }
+        }
+        filter { includeModule("dev.lzasn.local", "nayuki-flac") }
+    }
+    maven { name = "Tencent"; url = "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/" }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft("com.mojang:minecraft:${project.minecraft_version}")
+    implementation("net.fabricmc:fabric-loader:${project.loader_version}")
+    implementation("net.fabricmc.fabric-api:fabric-api:${project.fabric_version}")
+    // MuoniumPlayer 世界歌词渲染栈：Skija 负责高质量字形光栅化。
+    implementation "io.github.humbleui:skija-windows-x64:0.143.17"
+    include "io.github.humbleui:skija-windows-x64:0.143.17"
+    include "io.github.humbleui:skija-shared:0.143.17"
+    include "io.github.humbleui:types:0.2.0"
+    // 协议源码仅在本地开发；客户端构建使用 libs/ 中的协议运行包。
+    implementation files(new File(repoRoot, "libs/cloudxmusic-protocol.jar"))
+
+    // 无第三方前置：界面全部自绘（fill + 程序化矢量图标），不再内置 Modern UI。
+    // MP3 解码（LGPL-3.0）：只用来把网易云的 mp3 流转成 PCM，类会合并进产物 jar。
+    implementation files(new File(repoRoot, "libs/jlayer-1.0.1.jar"))
+    // 二维码编码（Apache-2.0）：扫码登录要在游戏里画出真的二维码
+    implementation files(new File(repoRoot, "libs/zxing-core-3.5.3.jar"))
+
+    // 独立 FLAC 实验：上游固定提交本地编译，使用 Loom 嵌套打包保留库边界。
+    implementation "dev.lzasn.local:nayuki-flac:0.0.0-e807ab25"
+    include "dev.lzasn.local:nayuki-flac:0.0.0-e807ab25"
+
+    // 1.18.48 起支持 JDK 25 的注解处理。
+    compileOnly "org.projectlombok:lombok:1.18.48"
+    annotationProcessor "org.projectlombok:lombok:1.18.48"
+
+    testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+processResources {
+    // The imported reference stack bundled Apple system fonts without a
+    // redistribution grant. CloudXMusic uses its existing OFL fonts instead.
+    exclude "muonium/fonts/**"
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 25
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+tasks.register("renderUiPreview", JavaExec) {
+    group = "verification"
+    description = "Render offline PNG previews from the same painter used in-game."
+    dependsOn tasks.named("testClasses")
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = "dev.lzasn.cloudxmusic.client.gui.design.UiPreviewRenderer"
+    args new File(repoRoot, "outputs").absolutePath
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+    inputs.property "archivesName", project.base.archivesName
+    from({ zipTree(new File(repoRoot, "libs/cloudxmusic-protocol.jar")) }) {
+        exclude "META-INF/**"
+    }
+    from(new File(repoRoot, "libs/nayuki-flac-e807ab25-sources.zip")) {
+        into "META-INF/licenses/nayuki-flac"
+    }
+    from(new File(repoRoot, "THIRD_PARTY_NOTICES.md")) {
+        into "META-INF"
+    }
+    from(new File(repoRoot, "LICENSE")) {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+    from(file("src/main/resources/assets/cloudxmusic/licenses")) {
+        into "META-INF/licenses"
+    }
+    // 把 JLayer 的类直接并进来（不是模组，不能走 jar-in-jar）
+    from({ zipTree(new File(repoRoot, "libs/jlayer-1.0.1.jar")) }) {
+        exclude "META-INF/**"
+    }
+    from({ zipTree(new File(repoRoot, "libs/zxing-core-3.5.3.jar")) }) {
+        exclude "META-INF/**"
+    }
+}

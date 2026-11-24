@@ -62,7 +62,7 @@ CloudXMusic 负责 Java 21 网络适配、有界响应与超时、凭证存储�
 
 ## vendored 代码：MuoniumPlayer 世界歌词
 
-- 来源：<https://github.com/zihe114514/MuoniumPlayer-multiversion> ，`main` 分支的 `1.21.11 recode` 与 `muonium-common`。
+- 来源：<https://github.com/zihe114514/MuoniumPlayer-multiversion> ，`main` 分支的 `1.21.11 recode`、`26.3` 与 `muonium-common`。
 - 作者/版权：MuoniumPlayer Team（云杉、心事抱抱、N0ne、eyz2021）及贡献者 Chryui/Cherry7593。
 - 许可：**Apache-2.0**，完整许可文本与 Skia/Skija NOTICE 保存在 `assets/cloudxmusic/licenses/muonium/`，同时复制到产物 `META-INF/licenses/muonium/`。
 - vendored 范围：世界歌词状态机、公告牌渲染、逐字字形图集、发光/绘光/心象动效、字体渲染辅助层、Skija 桥接与两个 Mixin。相关文件位于 `com.muoniumplayer.*`，并按 Apache-2.0 §4(b) 在文件头注明来源及 CloudXMusic 修改。

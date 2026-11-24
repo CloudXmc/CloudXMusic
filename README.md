@@ -1,27 +1,25 @@
 # 云朵音乐盒 · CloudXMusic
 
-<p align="center">  
-  <img src="cloudxmusic-client/src/main/resources/assets/cloudxmusic/icon.png" width="112" alt="云朵音乐盒图标">  
+<p align="center">    
+  <img src="cloudxmusic-client-26.3/src/main/resources/assets/cloudxmusic/icon.png" width="112" alt="云朵音乐盒图标">    
 </p>
 
-<p align="center">  
-  <strong>把音乐带进方块世界</strong>  
- </p> 
- <p align="center">
-   <strong>Minecraft Java Edition · Fabric 客户端音乐播放器</strong>
+<p align="center">    
+  <strong>把音乐带进方块世界</strong>    
+ </p>   
+ <p align="center">  
+   <strong>Minecraft Java Edition · Fabric 客户端音乐播放器</strong>  
  </p> 
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Version-2.6.0-D96A91?style=flat-square" alt="版本 2.6.0">
-  <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">
-  <img src="https://img.shields.io/badge/Minecraft-1.21.11-5A9B7B?style=flat-square" alt="Minecraft 1.21.11">
-  <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">
-  <img src="https://img.shields.io/badge/Java-21-ED8B00?style=flat-square" alt="Java 21">
+<p align="center">  
+  <img src="https://img.shields.io/badge/Version-3.0.0-D96A91?style=flat-square" alt="版本 3.0.0">  
+  <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">  
+  <img src="https://img.shields.io/badge/Minecraft-26.3-5A9B7B?style=flat-square" alt="Minecraft 26.3">  
+  <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">  
+  <img src="https://img.shields.io/badge/Java-25-ED8B00?style=flat-square" alt="Java 25">  
 </p>
 
 CloudXMusic 将网易云音乐、QQ 音乐与酷狗音乐接入同一套游戏内界面，提供独立账号、搜索与播放队列、账号歌单、逐字歌词、灵动岛 HUD 和 3D 世界歌词。三音源通过全局状态机交接播放权，账号凭证和底层播放器分别隔离。QQ 与酷狗通过 Java 直接访问对应服务，无需 Node.js 或额外部署音乐 API 服务
-
-本项目是非官方第三方客户端，与上述音乐平台及其运营方没有从属、授权或背书关系。歌曲能否播放、能取得什么音质，由平台对当前账号、曲目、地区和会话的实时返回决定；模组不提供会员权益，也不绕过版权或付费限制
 
 ## 导航
 
@@ -31,7 +29,6 @@ CloudXMusic 将网易云音乐、QQ 音乐与酷狗音乐接入同一套游戏�
 - [架构与源码](#架构与源码)
 - [构建与验证](#构建与验证)
 - [本地数据与隐私](#本地数据与隐私)
-- [使用须知与免责声明](#使用须知与免责声明)
 - [贡献、资料与许可证](#贡献资料与许可证)
 
 ## 功能与音源差异
@@ -49,18 +46,18 @@ CloudXMusic 将网易云音乐、QQ 音乐与酷狗音乐接入同一套游戏�
 | 灵动岛、播放页、3D 歌词  | 支持                | 支持                 | 支持              |
 | 音乐房间 / 聊天歌曲分享  | 支持                | 支持                 | 无               |
 
+酷狗“我喜欢的音乐”写入会修改真实账号的云收藏；音乐房间向成员同步曲目与播放状态，聊天分享按当前频道公开。
+
 ## 安装与开始使用
 
-1. 准备 Minecraft Java Edition **1.21.11** 与 **Java 21**。
-2. 安装 Fabric Loader 和对应 Minecraft 版本的 Fabric API。当前构建使用 Loader `0.20.1`、Fabric API `0.141.6+1.21.11`；模组声明的 Loader 最低版本为 `0.18.1`，建议使用当前构建版本或兼容的新版本。
-3. 将发行物 **`CloudXMusic-<version>.jar`** 放入该游戏实例的 `mods/` 目录。
+1. 准备 Minecraft Java Edition **26.3** 与 **Java 25**。
+2. 安装 Fabric Loader 与 26.3 的 Fabric API。当前构建使用 Loader `0.20.1`、Fabric API `0.167.0+26.3`；模组声明的最低 Loader 为 `0.18.1`。
+3. 将发行物 **`CloudXMusic-3.0.0.jar`** 放入该游戏实例的 `mods/` 目录。
 4. 启动游戏，默认按 **H** 打开或关闭音乐盒，可在游戏按键设置中修改。
-5. 首次进入时阅读统一的《用户使用协议与免责声明》，滚动到底部后选择“同意并继续”。“拒绝并退出”会离开音乐界面。
+5. 首次进入时阅读《用户使用协议》，滚动到底部选择“同意并继续”。
 6. 在左侧账号区选择音源并登录，再使用发现、搜索、我的收藏和播放队列。
 
-**不要将 `-sources.jar` 或源码 ZIP 放入 `mods/`** ，Gradle 生成的 sources JAR 用于阅读源码，不是可运行模组
-
-播放使用 Java Sound，运行时需要 `java.desktop` 模块及可用声卡。当前发行包内置 Windows x64 Skija；Linux、macOS 和其他架构需要适配相应原生运行库。
+播放使用 Java Sound，运行时需要 `java.desktop` 模块及可用声卡。发行包内置 Windows x64 Skija 原生库。
 
 ## 账号与 Cookie 登录
 
@@ -73,19 +70,19 @@ Cookie 登录操作：
 3. 将其粘贴到模组的 Cookie 输入框，点击“验证并登录”。
 4. 后台校验成功后保存账号并刷新头像、昵称和会员资料；校验失败或取消不会覆盖原账号。
 
-QQ 解析 `uin` / `qm_keyst`，酷狗解析 `userid` / `token`，并兼容官方 `KuGoo` 组合 Cookie。不同网页、地区和会话返回的字段可能不同；缺失必要字段时应重新复制有效请求的 Cookie。
+QQ 解析 `uin` / `qm_keyst`，酷狗解析 `userid` / `token`，并兼容官方 `KuGoo` 组合 Cookie。不同网页、地区和会话返回的字段可能不同；缺失必要字段时重新复制有效请求的 Cookie。
 
 - **Cookie 会话**：每次请求使用已保存的对应凭证，只做只读有效性检查，不调用续期接口。
-- **扫码会话**：保存平台实际返回的续期信息，后台每 12 小时最多尝试一次静默续期；是否可续期取决于平台返回的会话能力。
-- **明确失效**：提示重新扫码或粘贴 Cookie；网络异常不会直接把已有凭证清空。
-- **重启恢复**：从对应账号文件加载会话并在后台复查。任何客户端都不能保证服务端永不撤销凭证。
+- **扫码会话**：保存平台实际返回的续期信息，后台每 12 小时最多尝试一次静默续期；能否续期取决于平台返回的会话能力。
+- **明确失效**：提示重新扫码或粘贴 Cookie；网络异常不会清空已有凭证。
+- **重启恢复**：从对应账号文件加载会话并在后台复查。
 
-账号头像、昵称、VIP / SVIP 资料来自平台。会员徽章只代表读取到的账号资料，不能作为某首歌或某档音质必定可播的保证。不要向他人发送 Cookie、token 或账号文件。
+账号头像、昵称、VIP / SVIP 资料来自平台。会员徽章代表读取到的账号资料，与单曲或音质的可播性无关。
 
 ## 架构与源码
 
 ```text
-cloudxmusic-client/src/main/java/
+cloudxmusic-client-26.3/src/main/java/
 ├─ dev/lzasn/cloudxmusic/client/
 │  ├─ CloudXMusicClient       生命周期、输入、模块装配
 │  ├─ omni/                  全局音源状态机、统一歌曲与播放快照、路由
@@ -101,39 +98,33 @@ cloudxmusic-client/src/main/java/
 └─ com/muoniumplayer/         已注明来源的世界歌词子系统
 ```
 
+26.3 客户端是独立 Gradle 构建，与仓库根构建互不干扰；`libs/`、`music-protocol/`、`music-server/` 由两者共用；1.21.11 客户端保留在 `cloudxmusic-client/`，版本 2.6.0
+
 ## 构建与验证
 
-需要 JDK 21。首次构建需要网络下载 Gradle、Minecraft、Fabric 和 Maven 依赖；已具备完整本地缓存时可加 `--offline`。
+需要 JDK 25。首次构建需要网络下载 Gradle、Minecraft、Fabric 与 Maven 依赖；本地缓存完整时可加 `--offline`。
 
-Windows：
+客户端在模块目录内构建：
 
 ```powershell
+cd cloudxmusic-client-26.3
 .\gradlew.bat clean build --console=plain
 ```
 
-Linux / macOS 的源码构建命令：
-
-```bash
-chmod +x gradlew
-./gradlew clean build --console=plain
-```
-
-上述跨平台构建命令不代表当前 Windows 原生库组合已完成其他平台的运行适配。客户端产物位于：
+产物：
 
 ```text
-cloudxmusic-client/build/libs/CloudXMusic-2.6.0-alpha.3.jar
+cloudxmusic-client-26.3/build/libs/CloudXMusic-3.0.0.jar
 ```
 
-运行测试或离线 UI 预览：
+测试与离线 UI 预览：
 
 ```powershell
-.\gradlew.bat :cloudxmusic-client:test --console=plain
-.\gradlew.bat :cloudxmusic-client:renderUiPreview --console=plain
+.\gradlew.bat test --console=plain
+.\gradlew.bat renderUiPreview --console=plain
 ```
 
-JUnit XML 位于 `cloudxmusic-client/build/test-results/test/`，HTML 报告位于 `cloudxmusic-client/build/reports/tests/test/`；离线预览输出到 `outputs/`。测试覆盖登录与持久化、签名与脱敏、搜索/推荐隔离、KRC、取链与试听拒绝、分页、取消、完整队列、播放互斥、拖拽及 UI 几何等。固定响应、回环 HTTP 和测试音频不能代替真实账号与游戏声卡验收；本次发布准备的实际构建结果以随交付产物提供的验证记录为准。
-
-打包时应检查 `fabric.mod.json`、运行 class、嵌套库、许可证与源代码归档，并排除真实凭证、运行目录、构建缓存及调试产物。公开问题前请人工复核日志，默认日志保留路由与错误摘要，完整脱敏取链请求和回包仅在 DEBUG 级别输出
+JUnit XML 位于 `cloudxmusic-client-26.3/build/test-results/test/`，HTML 报告位于 `build/reports/tests/test/`；离线预览输出到 `outputs/`。测试覆盖登录与持久化、签名与脱敏、搜索/推荐隔离、KRC、取链与试听拒绝、分页、取消、完整队列、播放互斥、拖拽及 UI 几何。
 
 ## 本地数据与隐私
 
@@ -148,25 +139,13 @@ JUnit XML 位于 `cloudxmusic-client/build/test-results/test/`，HTML 报告位�
 | `kugou/account.json`                | 酷狗 token / userid、Cookie、设备会话、登录方式及资料 |
 | `kugou/library.json`                | 酷狗偏好、兼容的旧音质字段与旧本地列表                   |
 | `state.json`                        | 原有播放状态与队列                             |
-| `disclaimer.txt`                    | 全局协议修订版确认记录                           |
-| 根目录 `cookies.json` / `netease.json` | 历史路径；现有迁移逻辑兼容，不应公开                    |
+| `disclaimer.txt`                    | 协议确认记录                                |
+| 根目录 `cookies.json` / `netease.json` | 历史路径；现有迁移逻辑兼容                         |
 
-凭证保存在本机，**不等于加密保险箱**。请保护操作系统账户、实例目录和备份；不要分享完整配置目录、存档打包、账号截图、Cookie 或未检查的日志。对应认证请求仍需把必要凭证发送给对应官方服务，音频 CDN 下载不附带账号 Cookie；项目不通过自建账号服务器中转登录。
-
-## 使用须知与免责声明
-
-首次使用的完整协议随 JAR 发布于 [`user-agreement.txt`](cloudxmusic-client/src/main/resources/assets/cloudxmusic/terms/user-agreement.txt)
-
-使用前请理解以下事项：
-
-- **非官方接口**：平台接口、网页结构、签名和风控可随时变化，服务可能限流、中断或失效。CloudXMusic 不代表平台官方客户端或平台授权。
-- **账号风险**：第三方客户端、Cookie 导入、扫码和设备验证可能触发账号限制、凭证撤销或封禁。是否登录应由账号所有者自行决定，请遵守平台协议。
-- **版权与权限**：音频从服务返回的 CDN 地址获取，歌词和封面来自相应服务；不因使用模组而取得传播、下载再分发或商业利用作品的权利。禁止绕过付费、版权和地区限制，不提供侵权内容。
-- **云端操作**：酷狗收藏会修改真实账号数据；聊天分享按所在频道公开，房间向成员同步曲目和播放状态。操作前确认账号与可见范围。
-- **软件责任**：项目按许可证和适用法律以现状提供，不保证接口持续可用、特定音质、账号安全或同步效果。在法律允许范围内不作相应担保；法律规定不得免除的责任不因本声明排除。
-- **许可边界**：原创程序采用 GPL-3.0-only。学习、修改和再分发应遵守 GPL，第三方组件遵守各自许可；平台内容和账号权限不属于程序许可证授予的权利。本项目不附加与 GPL 冲突的“禁止商用”软件许可限制。
+凭证以明文保存在本机。认证请求需要把对应凭证发送给对应官方服务；音频 CDN 下载不附带账号 Cookie，项目不通过自建账号服务器中转登录。
 
 ## 贡献、资料与许可证
 
 原作者与贡献者：**Lzasn**（客户端、网易云音源与解码）、**xWtree**（早期界面与宣传）、**xiaota888**（QQ 音源、聚合架构与逐字歌词等）。保留既有作者信息与第三方来源声明。
+
 原创代码采用 [GNU GPL-3.0-only](LICENSE)。解码、二维码、世界歌词和字体等第三方组件分别遵循各自许可。完整来源、固定版本和随包声明见 [THIRD\_PARTY\_NOTICES.md](THIRD_PARTY_NOTICES.md)；第三方许可证、NOTICE 和规定提供的源码归档随发行包保留。

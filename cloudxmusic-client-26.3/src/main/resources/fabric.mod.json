@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "cloudxmusic",
+  "version": "${version}",
+  "name": "CloudXMusic · 云朵音乐盒",
+  "description": "云朵音乐盒：Minecraft Fabric 客户端三音源音乐播放器，支持网易云、QQ、酷狗音乐、账号歌单、逐字歌词、灵动岛与 3D 世界歌词。",
+  "authors": [
+    "Lzasn",
+    "xWtree",
+    "xiaota888"
+  ],
+  "contact": {
+    "sources": "https://github.com/CloudXmc/CloudXMusic"
+  },
+  "license": "GPL-3.0-only",
+  "icon": "assets/cloudxmusic/icon.png",
+  "environment": "client",
+  "mixins": [
+    "cloudxmusic.worldlyrics.mixins.json"
+  ],
+  "entrypoints": {
+    "client": [
+      "dev.lzasn.cloudxmusic.client.CloudXMusicClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.1",
+    "minecraft": ">=26.3 <26.4",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

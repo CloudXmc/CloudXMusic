@@ -1,3 +1,42 @@
+## 3.0.0 - 2026-11-24
+
+> 迁移到 Minecraft 26.3（Java 25）。客户端拆出独立模块 `cloudxmusic-client-26.3`，1.21.11 的 `2.6.0` 线保留在 `cloudxmusic-client/`。
+
+26.3 换了世界渲染模型、输入后端与 GUI 绘制模型，迁移覆盖渲染、输入、HUD、网络注册和工具链；业务逻辑（音源接入、播放状态机、账号、歌单、歌词解析）未改动。
+
+### 客户端
+
+- 新模块 `cloudxmusic-client-26.3` 为独立 Gradle 构建：Loom `net.fabricmc.fabric-loom` 1.17.21（无 mappings、无 `remapJar`）、Fabric API `0.167.0+26.3`、Loader `0.20.1`、JDK 25、Gradle 9.7.1，仓库走腾讯云镜像。
+- GUI 绘制改为 `GuiGraphicsExtractor`：`Screen#render` → `extractRenderState`、`renderBackground` → `extractBackground`、`drawString` → `text`、`drawCenteredString` → `centeredText`。
+- 屏幕与聊天入口：`Minecraft#setScreen` → `Gui#setScreen`、`Minecraft.screen` → `Gui#screen()`、`Gui#getChat` → `Hud#getChat`、`addMessage` → `addClientSystemMessage`。
+- HUD 改用 `HudElementRegistry`（`HudRenderCallback` 在 26.3 已移除），Toast 改 `Gui#toastManager` 与 `SystemToast#add`。
+- 输入后端换成 SDL：删除全部 GLFW 常量，改用 `InputConstants.KEY_*` 与 `InputConstants.Type.KEYBOARD`；`KeyBindingHelper` → `KeyMappingHelper`；自定义文本框在屏幕开合时调用 `textInputManager().start/stopTextInput`，否则 SDL 下收不到字符。
+- 网络注册 `playC2S/playS2C` → `serverboundPlay/clientboundPlay`；客户端命令改用 Brigadier 构建器（`ClientCommandManager` 已移除）。
+- 3D 世界歌词按上游 26.3 实现重做：几何走 `SubmitNodeCollector#submitCustomGeometry`，并提交进 `SubmitRenderPhases.ALWAYS_ON_TOP` 相位（配 `LevelRenderer#frameHasAlwaysOnTopGizmos` 的 `@ModifyExpressionValue` 补齐执行门），歌词绘制在云、玻璃与天气之上。
+- 光影包适配：`ShaderPackProbe` 探测 Iris / Oculus，激活时渲染类型切到 `RenderTypes.beaconBeam` 全亮管线；加色晕格使用自建 `RenderPipeline`（`BlendFunction.LIGHTNING`）；激进档走 capture + `presentComposite` 直画主目标。
+- 绘光拖尾保持 CPU 光栅路径（Skija 光栅 → 动态纹理 → 单 quad），未引入裸 GL 的 GPU 拖尾分支。
+
+### 修复（首轮实机）
+
+- SDL 下鼠标左键的 `MouseButtonInfo#button()` 由 GLFW 的 `0` 变为 `1`，全部左键判定（`MusicScreen`、`IslandPositionScreen`、`FirstRunNoticeScreen` 共 7 处）同步改为 `1`，否则面板可正常绘制但鼠标点击全部落到 `super`、无任何响应。
+- 灵动岛「显示」开关纳入持久化：`state.json` 增加 `islandEnabled`，切换即写盘。
+- 「光影直绘」的合成时机从 HUD 元素改为 `GlSurface#present()` 入口（新增 `GlSurfaceMixin`）。HUD 回调处在 GUI 收集阶段，直画内容会被随后的 GUI pass 覆盖，表现为开启后 3D 歌词完全不可见。
+- 关于页的版本串由 `Minecraft 1.21.11` 改为 `26.3`。
+- 光影提示文案改为「光影包生效中，…」，开启路径指向实际存在的「设置 → 3D 世界歌词 → 光影直绘」。
+
+### 服务端
+
+- 插件升到 `1.0.7`，`api-version: '26.3'`，编译目标 Java 25。
+- `folia-api` 由 `1.21.11-R0.1-SNAPSHOT` 换成 `26.3.build.27-stable`；删除固定 `adventure-text-minimessage / serializer-legacy 4.26.1`，改由 folia-api 经 `adventure-bom 5.2.0` 传递提供，编译期与运行期版本一致。
+- 协议 `Protocol.VERSION` 保持 `5`，客户端与服务端报文结构未变。
+
+### 产物
+
+- 客户端：`cloudxmusic-client-26.3/build/libs/CloudXMusic-3.0.0.jar`（Fabric，Minecraft `>=26.3 <26.4`，Java `>=25`）。
+- 服务端：`music-server/build/libs/CloudXMusic-Server-1.0.7.jar`（Folia / Paper 26.3，`folia-supported`）。
+
+---
+
 ## 2.6.0 - 2026-11-16
 
 > 把 `2.6.0-alpha.3` 的三音源聚合定稿为正式版 `2.6.0`。功能与该版本一致，差异集中在界面文案与文档整理。

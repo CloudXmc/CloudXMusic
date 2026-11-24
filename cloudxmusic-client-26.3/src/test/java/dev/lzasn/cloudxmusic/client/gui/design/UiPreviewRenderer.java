@@ -1,0 +1,278 @@
+package dev.lzasn.cloudxmusic.client.gui.design;
+
+import dev.lzasn.cloudxmusic.client.state.Track;
+import dev.lzasn.cloudxmusic.client.omni.SongView;
+import dev.lzasn.cloudxmusic.client.gui.MojangAvatarCache;
+import dev.lzasn.cloudxmusic.client.kugou.KugouSourcePainter;
+import dev.lzasn.cloudxmusic.client.omni.MusicSource;
+import dev.lzasn.cloudxmusic.client.omni.MusicSourceCoordinator;
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import static dev.lzasn.cloudxmusic.client.gui.design.MusicLayout.*;
+import static dev.lzasn.cloudxmusic.client.gui.design.MusicView.Page;
+import static dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas.*;
+
+/** Java21-only offline painter and alignment smoke check for the shipped interface. */
+public final class UiPreviewRenderer {
+    private static final Track CURRENT = new Track("春日序曲", "雲與微光", 258, "1001", "微光花園", "");
+    private static final List<Track> TRACKS = List.of(
+            new Track("雨中的花开", "雲與微光", 216, "1002", "柔软时刻", ""),
+            new Track("安静的清晨", "星", 242, "1003", "打开的窗", ""),
+            new Track("远方的世界", "森", 231, "1004", "云图", ""),
+            new Track("晚风吹过花园", "橙子海", 205, "1005", "风的来信", ""),
+            new Track("玻璃海岸", "时雨", 187, "1006", "夏日地图", ""),
+            new Track("回家的路", "白日梦", 223, "1007", "北方的风", ""),
+            new Track("夜色慢慢降落", "木棉", 198, "1008", "灯火温柔", ""),
+            new Track("候鸟与信", "南屿", 236, "1009", "远行", ""));
+    private static final MusicView.RoomView ROOM_LOBBY = new MusicView.RoomView(
+            false, "", "网易云音乐", "", "", "", 0, 0, false, false, List.of(), List.of(),
+            List.of(
+                    new MusicView.RoomSummary("CXM7Q2", "xWtree", "网易云音乐", 4, "播放中"),
+                    new MusicView.RoomSummary("QQM3A8", "jeb_", "QQ 音乐", 2, "等待加入"),
+                    new MusicView.RoomSummary("NF2K9P", "Dinnerbone", "网易云音乐", 6, "播放中"),
+                    new MusicView.RoomSummary("LOFI42", "Notch", "网易云音乐", 3, "播放中"),
+                    new MusicView.RoomSummary("QQP7X1", "Grumm", "QQ 音乐", 5, "等待加入"),
+                    new MusicView.RoomSummary("CXM9R4", "Searge", "网易云音乐", 2, "播放中")),
+            0, -1, "列表循环", 20, 0);
+    private static final MusicView.RoomView ROOM_ACTIVE = new MusicView.RoomView(
+            true, "CXM7Q2", "网易云音乐", "已同步 · 房间播放中",
+            "春日序曲", "雲與微光", 1020, 258, true, true,
+            List.of(
+                    new MusicView.RoomMember("Lzasn", "正在播放", true, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("xWtree", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("xiaota888", "暂停跟听", false, MusicView.MemberTone.PAUSED),
+                    new MusicView.RoomMember("阿岚", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("jeb_", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("Dinnerbone", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("Notch", "正在跟听", false, MusicView.MemberTone.ACTIVE),
+                    new MusicView.RoomMember("Searge", "正在跟听", false, MusicView.MemberTone.ACTIVE)),
+            List.of(
+                    new MusicView.RoomTrack("雨中的花开", "雲與微光", "3:36"),
+                    new MusicView.RoomTrack("安静的清晨", "星", "4:02"),
+                    new MusicView.RoomTrack("远方的世界", "森", "3:51"),
+                    new MusicView.RoomTrack("晚风吹过花园", "橙子海", "3:25"),
+                    new MusicView.RoomTrack("玻璃海岸", "时雨", "3:07"),
+                    new MusicView.RoomTrack("回家的路", "白日梦", "3:43"),
+                    new MusicView.RoomTrack("夜色慢慢降落", "木棉", "3:18"),
+                    new MusicView.RoomTrack("候鸟与信", "南屿", "3:56")),
+            List.of(), 1, 0, "列表循环", 20, 0);
+    /** 成员视角：同一房间，owner=false，用于核对播放页底栏置灰。 */
+    private static final MusicView.RoomView ROOM_MEMBER = new MusicView.RoomView(
+            true, "CXM7Q2", "网易云音乐", "成员跟随房主播放", "春日序曲", "雲與微光", 1020, 258, true, false,
+            ROOM_ACTIVE.members(), ROOM_ACTIVE.queue(), List.of(), 1, 0, "列表循环", 20, 0);
+
+    UiPreviewRenderer() {}
+
+    @Test void layoutCoordinatesStayAlignedAndInsideTheCanvas() { validateLayout(); }
+    public static void main(String[] args) throws Exception {
+        Path out=Path.of(args.length==0?"../../outputs":args[0]).toAbsolutePath().normalize();
+        Files.createDirectories(out);
+        validateLayout();
+        for (String playerId : List.of("xWtree", "jeb_", "Dinnerbone", "Notch", "Grumm", "Searge")) {
+            MojangAvatarCache.loadNowForPreview(playerId);
+        }
+        render(out,"cloudxmusic-now-playing.png",Page.NOW,"",false,0,false);
+        render(out,"cloudxmusic-library.png",Page.DISCOVER,"",false,0,false);
+        render(out,"cloudxmusic-search.png",Page.SEARCH,"微光",true,1,false);
+        render(out,"cloudxmusic-room-lobby.png",Page.ROOM,"",false,0,false,null,ROOM_LOBBY);
+        render(out,"cloudxmusic-room-lobby-dark.png",Page.ROOM,"",false,0,true,null,ROOM_LOBBY);
+        render(out,"cloudxmusic-room-active.png",Page.ROOM,"",false,0,false,null,ROOM_ACTIVE);
+        render(out,"cloudxmusic-room-active-dark.png",Page.ROOM,"",false,0,true,null,ROOM_ACTIVE);
+        // 房间里「正在播放」页：房主可操作，成员上下首/队列/循环置灰。
+        render(out,"cloudxmusic-now-room-owner.png",Page.NOW,"",false,0,false,null,ROOM_ACTIVE);
+        render(out,"cloudxmusic-now-room-member.png",Page.NOW,"",false,0,false,null,ROOM_MEMBER);
+        render(out,"cloudxmusic-settings.png",Page.SETTINGS,"",false,0,false);
+        render(out,"cloudxmusic-settings-dark.png",Page.SETTINGS,"",false,0,true);
+        render(out,"cloudxmusic-settings-scrolled.png",Page.SETTINGS,"",false,0,false,
+                null,null,MusicLayout.settingsMaxScroll());
+        render(out,"cloudxmusic-account.png",Page.ACCOUNT,"",false,0,false);
+        render(out,"cloudxmusic-account-dark.png",Page.ACCOUNT,"",false,0,true);
+        String[] phoneValues={"","","15016649252","3638",""};
+        MusicPainter.AccountView phoneForm=new MusicPainter.AccountView(
+                false,"","","",2,phoneValues,3,true,"",45);
+        render(out,"cloudxmusic-account-phone.png",Page.ACCOUNT,"",false,0,false,phoneForm);
+        render(out,"cloudxmusic-account-phone-dark.png",Page.ACCOUNT,"",false,0,true,phoneForm);
+        for(Page page:List.of(Page.NOW,Page.SEARCH,Page.FAVORITES,Page.QUEUE,Page.ROOM))
+            renderKugou(out,"cloudxmusic-kugou-"+page.name().toLowerCase()+".png",page,false);
+        renderKugou(out,"cloudxmusic-kugou-now-dark.png",Page.NOW,true);
+        renderKugouSources(out);
+        renderNotice(out);
+        System.out.println("Java "+Runtime.version()+"; layout smoke check passed; previews: "+out);
+    }
+
+    private static MusicView kugouView(Page page,boolean dark){
+        var current=new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F90","春日序曲","雲與微光","微光花園",258,"",true);
+        List<SongView> tracks=List.of(
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F91","雨中的花开","雲與微光","柔软时刻",216,"",true),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F92","安静的清晨","星","打开的窗",242,"",false),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F93","远方的世界","森","云图",231,"",true),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F94","晚风吹过花园","橙子海","风的来信",205,"",false),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F95","玻璃海岸","时雨","夏日地图",187,"",true),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F96","回家的路","白日梦","北方的风",223,"",false),
+                new SongView(MusicSource.KUGOU,"A1B2C3D4E5F60718293A4B5C6D7E8F97","夜色慢慢降落","木棉","灯火温柔",198,"",true));
+        List<MusicView.LyricRow> lyrics=List.of(new MusicView.LyricRow("夜色慢慢降落","",false),new MusicView.LyricRow("灯火温柔地摇曳","",false),new MusicView.LyricRow("雨滴轻轻落在叶片上","",false),new MusicView.LyricRow("把黄昏染成柔粉色","染成温柔的颜色",true),new MusicView.LyricRow("轻柔的旋律陪伴方块世界","",false),new MusicView.LyricRow("风穿过打开的窗","",false),new MusicView.LyricRow("云图在远方缓缓展开","",false));
+        MusicView.RoomView room=MusicView.RoomView.empty();
+        return new MusicView(page,current,page==Page.NOW||page==Page.SETTINGS?List.of():tracks,
+                page==Page.NOW?tracks:List.of(),lyrics,102,true,true,"酷狗用户",page==Page.SEARCH?"春日序曲":"",page==Page.SEARCH,true,
+                "搜索到 7 首酷狗歌曲","无损音质","原文 + 翻译",true,dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,
+                "2.6.0-alpha.3","",0,-1,.72f,"",dark,.8f,1f,.5f,.06f,"H",0,7,room);
+    }
+    private static void renderKugou(Path out,String file,Page page,boolean dark)throws Exception{
+        FrostCanvas.setDark(dark);MusicView view=kugouView(page,dark);MusicLayout layout=new MusicLayout(page,view.tracks().size(),3);
+        BufferedImage image=MusicPainter.paint(view,layout,1,url->null,c->{c.round(34,461,36,36,18,SOFT);UiIcons.draw(c,"user",52,479,20,DEEP);c.text("酷狗用户",82,474,14,true,INK,151);c.text("酷狗音乐 · 切换音源 / 管理",82,495,11,false,MUTED,151);});
+        Graphics2D g=image.createGraphics();
+        if(page==Page.NOW){var cover=MusicPainter.paintCover(view,1,.97f,url->null);var r=coverRegion();g.drawImage(cover,r.x()+PAD,r.y()+PAD,null);var lyrics=MusicPainter.paintLyrics(view,1,true);r=lyricRegion();g.drawImage(lyrics,r.x()+PAD,r.y()+PAD,null);var bar=MusicPainter.paintPlaybackBar(view,new MusicPainter.PlaybackBarView(view.current().title(),view.current().artist(),258,102,true,.72f,"无损音质",true,true),1);r=MusicPainter.playbackBarRegion();g.drawImage(bar,r.x()+PAD,r.y()+PAD,null);}
+        g.dispose();ImageIO.write(image,"png",out.resolve(file).toFile());
+    }
+    private static void renderKugouSources(Path out)throws Exception{
+        FrostCanvas.setDark(false);var route=new MusicSourceCoordinator.View(MusicSource.KUGOU,MusicSource.KUGOU,3,false,false,"");
+        ImageIO.write(KugouSourcePainter.menu(1,route,"小云","QQ 用户","酷狗用户"),"png",out.resolve("cloudxmusic-kugou-sources.png").toFile());
+    }
+
+    private static void validateLayout() {
+        for(Page page:Page.values()) {
+            MusicLayout l=new MusicLayout(page,ROWS,3);
+            for(Hit h:l.hits()) {
+                Box b=h.box();
+                if(b.w()<=0||b.h()<=0||b.x()<0||b.y()<0||b.x()+b.w()>WIDTH||b.y()+b.h()>HEIGHT)
+                    throw new AssertionError(page+" hitbox out of bounds: "+h);
+            }
+            if(page!=Page.NOW&&page!=Page.SETTINGS&&page!=Page.ACCOUNT&&page!=Page.ROOM) {
+                Box first=l.box("row0"),last=l.box("row5"),add=l.box("add0");
+                if(first.y()!=ROW_TOP||last.y()!=ROW_TOP+5*ROW_H||add.cy()!=first.cy())
+                    throw new AssertionError(page+" list columns are not aligned");
+            }
+        }
+        if(new MusicLayout(Page.SEARCH,ROWS,3).hit(990,134)==null)
+            throw new AssertionError("search action does not have a hitbox");
+        if(new MusicLayout(Page.NOW,ROWS,3).hit(500,652)==null)
+            throw new AssertionError("seek bar does not have a hitbox");
+        if(new MusicLayout(Page.NOW,ROWS,3).hit(671,619)==null)
+            throw new AssertionError("transport controls do not have a hitbox");
+        int settingsEnd=MusicLayout.settingsMaxScroll();
+        MusicLayout settingsLayout=new MusicLayout(Page.SETTINGS,0,0,settingsEnd);
+        Box lastWorldRow=settingsLayout.box("worldLyricLeft7");
+        if(lastWorldRow.y()<0||MusicLayout.SETTINGS_ABOUT_Y-settingsEnd+200>HEIGHT)
+            throw new AssertionError("settings content cannot be fully reached by scrolling");
+        Box field=MusicPainter.accFieldBox(0),code=MusicPainter.accPhoneCodeBox();
+        Box send=MusicPainter.accSendBox(),submit=MusicPainter.accSubmitBox();
+        if(code.y()!=send.y()||code.h()!=send.h()||send.x()-code.x()-code.w()!=10)
+            throw new AssertionError("verification code row is not aligned");
+        if(submit.x()!=field.x()||submit.w()!=field.w())
+            throw new AssertionError("account submit button does not match the form width");
+        for(Box b:List.of(roomHeroBox(),roomCreateBox(),roomJoinBox(),roomSourceNeteaseBox(),
+                roomSourceQqBox(),roomCreateButtonBox(),roomJoinFieldBox(),roomJoinButtonBox(),
+                roomListRowBox(0),roomListRowBox(7),roomNowBox(),roomQueueBox(),roomQueueRowBox(0),roomQueueRowBox(4),roomMembersBox(),
+                roomExitButtonBox())) {
+            if(b.w()<=0||b.h()<=0||b.x()<0||b.y()<0||b.x()+b.w()>WIDTH||b.y()+b.h()>HEIGHT)
+                throw new AssertionError("room box out of bounds: "+b);
+        }
+    }
+
+    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,boolean darkMode) throws Exception {
+        render(out,file,page,search,focused,focusIndex,darkMode,null,null);
+    }
+
+    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,
+                               boolean darkMode,MusicPainter.AccountView accountViewOverride) throws Exception {
+        render(out,file,page,search,focused,focusIndex,darkMode,accountViewOverride,null);
+    }
+
+    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,
+                               boolean darkMode,MusicPainter.AccountView accountViewOverride,
+                               MusicView.RoomView roomViewOverride) throws Exception {
+        render(out,file,page,search,focused,focusIndex,darkMode,accountViewOverride,roomViewOverride,0);
+    }
+
+    private static void render(Path out,String file,Page page,String search,boolean focused,int focusIndex,
+                               boolean darkMode,MusicPainter.AccountView accountViewOverride,
+                               MusicView.RoomView roomViewOverride,int settingsScroll) throws Exception {
+        int width=1600,height=900;
+        BufferedImage frame=new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);
+        Graphics2D bg=frame.createGraphics();
+        if(darkMode){
+            bg.setPaint(new GradientPaint(0,0,new Color(22,31,34),0,520,new Color(37,30,35)));
+            bg.fillRect(0,0,width,height);
+            bg.setColor(new Color(42,82,72,115));
+            for(int x=0;x<width;x+=190)bg.fillRect(x,470+(x%3)*17,150,430);
+            bg.setColor(new Color(73,45,62,95));bg.fillRect(0,0,width,height);
+        } else {
+            bg.setPaint(new GradientPaint(0,0,new Color(213,231,228),0,420,new Color(241,227,232)));
+            bg.fillRect(0,0,width,height);
+            bg.setColor(new Color(117,159,137,170));
+            for(int x=0;x<width;x+=160)bg.fillRect(x,470+(x%3)*17,160,430);
+            bg.setColor(new Color(81,128,101,170));
+            for(int x=0;x<width;x+=240){bg.fillRect(x+40,420,110,280);bg.fillRect(x,475,190,425);}
+            bg.setColor(new Color(37,51,45,38));bg.fillRect(0,0,width,height);
+            bg.setColor(new Color(242,238,239,130));bg.fillRect(0,0,width,height);
+        }
+        bg.dispose();
+        FrostCanvas.setDark(darkMode);
+
+        List<Track> queue=List.of(CURRENT,TRACKS.get(0),TRACKS.get(1),TRACKS.get(2));
+        MusicLayout layout=new MusicLayout(page,page==Page.NOW||page==Page.SETTINGS?0:ROWS,
+                queue.size()-1,page==Page.SETTINGS?settingsScroll:0);
+        List<Track> rows=page==Page.NOW||page==Page.SETTINGS?List.of():TRACKS.subList(0,ROWS);
+        List<Track> upcoming=page==Page.NOW?queue.subList(1,4):List.of();
+        var lyrics=List.of(
+                new MusicView.LyricRow("夜色慢慢降落","",false),
+                new MusicView.LyricRow("灯火温柔地摇曳","",false),
+                new MusicView.LyricRow("雨滴轻轻落在叶片上","",false),
+                new MusicView.LyricRow("把黄昏染成柔粉色","染成温柔的颜色",true),
+                new MusicView.LyricRow("轻柔的旋律，陪伴方块世界","",false),
+                new MusicView.LyricRow("风穿过打开的窗","",false),
+                new MusicView.LyricRow("云图在远方缓缓展开","",false));
+        MusicView view=new MusicView(page,SongView.from(CURRENT),
+                rows.stream().map(SongView::from).toList(),upcoming.stream().map(SongView::from).toList(),lyrics,
+                102,true,true,"CloudXMusic",search,focused,true,"每日推荐已更新", "极高 320K","原文 + 翻译",true,
+                dev.lzasn.cloudxmusic.client.state.PlaybackMode.REPEAT_LIST,true,"2.6.0-alpha.1","",0,-1,.8f,"",
+                darkMode,.8f,1f,.5f,.06f,"H",0,40,
+                roomViewOverride==null?MusicView.RoomView.empty():roomViewOverride);
+        BufferedImage canvas=MusicPainter.paint(view,layout,1d,url->null);
+        Graphics2D oc=canvas.createGraphics();
+        if(page==Page.NOW){
+            // 封面与歌词是独立图层，预览按同一落点叠回去。
+            BufferedImage cover=MusicPainter.paintCover(view,1d,1f,url->null);
+            Box cr=coverRegion();
+            oc.drawImage(cover,cr.x()+PAD,cr.y()+PAD,null);
+            BufferedImage lyricLayer=MusicPainter.paintLyrics(view,1d);
+            Box lr=lyricRegion();
+            oc.drawImage(lyricLayer,lr.x()+PAD,lr.y()+PAD,null);
+        }
+        if(page==Page.ACCOUNT){
+            var accountView=accountViewOverride!=null?accountViewOverride
+                    :new MusicPainter.AccountView(false,"","","",0,new String[5],-1,false,"",0);
+            BufferedImage accountLayer=MusicPainter.paintAccount(accountView,1d);
+            Box ar=accountRegion();
+            oc.drawImage(accountLayer,ar.x()+PAD,ar.y()+PAD,null);
+        }
+        // 静态画布不再包含进度与时间，预览要把动态层按同一落点叠回去。
+        BufferedImage overlay=MusicPainter.paintDynamic(view,layout,1d);
+        Box band=dynamicRegion(page);
+        oc.drawImage(overlay,band.x()+PAD,band.y()+PAD,null);
+        oc.dispose();
+        Graphics2D g=frame.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.drawImage(canvas,(width-canvas.getWidth())/2,52,null);
+        if(page==Page.NOW){
+            BufferedImage island=IslandPainter.paint(new IslandPainter.View(CURRENT.title(),CURRENT.artist(),"01:42",395,false),1d);
+            g.drawImage(island,(width-island.getWidth())/2,14,null);
+        }
+        g.dispose();
+        ImageIO.write(frame,"png",out.resolve(file).toFile());
+    }
+
+    private static void renderNotice(Path out) throws Exception {
+        BufferedImage image=new BufferedImage(1200,720,BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g=image.createGraphics();g.setColor(new Color(237,232,236));g.fillRect(0,0,image.getWidth(),image.getHeight());
+        BufferedImage notice=FirstRunNoticePainter.paint(false,1);
+        g.drawImage(notice,(image.getWidth()-notice.getWidth())/2,(image.getHeight()-notice.getHeight())/2,null);
+        g.dispose();ImageIO.write(image,"png",out.resolve("cloudxmusic-first-run-notice.png").toFile());
+    }
+}

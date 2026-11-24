@@ -1,0 +1,293 @@
+package dev.lzasn.cloudxmusic.client.gui.design;
+
+import dev.lzasn.cloudxmusic.client.omni.MusicSource;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** 绘制和点击共享设计坐标；所有列宽、对齐和命中区域集中在这里。 */
+public final class MusicLayout {
+    /**
+     * 画布透明留白。外层窗口阴影的 margin 为 {@code blur(28)*3 + spread(2) = 86}，
+     * 再留出 10px 余量，低于此值阴影四边会被裁成硬线。
+     */
+    public static final int WIDTH = 1100, HEIGHT = 674, PAD = 96;
+    public static final int MAIN_X = 292, MAIN_W = 758;
+    public static final int ROW_TOP = 212, ROW_H = 50, ROWS = 8;
+    public enum Action { PAGE, ACCOUNT, CLOSE, PREVIOUS, PLAY, NEXT, SEEK, SEARCH_FIELD, SEARCH,
+        ROW, ADD, CLEAR, REFRESH, QUALITY, LYRIC, ISLAND, VOLUME, FAVORITE, PLAYBACK_MODE, MODE_CYCLE,
+        STOP, ACC_FIELD, ACC_PASSWORD, ACC_PHONE, ACC_COOKIE, ACC_SEND, ACC_LOGOUT, ACC_REFRESH,
+        DARK_MODE, PANEL_SCALE, ISLAND_SCALE, ISLAND_POS, TRANSLATE, PLAY_ALL, SHARE, SHARE_ROW,
+        WORLD_LYRICS, WORLD_LYRICS_DISTANCE, WORLD_LYRICS_SCALE, WORLD_LYRICS_SPREAD,
+        WORLD_LYRICS_STAY, WORLD_LYRICS_KEEP_DISTANCE, WORLD_LYRICS_TRANSLATION,
+        WORLD_LYRICS_SPLIT_LINES, WORLD_LYRICS_GLOW, WORLD_LYRICS_GLOW_STRENGTH,
+        WORLD_LYRICS_GLOW_MODE, WORLD_LYRICS_WORD_POP, WORLD_LYRICS_CADENZA,
+        WORLD_LYRICS_HUIGUANG, WORLD_LYRICS_HUD_DRAW, WORLD_LYRICS_TRANS_EFFECTS,
+        ROOM_SOURCE, ROOM_CREATE, ROOM_JOIN_FIELD, ROOM_JOIN, ROOM_LIST_ENTRY, ROOM_LEAVE }
+    public record Box(int x, int y, int w, int h) {
+        public boolean contains(double px, double py) { return px >= x && py >= y && px < x + w && py < y + h; }
+        public int cx() { return x + w / 2; }
+        public int cy() { return y + h / 2; }
+    }
+    public record Hit(String id, Action action, int index, Box box) {}
+    private final List<Hit> hits = new ArrayList<>();
+    private final Map<String, Box> boxes = new LinkedHashMap<>();
+
+    /** 导航区可视范围：从「音乐库」标签下方到分隔线之前，超出部分靠滚动查看。 */
+    public static final int NAV_TOP = 137, NAV_BOTTOM = 405;
+    /** 单个导航项高度与步进：保持原尺寸，项目变多时改由滚动承载。 */
+    public static final int NAV_H = 38, NAV_STEP = 44;
+    public static final int NAV_COUNT = 6;
+
+    public static int navContentHeight() {
+        return NAV_COUNT * NAV_STEP - (NAV_STEP - NAV_H);
+    }
+
+    public static int navMaxScroll() {
+        return Math.max(0, navContentHeight() - (NAV_BOTTOM - NAV_TOP));
+    }
+
+    public static final int SETTINGS_WORLD_Y = 492;
+    public static final int SETTINGS_ROW_STEP = 52;
+    public static final int SETTINGS_WORLD_ROWS = 8;
+    public static final int SETTINGS_ABOUT_Y = SETTINGS_WORLD_Y + SETTINGS_WORLD_ROWS * SETTINGS_ROW_STEP + 36;
+
+    /** Keep the final About line reachable without moving the fixed outer panel. */
+    public static int settingsMaxScroll() {
+        return Math.max(0, SETTINGS_ABOUT_Y + 200 - 620);
+    }
+
+    /** 房间页未加入状态的卡片；纯 UI 阶段先只共享坐标，不注册可点击命中区。 */
+    public static Box roomHeroBox() { return new Box(MAIN_X, 112, 468, 520); }
+    public static Box roomCreateBox() { return new Box(780, 112, 290, 252); }
+    public static Box roomJoinBox() { return new Box(780, 384, 290, 248); }
+    public static Box roomSourceNeteaseBox() { return new Box(802, 190, 120, 48); }
+    public static Box roomSourceQqBox() { return new Box(930, 190, 120, 48); }
+    public static Box roomCreateButtonBox() { return new Box(802, 254, 246, 44); }
+    public static Box roomJoinFieldBox() { return new Box(802, 464, 246, 48); }
+    public static Box roomJoinButtonBox() { return new Box(802, 525, 246, 44); }
+    public static Box roomListRowBox(int index) { return new Box(314, 254 + Math.max(0, Math.min(7, index)) * 45, 424, 40); }
+
+    /** 房间页已加入状态：左侧当前播放/队列，右侧成员，全部保持在主内容区内。 */
+    public static Box roomNowBox() { return new Box(MAIN_X, 112, 508, 202); }
+    public static Box roomQueueBox() { return new Box(MAIN_X, 326, 508, 306); }
+    public static final int ROOM_QUEUE_VISIBLE = 5, ROOM_QUEUE_STEP = 47;
+    public static Box roomQueueRowBox(int index) { return new Box(MAIN_X + 22, 376 + Math.max(0, Math.min(4, index)) * ROOM_QUEUE_STEP, 452, 45); }
+    public static Box roomMembersBox() { return new Box(820, 112, 250, 520); }
+    public static Box roomExitButtonBox() { return new Box(840, 574, 210, 40); }
+    /** 成员列表：20 人上限，可视 6 行，右侧一条细滚动条。 */
+    public static final int ROOM_MEMBER_VISIBLE = 6, ROOM_MEMBER_STEP = 50;
+    public static Box roomMemberRowBox(int index) {
+        return new Box(840, 264 + Math.max(0, Math.min(ROOM_MEMBER_VISIBLE - 1, index)) * ROOM_MEMBER_STEP, 210, 44);
+    }
+    public static Box roomMemberScrollBar() { return new Box(1052, 262, 6, 300); }
+    /** 房间内没有任何额外控件：队列来自创建房间时带上的个人队列，播放控制都在「正在播放」页。 */
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount) {
+        this(page, rowCount, queueCount, 0, 0);
+    }
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll) {
+        this(page, rowCount, queueCount, settingsScroll, 0);
+    }
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll, int navScroll) {
+        this(page, rowCount, queueCount, settingsScroll, navScroll, false);
+    }
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll, int navScroll,
+                       boolean roomJoined) {
+        this(page, rowCount, queueCount, settingsScroll, navScroll, roomJoined, false);
+    }
+
+    public MusicLayout(MusicView.Page page, int rowCount, int queueCount, int settingsScroll, int navScroll,
+                       boolean roomJoined, boolean roomOwner) {
+        for (int i = 0; i < NAV_COUNT; i++) {
+            int y = NAV_TOP + i * NAV_STEP - navScroll;
+            // 完全滚出可视区的项不注册命中区，否则点空白处会误切页面。
+            if (y + NAV_H <= NAV_TOP || y >= NAV_BOTTOM) continue;
+            add("nav" + i, Action.PAGE, i, 32, y, 210, NAV_H);
+        }
+        add("settings", Action.PAGE, 6, 32, 602, 210, 42);
+        add("account", Action.ACCOUNT, 0, 32, 442, 210, 64);
+        add("close", Action.CLOSE, 0, 1012, 22, 36, 36);
+        if (page == MusicView.Page.ROOM) {
+            if (roomJoined) {
+                add("roomExit", Action.ROOM_LEAVE, 0, roomExitButtonBox());
+            } else {
+                add("roomNetease", Action.ROOM_SOURCE, 0, roomSourceNeteaseBox());
+                add("roomQq", Action.ROOM_SOURCE, 1, roomSourceQqBox());
+                add("roomCreate", Action.ROOM_CREATE, 0, roomCreateButtonBox());
+                add("roomJoinField", Action.ROOM_JOIN_FIELD, 0, roomJoinFieldBox());
+                add("roomJoin", Action.ROOM_JOIN, 0, roomJoinButtonBox());
+                for (int i = 0; i < 8; i++) add("roomRow" + i, Action.ROOM_LIST_ENTRY, i, roomListRowBox(i));
+            }
+        }
+        if (page == MusicView.Page.NOW) {
+            // 播放页：上方歌词，底部一条控制栏。收藏与队列紧贴传输键两侧，控件整体居中。
+            add("favorite", Action.FAVORITE, 0, 532, 601, 36, 36);
+            add("queueBtn", Action.PAGE, 4, 570, 601, 36, 36);
+            add("prev", Action.PREVIOUS, 0, 608, 601, 36, 36);
+            add("play", Action.PLAY, 0, 645, 593, 52, 52);
+            add("next", Action.NEXT, 0, 698, 601, 36, 36);
+            add("mode", Action.MODE_CYCLE, 0, 736, 601, 36, 36);
+            add("quality", Action.QUALITY, 0, 886, 605, 64, 28);
+            add("volume", Action.VOLUME, 0, 982, 610, 62, 18);
+            add("seek", Action.SEEK, 0, 328, 646, 672, 12);
+            // 播放页的「译」开关，位置与 QQ 版一致：歌词区下方、控制栏上方的留白。
+            add("translate", Action.TRANSLATE, 0, 1008, 520, 36, 28);
+            // 分享当前曲目到聊天栏：放在标题带右侧，避开右上角关闭键（1012 起）。
+            add("share", Action.SHARE, 0, 924, 26, 76, 30);
+        } else {
+            if (page == MusicView.Page.SETTINGS) {
+                add("lyric", Action.LYRIC, 0, 318, 132 - settingsScroll, 704, 48);
+                add("island", Action.ISLAND, 0, 318, 184 - settingsScroll, 704, 48);
+                add("islandScale", Action.ISLAND_SCALE, 0, 318, 236 - settingsScroll, 704, 48);
+                add("islandPos", Action.ISLAND_POS, 0, 318, 288 - settingsScroll, 704, 48);
+                add("darkMode", Action.DARK_MODE, 0, 318, 364 - settingsScroll, 704, 48);
+                add("panelScale", Action.PANEL_SCALE, 0, 318, 416 - settingsScroll, 704, 48);
+                // 3D 世界歌词使用两列布局：16 项在 8 行内排完，避免设置页无限拉长。
+                int col1 = 318, col2 = 682, colW = 340;
+                for (int row = 0; row < SETTINGS_WORLD_ROWS; row++) {
+                    int y = SETTINGS_WORLD_Y + row * SETTINGS_ROW_STEP - settingsScroll;
+                    add("worldLyricLeft" + row, worldLyricLeftAction(row), 0, col1, y, colW, 48);
+                    add("worldLyricRight" + row, worldLyricRightAction(row), 0, col2, y, colW, 48);
+                }
+            } else if (page == MusicView.Page.ROOM) {
+                // 占位页：没有任何可点控件，不能继承列表页的刷新按钮和行命中区，
+                // 否则点空白处会取到空 rows 而越界。
+            } else {
+                if (page == MusicView.Page.SEARCH) {
+                    add("field", Action.SEARCH_FIELD, 0, 292, 116, 634, 36);
+                    add("search", Action.SEARCH, 0, 950, 116, 100, 36);
+                } else {
+                    // 收藏页多一个「播放全部」，摆在刷新按钮左侧。
+                    if (page == MusicView.Page.FAVORITES) {
+                        add("playAll", Action.PLAY_ALL, 0, 830, 116, 104, 36);
+                    }
+                    add("refresh", page == MusicView.Page.QUEUE ? Action.CLEAR : Action.REFRESH, 0, 946, 116, 104, 36);
+                }
+                for (int i = 0; i < Math.min(ROWS, rowCount); i++) {
+                    // 行主体收到 936 为止，给右侧「分享」腾位置：hit() 返回首个命中的盒子，
+                    // 行盒子压过去的话分享按钮永远点不到。
+                    add("row" + i, Action.ROW, i, MAIN_X, ROW_TOP + i * ROW_H, 640, 46);
+                    add("share" + i, Action.SHARE_ROW, i, 944, ROW_TOP + i * ROW_H + 5, 32, 36);
+                    add("add" + i, Action.ADD, i, 1002, ROW_TOP + i * ROW_H + 3, 40, 40);
+                }
+            }
+        }
+    }
+
+    private void add(String id, Action action, int index, int x, int y, int w, int h) {
+        Box box = new Box(x, y, w, h);
+        boxes.put(id, box);
+        // Scrolled content can be below the canvas. Keep its geometry for
+        // painting while withholding an impossible off-screen click target.
+        if (box.w() <= 0 || box.h() <= 0 || box.x() < 0 || box.y() < 0
+                || box.x() + box.w() > WIDTH || box.y() + box.h() > HEIGHT) {
+            return;
+        }
+        hits.add(new Hit(id, action, index, box));
+    }
+
+    private static Action worldLyricLeftAction(int row) {
+        return switch (row) {
+            case 0 -> Action.WORLD_LYRICS;
+            case 1 -> Action.WORLD_LYRICS_SCALE;
+            case 2 -> Action.WORLD_LYRICS_STAY;
+            case 3 -> Action.WORLD_LYRICS_TRANSLATION;
+            case 4 -> Action.WORLD_LYRICS_GLOW;
+            case 5 -> Action.WORLD_LYRICS_GLOW_MODE;
+            case 6 -> Action.WORLD_LYRICS_CADENZA;
+            default -> Action.WORLD_LYRICS_HUD_DRAW;
+        };
+    }
+
+    private static Action worldLyricRightAction(int row) {
+        return switch (row) {
+            case 0 -> Action.WORLD_LYRICS_DISTANCE;
+            case 1 -> Action.WORLD_LYRICS_SPREAD;
+            case 2 -> Action.WORLD_LYRICS_KEEP_DISTANCE;
+            case 3 -> Action.WORLD_LYRICS_SPLIT_LINES;
+            case 4 -> Action.WORLD_LYRICS_GLOW_STRENGTH;
+            case 5 -> Action.WORLD_LYRICS_WORD_POP;
+            case 6 -> Action.WORLD_LYRICS_HUIGUANG;
+            default -> Action.WORLD_LYRICS_TRANS_EFFECTS;
+        };
+    }
+    private void add(String id, Action action, int index, Box box) {
+        add(id, action, index, box.x(), box.y(), box.w(), box.h());
+    }
+    public List<Hit> hits() { return List.copyOf(hits); }
+    public static boolean qualitySelectable(MusicSource source) {
+        return source != MusicSource.KUGOU;
+    }
+    /** 隐藏的音质控件也必须失去命中区域，绘制和输入共用同一音源策略。 */
+    public Hit hit(double x, double y, MusicSource source) {
+        Hit hit=hit(x,y);
+        return hit!=null&&hit.action()==Action.QUALITY&&!qualitySelectable(source)?null:hit;
+    }
+    public Hit hit(double x, double y) {
+        for (Hit hit : hits) if (hit.box.contains(x, y)) return hit;
+        return null;
+    }
+
+    public Box box(String id) {
+        Box box = boxes.get(id);
+        if (box == null) throw new IllegalArgumentException("Unknown layout box: " + id);
+        return box;
+    }
+
+    /**
+     * 播放页的歌词栏：在整窗高度上垂直居中，左缘取到 632 换取更宽的排版，
+     * 避免长句被省略号截断。七行槽位按 48 间距排布。
+     */
+    public static Box lyricRegion() {
+        return new Box(632, 166, 416, 342);
+    }
+
+    /** 播放页封面区域，含封面投影所需留白；播放时封面 240、暂停时 0.9 倍。 */
+    public static Box coverRegion() {
+        return new Box(312, 169, 336, 336);
+    }
+
+    /** 账号页整块内容区域（菜单或表单），由 MusicPainter.paintAccount 独占绘制。 */
+    public static Box accountRegion() {
+        return new Box(292, 98, 758, 420);
+    }
+
+    /**
+     * 随播放时钟高频变化的区域。只有这些条带需要按进度重绘，
+     * 静态画布（磨砂玻璃、导航、卡片、文字）不再跟随播放时间刷新。
+     */
+    public static Box[] dynamicBands(MusicView.Page page) {
+        if (page == MusicView.Page.NOW) {
+            return new Box[]{
+                    new Box(292, 640, 758, 22),   // 进度条与两端时间
+                    new Box(958, 604, 92, 28)     // 音量滑条
+            };
+        }
+        if (page == MusicView.Page.ROOM) {
+            // 房间当前曲的进度条、圆点与左侧已播时间：房间时钟每帧外推，
+            // 放进静态层会让整幅画布按 30Hz 重绘。
+            return new Box[]{new Box(462, 236, 322, 36)};
+        }
+        // 其他页面已经没有播放控件，不需要动态层。
+        return new Box[0];
+    }
+
+    /** 动态条带的并集，用作叠加画布的尺寸与落点。 */
+    public static Box dynamicRegion(MusicView.Page page) {
+        Box[] bands = dynamicBands(page);
+        if (bands.length == 0) return new Box(0, 0, 1, 1);
+        int x0 = Integer.MAX_VALUE, y0 = Integer.MAX_VALUE, x1 = 0, y1 = 0;
+        for (Box b : bands) {
+            x0 = Math.min(x0, b.x());
+            y0 = Math.min(y0, b.y());
+            x1 = Math.max(x1, b.x() + b.w());
+            y1 = Math.max(y1, b.y() + b.h());
+        }
+        return new Box(x0, y0, x1 - x0, y1 - y0);
+    }
+}

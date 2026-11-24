@@ -10,6 +10,11 @@
 
 ---
 
+> **26.3 线**：Minecraft 26.3 的世界渲染改为 submit-collect，本文件的 `MultiBufferSource` 施工图只适用于 1.21.11 线。
+> 26.3 客户端（`cloudxmusic-client-26.3`）直接采用上游 `26.3/` 目录的实现：`SubmitNodeCollector#submitCustomGeometry` 提交几何、
+> `SubmitRenderPhases.ALWAYS_ON_TOP` 换相位、`LevelRenderer#frameHasAlwaysOnTopGizmos` 补执行门，光影适配见 `ShaderPackProbe`。
+> 变更记录见 `CHANGELOG.md` 的 3.0.0 一节。
+
 ## 0. 当前仓库状态（动手前必读）
 
 > **2026-11-10 执行状态：移植代码已落地并启用。** 世界歌词 Mixin、Skija 字形图集、

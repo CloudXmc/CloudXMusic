@@ -1,0 +1,1091 @@
+package dev.lzasn.cloudxmusic.client.gui.design;
+
+import dev.lzasn.cloudxmusic.client.state.Track;
+import dev.lzasn.cloudxmusic.client.omni.SongView;
+import dev.lzasn.cloudxmusic.client.omni.MusicSource;
+import dev.lzasn.cloudxmusic.client.state.PlaybackMode;
+import java.awt.*;
+import java.awt.geom.*;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.List;
+import java.util.function.Function;
+import static dev.lzasn.cloudxmusic.client.gui.design.FrostCanvas.*;
+import static dev.lzasn.cloudxmusic.client.gui.design.MusicLayout.*;
+
+/** 纯画布视图；业务操作由 Screen 适配器处理，可以离线生成同一份真实 UI。 */
+public final class MusicPainter {
+    private static final String[] TITLES = {"正在播放", "发现音乐", "搜索", "我的收藏", "播放队列",
+            "音乐房间", "设置与关于", "账号"};
+    private static final String[] ICONS = {"play", "discover", "search", "heart", "list", "group"};
+    private static final Dev[] DEVELOPERS = {
+            new Dev("Lzasn", "@Lzasn", "代码架构开发 · 主要开发者", "lzasn.png"),
+            new Dev("xWtree", "@xWtree", "UI 美化 · 后期维护者", "xwtree.png"),
+            new Dev("xiaota888", "@xiaota888", "项目开发者", "xiaota888.png")
+    };
+    private static final Map<String, BufferedImage> DEV_AVATAR_CACHE = new HashMap<>();
+    private record Dev(String name, String handle, String role, String avatar) {}
+    /** 整窗磨砂玻璃与圆角高光与数据无关，按画布尺寸缓存一次即可。 */
+    private static BufferedImage backdrop;
+    private static String backdropKey;
+
+    private MusicPainter() {}
+
+    public static BufferedImage paint(MusicView v, MusicLayout layout, double scale, Function<String, BufferedImage> covers) {
+        return paint(v, layout, scale, covers, null);
+    }
+
+    /** 可选账号画布仅替换左侧账号块；null 完整沿用原网易云分支。 */
+    public static BufferedImage paint(MusicView v, MusicLayout layout, double scale, Function<String, BufferedImage> covers,
+                                      java.util.function.Consumer<FrostCanvas> accountPainter) {
+        return paint(v,layout,scale,covers,accountPainter,null);
+    }
+    public static BufferedImage paint(MusicView v, MusicLayout layout, double scale, Function<String, BufferedImage> covers,
+                                      java.util.function.Consumer<FrostCanvas> accountPainter,java.util.function.Consumer<FrostCanvas> catalogPainter) {
+        BufferedImage image = new BufferedImage((int) Math.ceil((WIDTH + PAD * 2) * scale),
+                (int) Math.ceil((HEIGHT + PAD * 2) * scale), BufferedImage.TYPE_INT_ARGB);
+        try (FrostCanvas c = new FrostCanvas(image, scale)) {
+            blitBackdrop(c, image.getWidth(), image.getHeight(), scale);
+            c.g.translate(PAD, PAD);
+            navigation(c, v, layout, covers, accountPainter);
+            // 标题独占标题带（0~92），基线按视觉重心对齐带中轴，不再挂副标题。
+            c.text(TITLES[v.page().ordinal()], 292, 54, 21, true, INK, 600);
+            c.g.setColor(LINE);
+            c.g.drawLine(272, 92, 1070, 92);
+            button(c, v, layout, "close", "close", false);
+            if(catalogPainter!=null&&(v.page()==MusicView.Page.DISCOVER||v.page()==MusicView.Page.FAVORITES)){
+                catalogPainter.accept(c);
+            }else if(v.current().source()==MusicSource.QQ&&(v.page()==MusicView.Page.DISCOVER||v.page()==MusicView.Page.FAVORITES)){
+                if(catalogPainter!=null)catalogPainter.accept(c);else dev.lzasn.cloudxmusic.client.qqmusic.QQSourcePainter.placeholder(c,v.page());
+            } else switch (v.page()) {
+                case NOW -> now(c, v, layout, covers);
+                case SETTINGS -> {
+                    // 设置页内容滚动时会越界，裁剪到标题下方到面板底部之间。
+                    java.awt.Shape savedClip = c.g.getClip();
+                    c.g.clip(new Rectangle2D.Double(272, 100, 798, 560));
+                    settings(c, v, layout);
+                    c.g.setClip(savedClip);
+                }
+                case ACCOUNT -> { /* 内容由 paintAccount 单独绘制 */ }
+                case ROOM -> room(c, v, layout, covers);
+                default -> list(c, v, layout, covers);
+            }
+        }
+        return image;
+    }
+
+    /** 只重绘随播放时间变化的条带，尺寸很小，可以按进度（10Hz）安全刷新。 */
+    public static BufferedImage paintDynamic(MusicView v, MusicLayout l, double scale) {
+        Box region = dynamicRegion(v.page());
+        BufferedImage image = new BufferedImage((int) Math.ceil(region.w() * scale),
+                (int) Math.ceil(region.h() * scale), BufferedImage.TYPE_INT_ARGB);
+        try (FrostCanvas c = new FrostCanvas(image, scale)) {
+            c.g.translate(-region.x(), -region.y());
+            Area bands = new Area();
+            for (Box band : dynamicBands(v.page()))
+                bands.add(new Area(new Rectangle2D.Double(band.x(), band.y(), band.w(), band.h())));
+            c.g.clip(bands);
+            if (v.page() == MusicView.Page.NOW) {
+                seekBar(c, v, l.box("seek"));
+                volumeBar(c, v, l.box("volume"));
+            } else if (v.page() == MusicView.Page.ROOM) {
+                // 房间页进度只在动态层画：轨道由静态层铺好，这里补进度、圆点和已播时间。
+                MusicView.RoomView room = v.room();
+                float progress = room.durationSeconds() <= 0 ? 0
+                        : Math.max(0, Math.min(1, room.positionTenths() / 10f / room.durationSeconds()));
+                roomProgress(c, 468, 242, 310, progress, true);
+                c.text(roomTime(Math.max(0, room.positionTenths() / 10)), 468, 265, 9, false, MUTED, 60);
+            }
+        }
+        return image;
+    }
+
+    private static void blitBackdrop(FrostCanvas c, int w, int h, double scale) {
+        BufferedImage image = backdrop(w, h, scale);
+        AffineTransform saved = c.g.getTransform();
+        Composite composite = c.g.getComposite();
+        // Src 直接整幅拷贝，避免与透明底再做一次 SrcOver 混合。
+        c.g.setComposite(AlphaComposite.Src);
+        c.g.setTransform(new AffineTransform());
+        c.g.drawImage(image, 0, 0, null);
+        c.g.setComposite(composite);
+        c.g.setTransform(saved);
+    }
+
+    private static BufferedImage backdrop(int w, int h, double scale) {
+        String key = w + "x" + h + "@" + scale + (dark ? "#dark" : "#light");
+        if (backdrop != null && key.equals(backdropKey)) return backdrop;
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        try (FrostCanvas c = new FrostCanvas(image, scale)) {
+            c.g.translate(PAD, PAD);
+            c.glass(0, 0, WIDTH, HEIGHT, 38, false);
+        }
+        backdrop = image;
+        backdropKey = key;
+        return image;
+    }
+
+    private static void navigation(FrostCanvas c, MusicView v, MusicLayout l, Function<String,BufferedImage> covers,
+                                   java.util.function.Consumer<FrostCanvas> accountPainter) {
+        c.text("CloudXMusic", 36, 46, 19, true, DEEP, 202);
+        c.text("云朵音乐盒", 36, 73, 13, false, MUTED, 202);
+        c.g.setColor(LINE);
+        c.g.drawLine(24, 92, 252, 92);
+        c.text("音乐库", 36, 124, 12, false, MUTED, 190);
+        // 导航项多于可视高度时靠滚动查看，超出部分裁掉，避免压到下面的分隔线和账号组。
+        Shape navClip = c.g.getClip();
+        c.g.clip(new Rectangle2D.Double(24, MusicLayout.NAV_TOP - 10, 228,
+                MusicLayout.NAV_BOTTOM - MusicLayout.NAV_TOP + 10));
+        for (int i = 0; i < MusicLayout.NAV_COUNT; i++) {
+            Box b = l.box("nav" + i);
+            boolean on = i == v.page().ordinal();
+            boolean hover = v.hover().equals("nav" + i);
+            if (on || hover) {
+                c.shadow(b.x(), b.y(), b.w(), b.h(), 19, 7, 4, new Color(160, 79, 113, on ? 22 : 12));
+                c.round(b.x(), b.y(), b.w(), b.h(), 19, on ? SOFT : CARD_BG);
+            }
+            Color color = on ? DEEP : hover ? INK : MUTED;
+            UiIcons.draw(c, ICONS[i], b.x()+20, b.cy(), 18, color);
+            c.text(TITLES[i], b.x()+44, b.cy()+5, 14, on, color, 150);
+        }
+        c.g.setClip(navClip);
+        c.g.setColor(LINE); c.g.drawLine(24,412,252,412);
+        c.text("账号", 36, 437, 12, false, MUTED, 190);
+        if (accountPainter != null) {
+            accountPainter.accept(c);
+        } else {
+        Box account = l.box("account");
+        if (v.hover().equals("account")) c.round(account.x(),account.y(),account.w(),account.h(),20,CARD_BG);
+        BufferedImage avatar = v.loggedIn() && !v.avatarUrl().isBlank()
+                ? dev.lzasn.cloudxmusic.client.gui.CoverCache.avatar(v.avatarUrl()) : null;
+        if (avatar != null) {
+            // 圆形裁剪必须走离屏 AA 遮罩：直接 clip + drawImage 的圆边是硬台阶。
+            c.roundImage(avatar, 34, 461, 36, 18);
+        } else {
+            c.round(34, 461, 36, 36, 18, SOFT);
+            UiIcons.draw(c,"user",52,479,21,DEEP);
+        }
+        c.text(v.loggedIn() ? v.nickname() : "访客模式", 82, 474, 14, true, INK, 151);
+        c.text(v.loggedIn() ? "网易云音乐 · 切换音源 / 管理" : "网易云音乐 · 切换 / 登录",82,495,11,false,MUTED,151);
+        }
+        c.text("让音乐陪你探索世界",36,552,12,false,MUTED,202);
+        // 键位跟随游戏里的按键绑定，不再写死 H。
+        c.text(v.openKey() + " 开关界面 · Esc 返回",36,575,11,false,MUTED,202);
+        Box b=l.box("settings");
+        UiIcons.draw(c,"settings",b.x()+20,b.cy(),19, v.page()==MusicView.Page.SETTINGS ? DEEP : MUTED);
+        c.text("设置与关于", b.x()+44,b.cy()+5,13,false,INK,150);
+    }
+
+    /** 播放页：封面与歌词各自独立成层（便于动效），这里只画底部控制栏。 */
+    private static void now(FrostCanvas c, MusicView v, MusicLayout l, Function<String,BufferedImage> covers) {
+        Box share = l.box("share");
+        if (share != null) {
+            // 分享当前曲目到聊天栏。不接 hover 样式：悬停会让静态层整幅重绘，这里不值当。
+            // 没有可分享的曲目（占位曲/未播放）时置灰，避免发出空消息。
+            boolean ready = !v.current().platformId().isBlank()&&v.current().source()!=MusicSource.KUGOU;
+            c.round(share.x(), share.y(), share.w(), share.h(), 15,
+                    ready ? CARD_BG : new Color(255, 255, 255, 90));
+            c.center("分享", share.cx(), share.cy() + 4.5f, 12, true, ready ? DEEP : MUTED, share.w() - 10);
+        }
+        // QQ 的完整底栏由动态层独占，静态层不能再画一份标题和按钮。
+        if(v.current().source()==MusicSource.NETEASE){
+            playerBar(c, v, l);
+            // 「译」开关：与 QQ 版同一位置和外观，控制滚动歌词是否显示译文。
+            Box b = l.box("translate");
+            if (b != null) {
+                // 只读偏好，不触碰网络或游戏实例；灵动岛歌词模式另有设置项。
+                boolean on = dev.lzasn.cloudxmusic.client.netease.NeteaseSession.INSTANCE.playbackTranslation();
+                c.round(b.x(), b.y(), b.w(), b.h(), 9, on ? SOFT : CARD_BG);
+                c.center("译", b.cx(), b.cy() + 5, 13, true, on ? PINK : MUTED, b.w() - 8);
+            }
+        }
+    }
+
+    /** 音乐房间：未加入显示创建/加入入口，已加入显示同步播放、队列和成员。 */
+    private static void room(FrostCanvas c, MusicView v, MusicLayout l,
+                             Function<String, BufferedImage> covers) {
+        if (v.room().joined()) roomActive(c, v, covers);
+        else roomLobby(c, v);
+    }
+
+    private static void roomLobby(FrostCanvas c, MusicView v) {
+        boolean kugou=v.current().source()==MusicSource.KUGOU;
+        Color disabled=new Color(MUTED.getRed(),MUTED.getGreen(),MUTED.getBlue(),135);
+        Box hero = roomHeroBox();
+        roomCard(c, hero, 24);
+        Color orb = dark ? new Color(76, 91, 98, 150) : new Color(255, 246, 250, 190);
+        c.round(hero.x() + 22, hero.y() + 20, 52, 52, 26, orb);
+        UiIcons.draw(c, "group", hero.x() + 48, hero.y() + 46, 28, DEEP);
+        c.text("一起听，不只是听歌", hero.x() + 90, hero.y() + 42, 16, true, INK, 350);
+        c.text("同音源房间 · 各自取链 · 播放进度同步", hero.x() + 90, hero.y() + 63,
+                10, false, MUTED, 350);
+        c.g.setColor(LINE);
+        c.g.drawLine(hero.x() + 22, hero.y() + 86, hero.x() + hero.w() - 22, hero.y() + 86);
+        c.text("公开房间", hero.x() + 30, hero.y() + 116, 14, true, INK, 160);
+        c.right(v.room().publicRooms().size() + " 个", hero.x() + hero.w() - 30,
+                hero.y() + 116, 10, false, MUTED);
+        if (v.room().publicRooms().isEmpty()) {
+            c.center("暂无公开房间，创建第一个吧", hero.cx(), hero.y() + 186, 12, false, MUTED, 360);
+        } else {
+            for (int i = 0; i < Math.min(8, v.room().publicRooms().size()); i++) {
+                roomSummaryRow(c, roomListRowBox(i), v.room().publicRooms().get(i));
+            }
+        }
+
+        Box create = roomCreateBox();
+        roomCard(c, create, 20);
+        c.text("创建房间", create.x() + 22, create.y() + 37, 17, true, INK, create.w() - 44);
+        c.text("选择本次房间音源", create.x() + 22, create.y() + 59, 11, false, MUTED, create.w() - 44);
+        boolean qq = v.room().source().contains("QQ");
+        roomSourceChip(c, roomSourceNeteaseBox(), "网易云音乐", "netease", !qq);
+        roomSourceChip(c, roomSourceQqBox(), "QQ 音乐", "qqmusic", qq);
+        if(kugou)roomDisabledButton(c,roomCreateButtonBox(),"创建并进入");else roomPrimaryButton(c, roomCreateButtonBox(), "创建并进入");
+        c.text(kugou?"酷狗暂不支持房间联机":v.room().roomStatus().isBlank() ? "音源创建后固定" : v.room().roomStatus(),
+                create.x() + 22, create.y() + 218, 10, false, kugou?disabled:MUTED, create.w() - 44);
+
+        Box join = roomJoinBox();
+        roomCard(c, join, 20);
+        c.text("加入房间", join.x() + 22, join.y() + 37, 17, true, INK, join.w() - 44);
+        c.text("输入房主分享的房间码", join.x() + 22, join.y() + 59, 11, false, MUTED, join.w() - 44);
+        roomField(c, roomJoinFieldBox(), v.search(), "例如：CXM7Q2", v.focused(), v.cursor());
+        if(kugou)roomDisabledButton(c,roomJoinButtonBox(),"加入房间");else roomSecondaryButton(c, roomJoinButtonBox(), "加入房间");
+        c.text(kugou?"酷狗暂不支持房间联机":"加入前会检查对应音源登录状态", join.x() + 22, join.y() + 219, 10, false, kugou?disabled:MUTED, join.w() - 44);
+    }
+
+    private static void roomDisabledButton(FrostCanvas c,Box box,String label){
+        c.round(box.x(),box.y(),box.w(),box.h(),12,new Color(MUTED.getRed(),MUTED.getGreen(),MUTED.getBlue(),30));
+        c.center(label,box.cx(),box.cy()+4,12,true,new Color(MUTED.getRed(),MUTED.getGreen(),MUTED.getBlue(),170),box.w()-18);
+    }
+
+    private static void roomSummaryRow(FrostCanvas c, Box row, MusicView.RoomSummary room) {
+        Color rowFill = dark ? new Color(48, 58, 63, 105) : new Color(255, 255, 255, 105);
+        c.round(row.x(), row.y(), row.w(), row.h(), 12, rowFill);
+        roomMojangAvatar(c, row.x() + 10, row.y() + 8, 24, room.playerId());
+        c.text(room.playerId() + "的房间", row.x() + 44, row.y() + 24, 12, true, INK, 170);
+        c.text(room.source() + " · " + room.members() + " 人", row.x() + 196,
+                row.y() + 24, 9, false, MUTED, 120);
+        Color statusFill = room.status().contains("播放") ? SOFT : CARD_BG;
+        c.round(row.x() + row.w() - 82, row.y() + 9, 70, 22, 11, statusFill);
+        c.center(room.status(), row.x() + row.w() - 47, row.y() + 24, 9, true, DEEP, 62);
+    }
+
+    private static void roomActive(FrostCanvas c, MusicView v, Function<String, BufferedImage> covers) {
+        MusicView.RoomView room = v.room();
+        Box now = roomNowBox();
+        roomCard(c, now, 22);
+        cover(c, v.current(), 314, 134, 132, 16, covers);
+        dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,room.nowTitle(),468,170,20,true,INK,300,room.nowVip());
+        c.text(room.nowArtist(), 468, 194, 12, false, MUTED, 300);
+        String status = room.roomStatus().isBlank() ? "已同步到房间时间轴" : room.roomStatus();
+        c.text(status, 468, 218, 11, false, MUTED, 300);
+        // 轨道留在静态层；进度填充、圆点和左侧已播时间由动态层画（房间时钟每帧在变）。
+        roomProgress(c, 468, 242, 310, 0, false);
+        c.right(roomTime(room.durationSeconds()), 778, 265, 9, false, MUTED);
+        if (room.owner()) {
+            c.text("在「正在播放」页控制播放、切歌与循环", 468, 292, 9, false, MUTED, 330);
+        } else {
+            c.text("跟随房主播放 · 可暂停跟听，进度会重新对齐", 468, 292, 9, false, MUTED, 330);
+        }
+
+        Box queue = roomQueueBox();
+        roomCard(c, queue, 22);
+        c.text("房间队列", queue.x() + 22, queue.y() + 34, 15, true, INK, 220);
+        c.right(room.queue().size() + " 首", queue.x() + queue.w() - 22, queue.y() + 34, 10, false, MUTED);
+        if (room.queue().isEmpty()) {
+            c.center("房间队列为空", queue.cx(), queue.y() + 146, 12, false, MUTED, 360);
+        } else {
+            int total = room.queue().size();
+            int maxScroll = Math.max(0, total - ROOM_QUEUE_VISIBLE);
+            int start = Math.max(0, Math.min(room.queueScroll(), maxScroll));
+            int shown = Math.min(ROOM_QUEUE_VISIBLE, total - start);
+            for (int i = 0; i < shown; i++) {
+                int index = start + i;
+                MusicView.RoomTrack track = room.queue().get(index);
+                int rowY = queue.y() + 50 + i * ROOM_QUEUE_STEP;
+                // 当前曲目高亮，成员据此确认自己跟的是哪一首。
+                // 当前项按服务端广播的歌曲 MID 匹配；窗口刷新或滚动后行号不能代表播放项。
+                boolean current = !room.currentMid().isBlank() && room.currentMid().equals(track.mid());
+                if (current) {
+                    c.round(queue.x() + 14, rowY - 3, queue.w() - 28, ROOM_QUEUE_STEP - 3, 10, SOFT);
+                }
+                c.text(String.format(java.util.Locale.ROOT, "%02d", index + 1),
+                        queue.x() + 22, rowY + 26, 10, true, current ? DEEP : PINK, 32);
+                // 缩略图 30px：行高 45 里上下各留 7px，标题/歌手跟着右移保持 14px 间距。
+                coverArt(c, track.coverUrl(), queue.x() + 42, rowY + 7, 30, 7, covers);
+                dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,track.title(),queue.x()+86,rowY+20,12,true,INK,268,track.vip());
+                c.text(track.artist(), queue.x() + 86, rowY + 37, 10, false, MUTED, 268);
+                c.right(track.duration(), queue.x() + queue.w() - 22, rowY + 24, 10, false, MUTED);
+                if (i < shown - 1) {
+                    c.g.setColor(LINE);
+                    c.g.drawLine(queue.x() + 22, rowY + 44, queue.x() + queue.w() - 24, rowY + 44);
+                }
+            }
+            if (maxScroll > 0) roomQueueScrollbar(c, queue, total, start, maxScroll);
+        }
+
+        Box members = roomMembersBox();
+        roomCard(c, members, 22);
+        c.text("房间成员", members.x() + 20, members.y() + 37, 15, true, INK, 140);
+        c.right(room.members().size() + "/" + room.capacity(), members.x() + members.w() - 20, members.y() + 37, 10, false, MUTED);
+        Box code = new Box(840, 164, 210, 54);
+        c.round(code.x(), code.y(), code.w(), code.h(), 14, SOFT);
+        c.text("房间码", code.x() + 14, code.y() + 20, 9, false, MUTED, 80);
+        c.text(room.roomCode(), code.x() + 14, code.y() + 43, 20, true, INK, 180);
+        Box sourceBox = new Box(840, 230, 210, 24);
+        roomSourceBadge(c, sourceBox, room.source() + "房间");
+
+        Color ok = dark ? new Color(117, 210, 167) : new Color(76, 152, 116);
+        Color warn = dark ? new Color(242, 172, 104) : new Color(194, 112, 49);
+        // 20 人上限、可视 6 行：超出部分靠滚动查看，右侧给一条细滚动条。
+        int memberMax = Math.max(0, room.members().size() - MusicLayout.ROOM_MEMBER_VISIBLE);
+        int memberStart = Math.max(0, Math.min(room.memberScroll(), memberMax));
+        int memberShown = Math.min(MusicLayout.ROOM_MEMBER_VISIBLE, room.members().size() - memberStart);
+        for (int i = 0; i < memberShown; i++) {
+            MusicView.RoomMember member = room.members().get(memberStart + i);
+            int rowY = members.y() + 152 + i * MusicLayout.ROOM_MEMBER_STEP;
+            roomMojangAvatar(c, 854, rowY + 8, 28, member.name());
+            c.text(member.name(), 890, rowY + 20, 12, true, INK, 90);
+            c.text(member.detail(), 890, rowY + 36, 9, false,
+                    member.tone() == MusicView.MemberTone.UNAVAILABLE ? warn : MUTED, 120);
+            if (member.owner()) {
+                c.round(1007, rowY + 10, 42, 18, 9, SOFT);
+                c.center("房主", 1028, rowY + 23, 9, true, DEEP, 36);
+            } else {
+                // 状态灯跟着上报的状态走：在听绿色、暂停跟听琥珀、播不了用警示色。
+                Color dot = switch (member.tone()) {
+                    case ACTIVE -> ok;
+                    case PAUSED -> warn;
+                    case UNAVAILABLE -> warn;
+                };
+                // 10px 圆点，与 28px 头像垂直居中对齐。
+                c.round(1022, rowY + 17, 10, 10, 5, dot);
+            }
+            c.g.setColor(LINE);
+            c.g.drawLine(840, rowY + 44, 1050, rowY + 44);
+        }
+        if (memberMax > 0) {
+            Box track = MusicLayout.roomMemberScrollBar();
+            c.round(track.x(), track.y(), track.w(), track.h(), 3, SOFT);
+            int thumbH = Math.max(28,
+                    (int) (track.h() * (MusicLayout.ROOM_MEMBER_VISIBLE / (float) room.members().size())));
+            int thumbY = track.y() + (int) ((track.h() - thumbH) * (memberStart / (float) memberMax));
+            c.round(track.x(), thumbY, track.w(), thumbH, 3, new Color(214, 143, 170, 190));
+        }
+        // 邀请提示跟在最后一行后面，不压列表也不压退出按钮。
+        if (memberShown < MusicLayout.ROOM_MEMBER_VISIBLE) {
+            c.center("分享房间码即可邀请朋友", members.cx(),
+                    members.y() + 152 + Math.max(1, memberShown) * MusicLayout.ROOM_MEMBER_STEP + 26,
+                    10, false, MUTED, 200);
+        }
+        roomSecondaryButton(c, roomExitButtonBox(), "退出房间");
+    }
+
+    private static void roomMojangAvatar(FrostCanvas c, int x, int y, int size, String playerId) {
+        c.round(x, y, size, size, size / 2.0, SOFT);
+        BufferedImage avatar = dev.lzasn.cloudxmusic.client.gui.MojangAvatarCache.avatar(playerId);
+        if (avatar == null) {
+            c.round(x, y, size, size, size / 2.0, CARD_BG);
+            c.center("?", x + size / 2f, y + size * .64f, Math.max(10, size * .54f), true, MUTED, size - 2);
+            return;
+        }
+        // 皮肤头像本身就是像素画，缩放走双线性 + 圆形 AA 遮罩，避免圆边台阶和像素乱跳。
+        c.roundImage(avatar, x, y, size, size / 2.0);
+    }
+    private static void roomCard(FrostCanvas c, Box b, int radius) {
+        c.shadow(b.x(), b.y(), b.w(), b.h(), radius, 16, 1, 3,
+                dark ? new Color(0, 0, 0, 52) : new Color(116, 70, 93, 20));
+        c.round(b.x(), b.y(), b.w(), b.h(), radius, CARD_BG);
+        c.g.setColor(LINE);
+        c.g.setStroke(new BasicStroke(1f));
+        c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, radius));
+    }
+
+    private static void roomSourceChip(FrostCanvas c, Box b, String label, String icon, boolean selected) {
+        c.round(b.x(), b.y(), b.w(), b.h(), 14, selected ? SOFT : CARD_BG);
+        if (selected) {
+            c.g.setColor(PINK);
+            c.g.setStroke(new BasicStroke(1.4f));
+            c.g.draw(shape(b.x() + .7, b.y() + .7, b.w() - 1.4, b.h() - 1.4, 14));
+        }
+        UiIcons.draw(c, icon, b.x() + 22, b.cy(), 17, selected ? DEEP : MUTED);
+        c.text(label, b.x() + 38, b.cy() + 4, 11, selected, selected ? DEEP : INK, b.w() - 44);
+    }
+
+    private static void roomSourceBadge(FrostCanvas c, Box b, String label) {
+        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2, SOFT);
+        UiIcons.draw(c, "note", b.x() + 14, b.cy(), 12, DEEP);
+        c.text(label, b.x() + 25, b.cy() + 4, 9, true, DEEP, b.w() - 30);
+    }
+
+    private static void roomField(FrostCanvas c, Box b, String value, String hint, boolean focused, boolean cursor) {
+        Color fill = dark ? new Color(46, 55, 60, 210) : new Color(255, 255, 255, 115);
+        c.round(b.x(), b.y(), b.w(), b.h(), 14, fill);
+        c.g.setColor(focused ? PINK : dark ? new Color(120, 135, 140, 90) : new Color(135, 90, 115, 55));
+        c.g.setStroke(new BasicStroke(focused ? 1.4f : 1f));
+        c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, 14));
+        boolean empty = value == null || value.isBlank();
+        String shown = empty ? hint : value;
+        c.text(shown, b.x() + 16, b.cy() + 4, 11, false, empty ? MUTED : INK, b.w() - 32);
+        if (focused && cursor) {
+            float caret = b.x() + 16 + c.width(empty ? "" : shown, 11, false);
+            c.g.setColor(PINK);
+            c.g.setStroke(new BasicStroke(1.4f));
+            c.g.drawLine((int) caret, b.cy() - 9, (int) caret, b.cy() + 9);
+        }
+    }
+
+    private static void roomPrimaryButton(FrostCanvas c, Box b, String label) {
+        c.shadow(b.x(), b.y(), b.w(), b.h(), b.h() / 2, 10, 3, 2,
+                new Color(150, 65, 99, 38));
+        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2,
+                new GradientPaint(b.x(), b.y(), new Color(245, 162, 189), b.x() + b.w(), b.y() + b.h(), DEEP));
+        c.center(label, b.cx(), b.cy() + 4, 12, true, Color.WHITE, b.w() - 20);
+    }
+
+    private static void roomSecondaryButton(FrostCanvas c, Box b, String label) {        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2, CARD_BG);
+        c.g.setColor(dark ? new Color(150, 130, 140, 90) : new Color(190, 150, 170, 75));
+        c.g.setStroke(new BasicStroke(1f));
+        c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, b.h() / 2));
+        c.center(label, b.cx(), b.cy() + 4, 12, true, DEEP, b.w() - 20);
+    }
+
+    /** @param fill false 时只画轨道（静态层），true 时连进度、圆点一起画（动态层）。 */
+    private static void roomProgress(FrostCanvas c, int x, int y, int width, float progress, boolean fill) {
+        float safe = Math.max(0f, Math.min(1f, progress));
+        c.round(x, y, width, 4, 2, TRACK);
+        if (!fill) return;
+        c.round(x, y, width * safe, 4, 2, PINK);
+        // 轨道中心是 y+2；圆点必须同轴，且首尾圆心内缩 4px，避免越出轨道。
+        double centerX = x + 4 + (width - 8) * safe;
+        c.round(centerX - 4, y - 2, 8, 8, 4, SOFT);
+        c.round(centerX - 2.5, y - .5, 5, 5, 2.5, PINK);
+    }
+
+    private static void roomQueueScrollbar(FrostCanvas c, Box queue, int total, int start, int maxScroll) {
+        int trackX = queue.x() + queue.w() - 10;
+        int trackY = queue.y() + 50;
+        int trackHeight = ROOM_QUEUE_VISIBLE * ROOM_QUEUE_STEP - 4;
+        int thumbHeight = Math.max(28, (int) Math.round(trackHeight * (double) ROOM_QUEUE_VISIBLE / total));
+        int thumbY = trackY + (int) Math.round((trackHeight - thumbHeight) * (double) start / maxScroll);
+        c.round(trackX, trackY, 3, trackHeight, 1.5, TRACK);
+        c.round(trackX, thumbY, 3, thumbHeight, 1.5, PINK);
+    }
+
+    private static String roomTime(int seconds) {
+        int safe = Math.max(0, seconds);
+        return String.format(java.util.Locale.ROOT, "%d:%02d", safe / 60, safe % 60);
+    }
+
+    /**
+     * 封面层。{@code coverScale} 由播放状态驱动（播放时放大、暂停时回落），
+     * 单独成纹理后缩放动画只需重画这一小块。
+     */
+    public static BufferedImage paintCover(MusicView v, double scale, float coverScale,
+                                           Function<String, BufferedImage> covers) {
+        Box region = coverRegion();
+        BufferedImage image = new BufferedImage((int) Math.ceil(region.w() * scale),
+                (int) Math.ceil(region.h() * scale), BufferedImage.TYPE_INT_ARGB);
+        try (FrostCanvas c = new FrostCanvas(image, scale)) {
+            c.g.translate(-region.x(), -region.y());
+            int size = (int) Math.round(240 * coverScale);
+            int cx = region.x() + region.w() / 2, cy = region.y() + region.h() / 2;
+            cover(c, v.current(), cx - size / 2, cy - size / 2, size, 8, covers);
+        }
+        return image;
+    }
+
+    /**
+     * 歌词层：当前行清晰放大，上下边缘做 alpha 渐隐，形成「从中间淡出」的滚动感。
+     */
+    public static BufferedImage paintLyrics(MusicView v,double scale){return paintLyrics(v,scale,false);}
+    public static BufferedImage paintLyrics(MusicView v,double scale,boolean skipActive) {
+        Box region = lyricRegion();
+        int w = (int) Math.ceil(region.w() * scale), h = (int) Math.ceil(region.h() * scale);
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        // 单行模式每行只占一行高度，行距收窄后上下还能各多放一行；双语仍只显示中间 7 行。
+        boolean bilingual = v.lyrics().stream().anyMatch(r -> !r.translation().isBlank());
+        int center = region.y() + region.h() / 2, gap = bilingual ? 48 : 36, activeSlot = 4;
+        int halfSlots = bilingual ? 3 : 4;
+        int x = region.x() + 24, max = region.w() - 32;
+        try (FrostCanvas c = new FrostCanvas(image, scale)) {
+            c.g.translate(-region.x(), -region.y());
+            if (v.lyrics().isEmpty() || v.lyrics().stream().allMatch(r -> r.text().isBlank())) {
+                c.center("让旋律陪伴你的世界", region.x() + region.w() / 2, center - 12, 15, true, DEEP, max);
+                c.center("这首歌暂无时间轴歌词", region.x() + region.w() / 2, center + 14, 12, false, MUTED, max);
+                return image;
+            }
+            for (int i = 0; i < v.lyrics().size(); i++) {
+                MusicView.LyricRow row = v.lyrics().get(i);
+                if (row.text().isBlank()) continue;
+                int distance = Math.abs(i - activeSlot);
+                if (distance > halfSlots) continue;
+                int y = center + (i - activeSlot) * gap;
+                if (row.active()) {
+                    if(skipActive)continue;
+                    c.text(row.text(), x, y, 19, true, INK, max);
+                    if (!row.translation().isBlank())
+                        c.text(row.translation(), x, y + 20, 11, false, mutedA(205), max);
+                } else {
+                    int fade = distance == 1 ? 190 : distance == 2 ? 140 : 105;
+                    c.text(row.text(), x, y, 14, false, inkA(fade), max);
+                    if (!row.translation().isBlank())
+                        c.text(row.translation(), x, y + 17, 11, false,
+                                mutedA(Math.max(70, fade - 60)), max);
+                }
+            }
+        }
+        fadeTopAndBottom(image, scale);
+        return image;
+    }
+
+    /** 用 DstIn 把上下边缘的 alpha 拉成渐变，比逐行调透明度更自然。 */
+    private static void fadeTopAndBottom(BufferedImage image, double scale) {
+        int fade = Math.max(8, (int) Math.round(62 * scale));
+        fade = Math.min(fade, image.getHeight() / 2);
+        Graphics2D g = image.createGraphics();
+        g.setComposite(AlphaComposite.DstIn);
+        g.setPaint(new GradientPaint(0, 0, new Color(0, 0, 0, 0), 0, fade, new Color(0, 0, 0, 255)));
+        g.fillRect(0, 0, image.getWidth(), fade);
+        g.setPaint(new GradientPaint(0, image.getHeight() - fade, new Color(0, 0, 0, 255),
+                0, image.getHeight(), new Color(0, 0, 0, 0)));
+        g.fillRect(0, image.getHeight() - fade, image.getWidth(), fade);
+        g.dispose();
+    }
+
+    /** 底部控制栏：曲目信息、收藏、队列、播放模式、传输键、音质与音量。 */
+    private static void playerBar(FrostCanvas c, MusicView v, MusicLayout l) {
+        playerBar(c,v,l,new PlaybackBarView(v.current().title(),v.current().artist(),v.current().durationSeconds(),
+                v.position(),v.playing(),v.volume(),v.quality(),v.current().source()==MusicSource.QQ,v.current().vip()));
+    }
+
+    /** 音源无关的只读绘制数据，不回写 Track 或 MusicState。 */
+    public record PlaybackBarView(String title,String artist,int duration,double position,boolean playing,float volume,String quality,boolean qq,boolean vip,String coverUrl) {
+        public PlaybackBarView(String title,String artist,int duration,double position,boolean playing,float volume,String quality,boolean qq,boolean vip){this(title,artist,duration,position,playing,volume,quality,qq,vip,"");}
+        public PlaybackBarView(String title,String artist,int duration,double position,boolean playing,float volume,String quality,boolean qq){this(title,artist,duration,position,playing,volume,quality,qq,false);}
+    }
+    public static Box playbackBarRegion(){return new Box(292,586,758,76);}
+    public static Box playbackInfoRegion(){return new Box(292,596,232,42);}
+    public static BufferedImage paintPlaybackBar(MusicView music,PlaybackBarView bar,double scale){return paintPlaybackBar(music,bar,scale,url->null);}
+    public static BufferedImage paintPlaybackBar(MusicView music,PlaybackBarView bar,double scale,java.util.function.Function<String,BufferedImage> covers) {
+        Box region=playbackBarRegion();BufferedImage image=new BufferedImage((int)Math.ceil(region.w()*scale),(int)Math.ceil(region.h()*scale),BufferedImage.TYPE_INT_ARGB);
+        try(FrostCanvas c=new FrostCanvas(image,scale)) {
+            c.g.translate(-region.x(),-region.y());MusicLayout layout=new MusicLayout(MusicView.Page.NOW,0,0);
+            playerBar(c,music,layout,bar,covers.apply(bar.coverUrl()));seekBar(c,bar,layout.box("seek"));volumeBar(c,bar.volume(),layout.box("volume"));
+        }
+        return image;
+    }
+    private static void playerBar(FrostCanvas c,MusicView v,MusicLayout l,PlaybackBarView bar){playerBar(c,v,l,bar,null);}
+    private static void playerBar(FrostCanvas c,MusicView v,MusicLayout l,PlaybackBarView bar,BufferedImage artwork) {
+        c.g.setColor(LINE);
+        c.g.drawLine(292, 586, 1050, 586);
+        // 房间里成员只能跟听：上下首、队列、循环三档全部置灰，仅留收藏。
+        boolean roomLocked = v.room().joined() && !v.room().owner();
+        Color disabled = new Color(MUTED.getRed(), MUTED.getGreen(), MUTED.getBlue(), 120);
+
+        if(bar.qq()){
+            if(artwork==null){c.round(296,599,36,36,8,SOFT);UiIcons.draw(c,"note",314,617,20,PINK);}
+            else {
+                c.roundImage(artwork,296,599,36,36,8);
+            }
+        }
+        int textX=bar.qq()?342:296,textWidth=bar.qq()?178:200;
+        dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,bar.title(),textX,613,13,true,INK,textWidth,bar.vip(),false);
+        c.text(bar.artist(),textX,630,10,false,MUTED,textWidth);
+
+        Box favorite = l.box("favorite");
+        boolean qqSource=v.current().source()==MusicSource.QQ;
+        UiIcons.draw(c, qqSource ? "stop" : v.favorite() ? "heartFill" : "heart", favorite.cx(), favorite.cy(), 18,
+                qqSource ? MUTED : v.favorite() ? DEEP : PINK);
+        Box queued = l.box("queueBtn");
+        UiIcons.draw(c, "list", queued.cx(), queued.cy(), 18, roomLocked ? disabled : MUTED);
+
+        Box mode = l.box("mode");
+        UiIcons.draw(c, v.playbackMode().icon, mode.cx(), mode.cy(), 18,
+                roomLocked ? disabled : (bar.qq()?MUTED:DEEP));
+        // 没有歌曲时传输键置灰，避免看起来像能点。房间里成员仍可暂停跟听，中间的播放键不变灰。
+        boolean idle = !bar.qq() && bar.duration() <= 0;
+        Color transport = roomLocked ? disabled : (idle ? MUTED : INK);
+        Color playTint = idle ? MUTED : INK;
+        Box prev = l.box("prev");
+        UiIcons.draw(c, "prev", prev.cx(), prev.cy(), 24, transport);
+        Box play = l.box("play");
+        UiIcons.draw(c, bar.playing() ? "pause" : "play", play.cx(), play.cy(), 30, playTint);
+        Box next = l.box("next");
+        UiIcons.draw(c, "next", next.cx(), next.cy(), 24, transport);
+
+        // 当前第三方接入无法稳定取得通过 kg_dfid 等设备校验的无损 / Hi-Res 资源。
+        // 酷狗由服务端分配可用音质，隐藏手动入口，避免将高音质显示为可选能力。
+        if(MusicLayout.qualitySelectable(v.current().source())){
+            Box quality = v.current().source()==MusicSource.QQ?dev.lzasn.cloudxmusic.client.qqmusic.QQPlaybackUi.qualityBox():l.box("quality");
+            c.round(quality.x(), quality.y(), quality.w(), quality.h(), 10, SOFT);
+            c.center(bar.quality(), quality.cx(), quality.cy() + 4, 10, true, DEEP, quality.w() - 8);
+        }
+
+        Box volume = l.box("volume");
+        UiIcons.draw(c, "volume", volume.x() - 14, volume.cy(), 14, MUTED);
+    }
+
+    /** 菜单底边紧贴音质按钮（按钮顶部 605，留 11px 缝），减少一档后要整体下移，否则会浮在半空。 */
+    private static final int QUALITY_MENU_TOP = 483;
+
+    public static Box qualityMenuRegion() { return new Box(818, QUALITY_MENU_TOP, 132, 111); }
+    public static Box qualityRow(int index) { return new Box(818, QUALITY_MENU_TOP + index * 37, 132, 37); }
+    public static Box qualityMenuRegion(int count){return new Box(818,594-count*37,132,count*37);}
+    public static Box qualityRow(int index,int count){Box menu=qualityMenuRegion(count);return new Box(menu.x(),menu.y()+index*37,menu.w(),37);}
+    public static Box qualityMenuRegion(int count,int width){return new Box(950-width,594-count*37,width,count*37);}
+    public static Box qualityRow(int index,int count,int width){Box menu=qualityMenuRegion(count,width);return new Box(menu.x(),menu.y()+index*37,menu.w(),37);}
+    public static int qualityCheckmarkCenterX(Box row){return row.x()+row.w()-18;}
+
+
+    /** 音质选择浮层：圆角面板 + 纯列表（文字、分隔线、勾选），不套卡片阴影。 */
+    public static BufferedImage paintQualityMenu(int selected, int hovered, double scale) {
+        return paintQualityMenu(selected,hovered,scale,new String[]{"标准","较高","极高"});
+    }
+    public static BufferedImage paintQualityMenu(int selected,int hovered,double scale,String[] names) {
+        return paintQualityMenu(selected,hovered,scale,names,132);
+    }
+    public static BufferedImage paintQualityMenu(int selected,int hovered,double scale,String[] names,int width) {
+        Box region = qualityMenuRegion(names.length,width);
+        BufferedImage image = new BufferedImage((int) Math.ceil(region.w() * scale),
+                (int) Math.ceil(region.h() * scale), BufferedImage.TYPE_INT_ARGB);
+        try (FrostCanvas c = new FrostCanvas(image, scale)) {
+            c.g.translate(-region.x(), -region.y());
+            // 圆角面板，但不用卡片阴影，保持轻量列表感。
+            c.round(region.x(), region.y(), region.w(), region.h(), 14,
+                    dark ? new Color(42, 50, 54, 250) : new Color(255, 253, 255, 250));
+            for (int i = 0; i < names.length; i++) {
+                Box b = qualityRow(i,names.length,width);
+                // 分隔线画在每行顶部（第一行除外），先画线再画 hover，避免被高亮盖掉。
+                if (i > 0) {
+                    c.g.setColor(LINE);
+                    c.g.drawLine(b.x() + 10, b.y(), b.x() + b.w() - 10, b.y());
+                }
+                if (i == hovered) {
+                    c.g.setColor(HOVER);
+                    c.g.fillRect(b.x(), b.y() + 1, b.w(), b.h() - 1);
+                }
+                Color ink = i == selected ? DEEP : INK;
+                c.text(names[i], b.x() + 14, b.cy() + 4, 12, i == selected, ink, b.w() - 40);
+                if (i == selected) {
+                    int cx = qualityCheckmarkCenterX(b), cy = b.cy() - 1;
+                    c.g.setColor(PINK);
+                    c.g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    c.g.drawLine(cx - 5, cy, cx - 1, cy + 4);
+                    c.g.drawLine(cx - 1, cy + 4, cx + 6, cy - 5);
+                }
+            }
+        }
+        return image;
+    }
+
+    /** 进度条：左端已播时间，右端倒计时。没有歌曲时不画。 */
+    private static void seekBar(FrostCanvas c, MusicView v, Box b) {
+        seekBar(c,new PlaybackBarView("","",v.current().durationSeconds(),v.position(),v.playing(),v.volume(),v.quality(),false),b);
+    }
+    private static void seekBar(FrostCanvas c,PlaybackBarView bar,Box b) {
+        if (bar.duration() <= 0) return;
+        float progress=(float)Math.max(0,Math.min(1,bar.position()/bar.duration()));
+        c.text(Track.format((int) bar.position()), b.x() - 32, b.cy() + 4, 9, false, MUTED, 40);
+        c.round(b.x(), b.cy() - 1.5, b.w(), 3, 1.5, TRACK);
+        c.round(b.x(), b.cy() - 1.5, b.w() * progress, 3, 1.5, PINK);
+        double knob = b.x() + b.w() * progress;
+        c.round(knob - 4, b.cy() - 4, 8, 8, 4, Color.WHITE);
+        c.g.setColor(PINK);
+        c.g.setStroke(new BasicStroke(1.4f));
+        c.g.draw(shape(knob - 4, b.cy() - 4, 8, 8, 4));
+        int remain = Math.max(0, bar.duration() - (int) bar.position());
+        c.text("-" + Track.format(remain), b.x() + b.w() + 8, b.cy() + 4, 9, false, MUTED, 40);
+    }
+
+    private static void volumeBar(FrostCanvas c, MusicView v, Box b) {
+        volumeBar(c,v.volume(),b);
+    }
+    private static void volumeBar(FrostCanvas c,float volume,Box b) {
+        c.round(b.x(), b.cy() - 1.5, b.w(), 3, 1.5, TRACK);
+        c.round(b.x(), b.cy() - 1.5, b.w() * Math.max(0, Math.min(1, volume)), 3, 1.5, PINK);
+    }
+
+    private static void list(FrostCanvas c,MusicView v,MusicLayout l,Function<String,BufferedImage> covers) {
+        if(v.page()==MusicView.Page.SEARCH) {
+            Box b=l.box("field");c.card(b.x(),b.y(),b.w(),b.h(),24);
+            UiIcons.draw(c,"search",b.x()+24,b.cy(),19,PINK);
+            c.text(v.search().isEmpty()?"搜索歌名 / 歌手":v.search(),b.x()+46,b.cy()+5,14,false,v.search().isEmpty()?MUTED:INK,b.w()-70);
+            if(v.focused()&&v.cursor()) {
+                String fitted=c.fit(v.search(),14,false,b.w()-70);
+                int x=b.x()+46+(int)c.width(fitted,14,false);
+                c.g.setColor(PINK);c.g.drawLine(x,b.cy()-9,x,b.cy()+9);
+            }
+            labelButton(c,v,l,"search","搜索");
+        } else {
+            c.text(switch(v.page()){case DISCOVER->"每日推荐";case FAVORITES->"我喜欢的音乐";default->"你的播放队列";},292,143,17,true,INK,620);
+            labelButton(c,v,l,"refresh",v.page()==MusicView.Page.QUEUE?"清空队列":"刷新列表");
+            // 收藏页的「播放全部」：与「刷新列表」同一套中性样式，只靠位置区分主次。
+            if (v.page() == MusicView.Page.FAVORITES && l.box("playAll") != null) {
+                labelButton(c, v, l, "playAll", "播放全部");
+            }
+        }
+        c.text("歌曲 / 歌手",360,194,11,false,MUTED,360);
+        c.text("专辑",748,194,11,false,MUTED,180);
+        c.right("时长",936,194,11,MUTED);
+        if(v.tracks().isEmpty()) {
+            UiIcons.draw(c,"note",671,318,48,PINK);
+            String empty=v.current().source()==MusicSource.KUGOU?switch(v.page()){
+                case DISCOVER->"暂无每日推荐";
+                case SEARCH->"输入歌名或歌手，搜索酷狗音乐";
+                case FAVORITES->"本地收藏为空，播放页点击心形即可收藏";
+                case QUEUE->"酷狗播放队列为空，去搜索添加歌曲";
+                default->"前往搜索酷狗音乐";
+            }:emptyText(v.page(),v.loggedIn());
+            c.center(empty,671,392,15,true,INK,660);
+        }
+        for(int i=0;i<v.tracks().size();i++) {
+            SongView t=v.tracks().get(i);Box b=l.box("row"+i);
+            boolean on=t.source()==v.current().source()&&!t.platformId().isBlank()&&t.platformId().equals(v.current().platformId());
+            // 行与行之间只用一条分隔线，不再给每行套圆角卡片。
+            c.g.setColor(LINE);
+            c.g.drawLine(292, b.y(), 1050, b.y());
+            // 行不再画悬浮高亮底色：列表靠分隔线和右侧图标自己区分层级，
+            // 整条高亮在深色主题下像一块"脏东西"，也省掉每次移动鼠标的整幅重绘诱因。
+            cover(c,t,304,b.y()+5,36,11,covers);
+            dev.lzasn.cloudxmusic.client.qqmusic.QQVipBadge.title(c,t.title(),360,b.y()+19,14,true,on?DEEP:INK,360,t.vip());
+            c.text(t.artist(),360,b.y()+36,11,false,MUTED,360);
+            c.text(t.album(),748,b.y()+29,12,false,MUTED,150);
+            c.right((t.source()==MusicSource.QQ||t.source()==MusicSource.KUGOU)&&t.durationSeconds()==0?"—":t.durationText(),936,b.y()+29,12,MUTED);
+            Box share=l.box("share"+i);
+            UiIcons.draw(c,"share",share.cx(),share.cy(),15,v.hover().equals("share"+i)?DEEP:MUTED);
+            // 房间成员只读，隐藏加歌/移除入口，避免点击后再被业务层静默拦截。
+            if (!(v.room().joined() && !v.room().owner())) {
+                Box add=l.box("add"+i);
+                UiIcons.draw(c, v.page()==MusicView.Page.QUEUE?"remove":"plus",
+                        add.cx(), add.cy(), 16, v.hover().equals("add"+i)?DEEP:MUTED);
+            }
+        }
+        if(!v.tracks().isEmpty()) {
+            c.g.setColor(LINE);
+            int last = l.box("row"+(v.tracks().size()-1)).y()+46;
+            c.g.drawLine(292, last, 1050, last);
+        }
+        // 滚动条：超出可视行数时，在列表右缘的留白里画一条细指示。
+        // 算法与 QQ 搜索页一致——轨道固定，滑块高度按可见比例、位置按滚动比例。
+        int total = v.total();
+        int shown = v.tracks().size();
+        if (shown > 0 && total > shown) {
+            double viewport = shown * ROW_H;
+            double height = Math.max(24, viewport * shown / (double) total);
+            double top = ROW_TOP + (viewport - height) * v.scroll() / (double) Math.max(1, total - shown);
+            c.round(1058, ROW_TOP, 4, viewport, 2, TRACK);
+            c.round(1058, top, 4, height, 2, PINK);
+        }
+    }
+
+    /** 各页空态的文案；状态行不再挤进这里。 */
+    private static String emptyText(MusicView.Page page, boolean loggedIn) {
+        return switch (page) {
+            case SEARCH -> loggedIn ? "搜索歌名，或刷新每日推荐" : "点击左侧账号登录网易云音乐";
+            case FAVORITES -> loggedIn ? "还没收藏歌曲，点刷新列表试试" : "点击左侧账号登录网易云音乐";
+            case QUEUE -> "队列是空的，去发现喜欢的音乐";
+            default -> loggedIn ? "刷新每日推荐，找一首喜欢的歌" : "点击左侧账号登录网易云音乐";
+        };
+    }
+
+    private static void settings(FrostCanvas c,MusicView v,MusicLayout l) {
+        sectionTitle(c, l.box("lyric").y() - 8, "灵动岛");
+        setting(c,v,l,"lyric","歌词",v.lyricMode());
+        setting(c,v,l,"island","显示",v.islandEnabled()?"已开启":"已关闭");
+        setting(c,v,l,"islandScale","缩放",Math.round(v.islandScale()*100)+"%");
+        setting(c,v,l,"islandPos","位置","更改位置");
+
+        sectionTitle(c, l.box("darkMode").y() - 12, "界面");
+        setting(c,v,l,"darkMode","暗黑模式",v.darkMode()?"已开启":"已关闭");
+        setting(c,v,l,"panelScale","主面板缩放",Math.round(v.panelScale()*100)+"%");
+
+        // 3D 世界歌词：世界阶段公告牌与 Skija 字形动效，关闭时不烘焙纹理。
+        MusicView.WorldLyricView world = v.worldLyrics();
+        sectionTitle(c, l.box("worldLyricLeft0").y() - 12, "3D 世界歌词");
+        setting(c,v,l,"worldLyricLeft0","世界歌词",onOff(world.enabled()));
+        setting(c,v,l,"worldLyricRight0","显示距离",String.format("%.1f 格",world.distance()));
+        setting(c,v,l,"worldLyricLeft1","字号大小",Math.round(world.scale()*100)+"%");
+        setting(c,v,l,"worldLyricRight1","散布角度",Math.round(world.spreadDeg())+"°");
+        setting(c,v,l,"worldLyricLeft2","保持视野内",onOff(world.stayOnScreen()));
+        setting(c,v,l,"worldLyricRight2","保持距离",onOff(world.keepDistance()));
+        setting(c,v,l,"worldLyricLeft3","翻译模式",translationLabel(world.translation()));
+        setting(c,v,l,"worldLyricRight3","分句显示",onOff(world.splitLines()));
+        setting(c,v,l,"worldLyricLeft4","字形发光",onOff(world.glowEnabled()));
+        setting(c,v,l,"worldLyricRight4","发光强度",Math.round(world.glowStrength()*100)+"%");
+        setting(c,v,l,"worldLyricLeft5","发光形态",world.glowMode()==0?"经典":"辉光");
+        setting(c,v,l,"worldLyricRight5","逐字弹跳",onOff(world.wordPop()));
+        setting(c,v,l,"worldLyricLeft6","心象动效",onOff(world.cadenza()));
+        setting(c,v,l,"worldLyricRight6","绘光动效",onOff(world.huiguang()));
+        setting(c,v,l,"worldLyricLeft7","光影直绘",onOff(world.hudDraw()));
+        setting(c,v,l,"worldLyricRight7","翻译特效",onOff(world.translationEffects()));
+
+        // 关于信息跟随设置项一起滚动；开发者卡片不使用阴影，只靠描边和层级色区分。
+        int aboutY = l.box("worldLyricLeft7").y() + 88;
+        sectionTitle(c, aboutY - 34, "关于");
+        c.text("CloudXMusic", 318, aboutY, 23, true, DEEP, 620);
+        // 版本号宽度按实际文本量算：写死 76px 时 "v2.5.0-alpha.2" 会被挤成 v2.5.0-alp…
+        String versionText = "v" + v.version();
+        int versionBadgeW = (int) Math.ceil(c.width(versionText, 10, true)) + 28;
+        int versionBadgeX = 1022 - versionBadgeW;
+        c.round(versionBadgeX, aboutY - 24, versionBadgeW, 24, 12, SOFT);
+        c.center(versionText, versionBadgeX + versionBadgeW / 2f, aboutY - 8, 10, true, DEEP, versionBadgeW - 12);
+        c.g.setColor(LINE);
+        c.g.drawLine(318, aboutY + 24, 1022, aboutY + 24);
+        c.text("开发者", 318, aboutY + 46, 12, false, MUTED, 704);
+
+        int cardX = 318, cardY = aboutY + 60, cardW = 224, cardH = 96, gap = 16;
+        for (int i = 0; i < DEVELOPERS.length; i++) {
+            developerCard(c, DEVELOPERS[i], cardX + i * (cardW + gap), cardY, cardW, cardH);
+        }
+
+        c.g.setColor(LINE);
+        c.g.drawLine(318, aboutY + 174, 1022, aboutY + 174);
+        c.text("Minecraft 26.3 · Fabric · Inter + Noto Sans SC",
+                318, aboutY + 200, 11, false, MUTED, 704);
+    }
+
+    /** 设置页分组标题，视觉与左侧“音乐库 / 账号”分组一致。 */
+    private static void sectionTitle(FrostCanvas c, float baseline, String title) {
+        c.text(title, 318, baseline, 12, false, MUTED, 704);
+    }
+
+    private static String onOff(boolean value) {
+        return value ? "已开启" : "已关闭";
+    }
+
+    private static String translationLabel(int mode) {
+        return switch (mode) {
+            case 1 -> "整行";
+            case 2 -> "逐字";
+            default -> "关闭";
+        };
+    }
+
+    private static void developerCard(FrostCanvas c, Dev dev, int x, int y, int w, int h) {
+        Shape card = leftFlatCard(x, y, w, h, 18);
+        c.g.setPaint(CARD_BG);
+        c.g.fill(card);
+        c.g.setColor(LINE);
+        c.g.setStroke(new BasicStroke(1f));
+        c.g.draw(leftFlatCard(x + .5, y + .5, w - 1, h - 1, 17.5));
+        c.g.setColor(PINK);
+        c.g.fillRect(x, y, 4, h);
+
+        int avatarSize = 52, ax = x + 16, ay = y + 22;
+        c.round(ax, ay, avatarSize, avatarSize, avatarSize / 2, SOFT);
+        BufferedImage avatar = devAvatar(dev.avatar());
+        if (avatar != null) {
+            c.roundImage(avatar, ax, ay, avatarSize, avatarSize / 2.0);
+        } else {
+            UiIcons.draw(c, "user", ax + avatarSize / 2, ay + avatarSize / 2, 24, DEEP);
+        }
+
+        c.text(dev.name(), x + 80, y + 30, 13, true, INK, w - 90);
+        c.text(dev.handle(), x + 80, y + 49, 10, false, MUTED, w - 90);
+        c.text(dev.role(), x + 80, y + 73, 10, false, DEEP, w - 90);
+    }
+
+    /** 左侧直角、右侧圆角的卡片轮廓；左侧留给无圆角的强调色条。 */
+    private static Shape leftFlatCard(double x, double y, double w, double h, double radius) {
+        Path2D p = new Path2D.Double();
+        p.moveTo(x, y);
+        p.lineTo(x + w - radius, y);
+        p.quadTo(x + w, y, x + w, y + radius);
+        p.lineTo(x + w, y + h - radius);
+        p.quadTo(x + w, y + h, x + w - radius, y + h);
+        p.lineTo(x, y + h);
+        p.closePath();
+        return p;
+    }
+
+    private static BufferedImage devAvatar(String file) {
+        return DEV_AVATAR_CACHE.computeIfAbsent(file, key -> {
+            String path = "/assets/cloudxmusic/textures/gui/devs/" + key;
+            try (InputStream in = MusicPainter.class.getResourceAsStream(path)) {
+                return in == null ? null : ImageIO.read(in);
+            } catch (IOException ignored) {
+                return null;
+            }
+        });
+    }
+
+    private static void setting(FrostCanvas c,MusicView v,MusicLayout l,String key,String title,String value) {
+        Box b=l.box(key);
+        c.text(title,b.x(),b.y()+20,13,true,INK,205);
+        c.right(value,b.x()+b.w(),b.y()+20,13,v.hover().equals(key)?DEEP:MUTED);
+        c.g.setColor(LINE);
+        c.g.drawLine(b.x(),b.y()+35,b.x()+b.w(),b.y()+35);
+    }
+
+    private static final String[] ACC_MENU = {"用户名 + 密码登录", "验证码登录", "扫码登录（不可用）", "Cookie 登录"};
+    private static final int ACC_X = 441, ACC_W = 460, ACC_H = 52, ACC_GAP = 16, ACC_TOP = 168;
+    private static final String[] ACC_HINTS = {"用户名 / 邮箱", "密码", "手机号", "验证码", "粘贴浏览器 Cookie"};
+
+    /** 账号页的绘制输入。 */
+    public record AccountView(boolean loggedIn, String nickname, String uid, String avatarUrl, int mode,
+                              String[] values, int focus, boolean caret, String status, int countdown) {}
+
+    public static Box accMenuBox(int i) { return new Box(ACC_X, ACC_TOP + i * (ACC_H + ACC_GAP), ACC_W, ACC_H); }
+    public static Box accBackBox() { return new Box(292, 104, 130, 28); }
+    public static Box accFieldBox(int i) { return new Box(ACC_X, 210 + i * 64, ACC_W, 52); }
+    public static Box accPhoneCodeBox() { return new Box(ACC_X, 274, 300, 52); }
+    public static Box accSendBox() { return new Box(751, 274, 150, 52); }
+    public static Box accSubmitBox() { return new Box(ACC_X, 350, ACC_W, 52); }
+    public static Box accCookieHelpBox() { return new Box(ACC_X, 286, 300, 26); }
+    public static Box accLogoutBox() { return new Box(ACC_X, 292, 180, 52); }
+    public static Box accRefreshBox() { return new Box(ACC_X + 200, 292, 180, 52); }
+
+    /** 账号页整块内容（菜单或表单），单独成纹理，打字只重画这一块。 */
+    public static BufferedImage paintAccount(AccountView v, double scale) {
+        Box region = accountRegion();
+        BufferedImage image = new BufferedImage((int) Math.ceil(region.w() * scale),
+                (int) Math.ceil(region.h() * scale), BufferedImage.TYPE_INT_ARGB);
+        try (FrostCanvas c = new FrostCanvas(image, scale)) {
+            c.g.translate(-region.x(), -region.y());
+            if (v.loggedIn()) {
+                BufferedImage avatar = v.avatarUrl() != null && !v.avatarUrl().isBlank()
+                        ? dev.lzasn.cloudxmusic.client.gui.CoverCache.avatar(v.avatarUrl()) : null;
+                c.round(ACC_X, 176, 80, 80, 40, SOFT);
+                if (avatar != null) {
+                    c.roundImage(avatar, ACC_X, 176, 80, 40);
+                } else {
+                    UiIcons.draw(c, "user", ACC_X + 40, 216, 36, DEEP);
+                }
+                c.text(v.nickname() == null || v.nickname().isBlank() ? "已登录" : v.nickname(),
+                        ACC_X + 100, 208, 20, true, INK, 400);
+                c.text("收藏、歌单与播放记录都会同步到该账号", ACC_X + 100, 232, 11, false, MUTED, 400);
+                pill(c, accLogoutBox(), "退出登录", SOFT, DEEP);
+                pill(c, accRefreshBox(), "刷新账号", CARD_BG, INK);
+                return image;
+            }
+            if (v.mode() == 0) {
+                for (int i = 0; i < 4; i++) {
+                    Box b = accMenuBox(i);
+                    boolean disabled = i == 2;
+                    Color cardFill = disabled
+                            ? (dark ? new Color(48, 58, 63, 150) : new Color(255, 255, 255, 110))
+                            : (dark ? CARD_BG : new Color(255, 255, 255, 190));
+                    Color cardBorder = disabled ? LINE
+                            : (dark ? new Color(226, 130, 162, 90) : new Color(223, 115, 153, 120));
+                    Color cardText = disabled ? MUTED : INK;
+                    c.shadow(b.x(), b.y(), b.w(), b.h(), 28, 8, 0, 4,
+                            dark ? new Color(0, 0, 0, disabled ? 8 : 30)
+                                 : new Color(150, 65, 99, disabled ? 8 : 20));
+                    c.round(b.x(), b.y(), b.w(), b.h(), 28, cardFill);
+                    c.g.setColor(cardBorder);
+                    c.g.setStroke(new BasicStroke(1.4f));
+                    c.g.draw(shape(b.x() + .5, b.y() + .5, b.w() - 1, b.h() - 1, 28));
+                    c.center(ACC_MENU[i], b.cx(), b.cy() + 6, 16, !disabled,
+                            cardText, b.w() - 40);
+                }
+                return image;
+            }
+            form(c, v);
+        }
+        return image;
+    }
+
+    /** 某一登录方式的表单：返回链接在标题下方，下面是输入框与登录按钮。 */
+    private static void form(FrostCanvas c, AccountView v) {
+        String title = v.mode() == 1 ? "用户名 + 密码登录" : v.mode() == 2 ? "验证码登录" : "Cookie 登录";
+        c.text("< 返回", 292, 124, 13, false, MUTED, 130);
+        c.text(title, ACC_X, 176, 18, true, INK, ACC_W);
+        boolean phone = v.mode() == 2;
+        int count = v.mode() == 3 ? 1 : 2;
+        for (int i = 0; i < count; i++) {
+            int index = v.mode() == 1 ? i : v.mode() == 2 ? 2 + i : 4;
+            Box b = phone && i == 1 ? accPhoneCodeBox() : accFieldBox(i);
+            String value = v.values()[index] == null ? "" : v.values()[index];
+            dev.lzasn.cloudxmusic.client.gui.login.LoginFieldPainter.paint(c,b,value,ACC_HINTS[index],index==1,v.focus()==index,v.caret());
+        }
+        if (phone) {
+            Box s = accSendBox();
+            boolean coolingDown = v.countdown() > 0;
+            Color sendFill = coolingDown
+                    ? (dark ? new Color(46, 55, 60, 210) : new Color(255, 255, 255, 105))
+                    : SOFT;
+            Color sendInk = coolingDown
+                    ? (dark ? new Color(132, 145, 150) : MUTED)
+                    : DEEP;
+            pill(c, s, coolingDown ? "重发 " + v.countdown() + "s" : "发送验证码", sendFill, sendInk);
+        }
+        if (v.mode() == 3) {
+            Box help = accCookieHelpBox();
+            String label = "如何获取网易云 Cookie？点这里查看教程";
+            c.text(label, help.x(), help.y() + 17, 12, false, PINK, help.w());
+            float width = c.width(label, 12, false);
+            c.g.setColor(HOVER_STRONG);
+            c.g.setStroke(new BasicStroke(1f));
+            c.g.drawLine(help.x(), help.y() + 21, Math.round(help.x() + width), help.y() + 21);
+        }
+        pill(c, accSubmitBox(), "登录", SOFT, DEEP);
+        if (v.status() != null && !v.status().isBlank())
+            c.text(v.status(), ACC_X, 432, 11, false, MUTED, ACC_W);
+    }
+
+    private static void pillBox(FrostCanvas c, Box b, Color fill) {
+        c.shadow(b.x(), b.y(), b.w(), b.h(), b.h() / 2, 6, 0, 3, new Color(150, 65, 99, 18));
+        c.round(b.x(), b.y(), b.w(), b.h(), b.h() / 2, fill);
+    }
+
+    private static void pill(FrostCanvas c, Box b, String label, Color fill, Color ink) {
+        pillBox(c, b, fill);
+        c.center(label, b.cx(), b.cy() + 5, 12, true, ink, b.w() - 16);
+    }
+    public static void loginButton(FrostCanvas c,Box box,String label){pill(c,box,label,SOFT,DEEP);}
+
+    private static void button(FrostCanvas c,MusicView v,MusicLayout l,String key,String icon,boolean accent) {
+        Box b=l.box(key);boolean hover=v.hover().equals(key);
+        c.shadow(b.x(),b.y(),b.w(),b.h(),b.h()/2,accent?10:6,accent?5:3,new Color(150,65,99,accent?38:18));
+        c.round(b.x(),b.y(),b.w(),b.h(),b.h()/2,accent?new GradientPaint(b.x(),b.y(),new Color(245,162,189),b.x()+b.w(),b.y()+b.h(),hover?DEEP:PINK):CARD_BG);
+        UiIcons.draw(c,icon,b.cx(),b.cy(),accent?26:19,accent?Color.WHITE:hover?DEEP:INK);
+    }
+
+    private static void labelButton(FrostCanvas c,MusicView v,MusicLayout l,String key,String label) {
+        Box b=l.box(key);c.shadow(b.x(),b.y(),b.w(),b.h(),b.h()/2,8,3,new Color(160,70,109,20));
+        c.round(b.x(),b.y(),b.w(),b.h(),b.h()/2,v.hover().equals(key)?HOVER:SOFT);
+        c.center(label,b.cx(),b.cy()+5,13,true,DEEP,b.w()-16);
+    }
+
+    /** 无封面时复用的专辑占位图：渐变底 + 同心唱片纹路。 */
+    private static void albumPlaceholder(FrostCanvas c, int x, int y, int size, int radius) {        c.round(x, y, size, size, radius,
+                new GradientPaint(x, y, new Color(178, 216, 207), x + size, y + size, new Color(226, 137, 168)));
+        c.round(x + size * .17, y + size * .17, size * .66, size * .66, size * .33, new Color(255, 236, 244, 100));
+        c.round(x + size * .27, y + size * .27, size * .46, size * .46, size * .23, new Color(229, 147, 174, 120));
+        c.round(x + size * .42, y + size * .42, size * .16, size * .16, size * .08, new Color(255, 248, 244, 220));
+    }
+
+    /** 按 URL 画一张等比裁剪的圆角缩略图；没有图时回落到唱片占位图。 */
+    private static void coverArt(FrostCanvas c, String url, int x, int y, int size, int radius,
+                                 Function<String, BufferedImage> covers) {
+        BufferedImage image = url == null || url.isBlank() ? null : covers.apply(url);
+        if (image != null) {
+            c.roundImage(image, x, y, size, size, radius);
+        } else {
+            albumPlaceholder(c, x, y, size, radius);
+        }
+    }
+
+    public static void cover(FrostCanvas c,SongView track,int x,int y,int size,int radius,Function<String,BufferedImage> covers) {
+        if(size>100) c.shadow(x,y,size,size,radius,14,7,new Color(89,45,65,28));
+        BufferedImage image=covers.apply(track.coverUrl());
+        if(image!=null) {
+            c.roundImage(image,x,y,size,size,radius);
+        } else {
+            albumPlaceholder(c, x, y, size, radius);
+        }
+    }
+
+    /** 带指定 alpha 的当前 INK 色（暗黑模式下 INK 是浅色，歌词渐隐才能看清）。 */
+    private static Color inkA(int alpha) {
+        return new Color(INK.getRed(), INK.getGreen(), INK.getBlue(), alpha);
+    }
+
+    private static Color mutedA(int alpha) {
+        return new Color(MUTED.getRed(), MUTED.getGreen(), MUTED.getBlue(), alpha);
+    }
+}

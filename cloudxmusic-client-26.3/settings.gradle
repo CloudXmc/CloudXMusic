@@ -1,0 +1,12 @@
+pluginManagement {
+    repositories {
+        // 国内优先：腾讯云镜像代理 maven-public，插件标记找不到时再回落到 Fabric 官方源。
+        maven { name = "Tencent"; url = "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/" }
+        maven { name = "Fabric"; url = "https://maven.fabricmc.net/" }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+// 26.3 客户端独立构建：与 1.21.11 的 cloudxmusic-client 各自持有工具链。
+rootProject.name = "CloudXMusic-26.3"

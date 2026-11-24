@@ -1,0 +1,228 @@
+package com.muoniumplayer.compat.mc;
+
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.muoniumplayer.core.lyrics3d.WorldLyricsRenderer;
+import com.muoniumplayer.core.lyrics3d.WorldLyricsSettings;
+import com.muoniumplayer.core.lyrics3d.WorldLyricsState;
+import com.muoniumplayer.core.settings.HudConfig;
+import com.muoniumplayer.core.utils.logging.LogManager;
+import com.muoniumplayer.core.utils.logging.Logger;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Camera;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+
+import org.joml.Matrix4f;
+
+/**
+ * 3D 世界歌词的树侧桥 —— <b>世界渲染结束事件入口（NeoForge 收集阶段等价物）</b>。
+ *
+ * <p>世界渲染的收集阶段（Fabric {@code LevelRenderEvents.COLLECT_SUBMITS} / NeoForge
+ * {@code SubmitCustomGeometryEvent}，两个挂点都在 {@code LevelRenderer.submitFeatures}
+ * 里、原版实体收集完之后）：</p>
+ * <ol>
+ *   <li>镜头转向<b>自己算</b>（1.21.1 同款结论：加载器给的矩阵两树不一致，
+ *       自算两边结果一致，与原版画实体用的完全相同）：
+ *       {@code identity().rotateX(pitch).rotateY(yaw+180)}；</li>
+ *   <li>用一个根矩阵为 basePose 的专用 {@link PoseStack} 收集歌词公告牌；</li>
+ *   <li>调 common 渲染编排器把所有句子以 {@code submitCustomGeometry} 提交进
+ *       原版 submit-collect 管线（比照名字牌）。</li>
+ * </ol>
+ *
+ * <h2>26.3 相对 1.21.1 少掉的两步</h2>
+ * <ul>
+ *   <li><b>视图矩阵换单位矩阵</b>：1.21.1 时代把 {@code RenderSystem.getModelViewStack()}
+ *       临时换成单位阵、画完换回。26.3 世界绘制改 submit-collect，视图旋转在
+ *       {@code LevelRenderer.render} 里已进 modelViewStack（{@code viewRotationMatrix}），
+ *       顶点在收集期由 pose 矩阵 bake，无需再动全局栈 —— 动了反而会把
+ *       {@code RenderType.prepare()} 捕获的 dynamicTransforms 搅乱。</li>
+ *   <li><b>GL 状态逐项设置/恢复</b>：1.21.1 的 {@code GlCompat}（混合/深度/剔除/纹理单元）
+ *       在 26.3 没有意义 —— 深度测试、混合等全部由 {@code RenderPipelines.TEXT_SEE_THROUGH}
+ *       的管线状态持有（javap 实测 {@code withDepthStencilState(Optional.empty())}），
+ *       顶点期根本不经过固定管线状态。</li>
+ * </ul>
+ *
+ * <p>顶点坐标沿用 1.21.1 的口径：镜头相对、未旋转（common 渲染层传
+ * {@code 世界坐标 − 相机位置}），镜头旋转只存在于 basePose。</p>
+ */
+public final class WorldLyricsBridge {
+
+    private static final Logger logger = LogManager.getLogger("MuoniumPlayer/WorldLyrics");
+
+    /** 渲染失败即停（照 hudRenderDisabled 先例）。 */
+    private static boolean broken;
+    private static boolean hostInstalled;
+
+    /** 一次性链路诊断。 */
+    static final boolean TRACE = Boolean.getBoolean("muonium.debug.worldLyrics");
+    private static final java.util.Set<String> TRACED_ONCE = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static boolean tracedReady;
+    private static boolean tracedNoLyrics;
+    private static boolean tracedRendered;
+    private static boolean tracedShaderActive;
+
+    /** 光影包激活的聊天警告只发一次（跨状态翻转不重复打扰）。 */
+    private static boolean shaderChatWarned;
+
+    /**
+     * 光影包激活首检 → 聊天栏警告。3D 歌词在光影下默认通路（信标程序/世界阶段）
+     * 可能被包的后处理加工（打光/变暗），开「光影直绘」（present 直画）可
+     * 完全绕开；未开则一并提示开启路径。只发一次。
+     */
+    private static void warnShaderPackIfNeeded(boolean shaderActive) {
+        if (!shaderActive || shaderChatWarned) return;
+        shaderChatWarned = true;
+        try {
+            String hint = HudConfig.worldLyricsHudDraw
+                    ? "光影包生效中，3D 歌词已按「光影直绘」画到最终画面。"
+                    : "光影包生效中，3D 歌词可能被后处理影响（变暗/忽明忽暗）。"
+                            + "设置 → 3D 世界歌词 → 光影直绘 可直接画到最终画面。";
+            Minecraft.getInstance().gui.hud.getChat()
+                    .addClientSystemMessage(net.minecraft.network.chat.Component.literal(hint));
+        } catch (Throwable t) {
+            // 聊天栏不可用（极早期/异常界面状态）不打扰渲染：只留一行日志。
+            logger.info("光影包聊天警告未送达: " + t);
+        }
+    }
+
+    /** 一次性诊断日志（Set 去重；仅 muonium.debug.worldLyrics 开启时输出）。
+     *  与 1.21.1 标杆同名同参 —— 深层模块的熔断都经它报一次。 */
+    static void traceOnce(String msg) {
+        if (!TRACE || !TRACED_ONCE.add(msg)) return;
+        System.out.println("[WorldLyrics/trace] " + msg);
+    }
+
+    private WorldLyricsBridge() {
+    }
+
+    /** 树侧初始化：装配字形图集宿主（现代化风格的世界侧纹理通路）。 */
+    public static void install() {
+        if (hostInstalled) return;
+        hostInstalled = true;
+        try {
+            com.muoniumplayer.core.lyrics3d.LyricGlyphAtlas.setHost(LyricGlyphAtlasBridge.INSTANCE);
+        } catch (Throwable t) {
+            logger.error("3D 歌词字形图集宿主装配失败，现代档将回退像素字", t);
+        }
+    }
+
+    /** 本帧设置快照（WorldBillboard.drawSmoothGlyph 取发光参数用；帧头装、帧末清）。 */
+    static volatile WorldLyricsSettings currentSettings;
+
+    /**
+     * 世界渲染收集阶段入口（上游 worldRenderEnd 的 26.3 等价物）。
+     * 由两个加载器的 COLLECT_SUBMITS / SubmitCustomGeometryEvent 调用 ——
+     * 相机自己取，收集器由加载器的事件上下文提供。
+     *
+     * @param collector 本帧的世界 submit 收集器（原版 submitFeatures 同款）
+     */
+    public static void collectWorldLyrics(SubmitNodeCollector collector) {
+        if (broken || !HudConfig.worldLyricsEnabled || collector == null) return;
+        // always-on-top 门旗标（见 fabric 侧 LyricOnTopSubmitter.submittedThisFrame 的
+        // 注释）：帧头复位 —— 本帧没提交就保持 vanilla 门。fabric 的
+        // LevelRendererAlwaysOnTopGateMixin 读它补执行门的 OR 半句。
+        LyricOnTopSubmitter.submittedThisFrame = false;
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null || mc.level == null) return;
+            if (mc.gameRenderer == null) return;
+            Camera camera = mc.gameRenderer.mainCamera();
+            if (camera == null) return;
+
+            // 0. 光影包探测（帧头一次，本帧内渲染层读缓存值）：
+            //    光影包激活时 WorldBillboard 改走信标全亮程序（ShaderPackProbe 类注释）
+            ShaderPackProbe.refresh();
+            boolean shaderActiveNow = ShaderPackProbe.isActive();
+            if (TRACE) {
+                if (shaderActiveNow != tracedShaderActive) {
+                    tracedShaderActive = shaderActiveNow;
+                    System.out.println("[WorldLyrics/trace] 光影包状态切换 → "
+                            + (shaderActiveNow ? "光影模式（信标全亮程序）" : "普通模式（textSeeThrough）"));
+                }
+            }
+            warnShaderPackIfNeeded(shaderActiveNow);
+
+            // 1. 根矩阵必须是单位矩阵 —— 26.3 与 26.2 同款 submit-collect 管线：
+            // LevelRenderer.render 在 submitFeatures 前 mul 了视图旋转（popMatrix 在
+            // 帧图执行后），RenderType.prepare() 在 buildGroup（发顶点时）捕获
+            // getModelViewMatrixCopy() 写进 ModelViewMat uniform：GPU 端变换 =
+            // 视图旋转 × 根矩阵 × billboard。这里再算一遍相机旋转就是转两次 ——
+            // 症状正是「玩家视角向左、字向右」。1.21.1 的 basePose 公式
+            // 只适用于「事件时视图矩阵是单位矩阵」的旧管线。
+            // 顶点坐标仍然用镜头相对坐标（rx = 世界 − 相机），视图旋转把它转回相机空间。
+            //
+            // bob 防抖（view bobbing / 受击摇晃）：26.x 把摇晃合成进投影 UBO
+            //（P·B，见 WorldLyricsHudDraw.noteLevelProjection），歌词顶点跟着抖，
+            // 走路时晕 3D。根矩阵乘 bob 共轭阵 M = viewᵀ·B⁻¹·view 把 B 精确对消：
+            // GPU 端变 P·B·view·M·billboard = P·view·billboard —— 世界照旧抖，
+            // 歌词钉在无摇晃视角上。共轭阵无效（本帧捕获缺席/过期）= 单位阵，旧行为。
+            //
+            // capture 模式（更激进的适配）例外：顶点在采集期就被根矩阵 bake，
+            // present 端 MVP 还会再乘一次 M —— 根矩阵再乘就成 M²，画错位置。
+            // 该模式由 present 端的 MVP 一次性对消，这里保持单位阵。
+            Matrix4f basePose = new Matrix4f();
+            if (WorldLyricsHudDraw.bobConjValid() && !WorldLyricsHudDraw.captureModeThisFrame()) {
+                WorldLyricsHudDraw.bobConjSnapshot(basePose);
+            }
+
+            // 2.（26.3 已无）视图矩阵换单位矩阵 / GL 状态设置 —— 见类注释
+
+            // 3. 收集所有句子
+            collectInner(basePose, mc, camera, collector);
+        } catch (Throwable t) {
+            broken = true;
+            logger.error("3D 歌词渲染失败，已整体停用（重启游戏恢复）", t);
+        }
+    }
+
+    private static void collectInner(Matrix4f basePose, Minecraft mc, Camera camera,
+                                     SubmitNodeCollector collector) {
+        CameraAccess cameraAccess = CameraAccess.capture(0f);
+        if (cameraAccess == null) return;
+
+        WorldLyricsSettings settings = WorldLyricsSettings.snapshot();
+        if (!settings.enabled) return;
+        // 画质档同步（幂等）：自动档按当前帧缓冲高度解析——用户改窗口大小后
+        // 下一次渲染自然跟上；手动档 setBakeScale 同值直接短路，零成本
+        com.muoniumplayer.core.screens.hud.HudSettingsModel.syncWorldLyricsQuality();
+        WorldLyricsBridge.currentSettings = settings;
+
+        if (!WorldLyricsState.hasLyrics()) {
+            if (TRACE && !tracedNoLyrics) {
+                tracedNoLyrics = true;
+                System.out.println("[WorldLyrics/trace] 开关已开、世界正常，但当前没有已加载的歌词"
+                        + "（trackKey=" + com.muoniumplayer.core.ncm.music.CloudMusic.lyricsTrackKey
+                        + "，行数=" + com.muoniumplayer.core.ncm.music.CloudMusic.lyrics.size() + "）");
+            }
+            return;
+        }
+        if (TRACE && !tracedReady) {
+            tracedReady = true;
+            System.out.println("[WorldLyrics/trace] 歌词就绪（trackKey="
+                    + com.muoniumplayer.core.ncm.music.CloudMusic.lyricsTrackKey + "），开始收集");
+        }
+
+        // 上游 ModernWorld.begin 口径：Fixed.reset(basePose)。
+        // 本仓库没有自建矩阵栈：宿主的 PoseStack 原点就是 basePose —— 用一个
+        // 专用 PoseStack，pose() 直接填 basePose，push/pop 由 WorldBillboard 自己管。
+        PoseStack poseStack = new PoseStack();
+        // 新栈的根矩阵直接写成 basePose（rotateX(pitch)·rotateY(yaw+180)）。
+        // 之后 WorldBillboard.pushBillboard/popBillboard 在此之上 push/pop，必须配对。
+        poseStack.pushPose();
+        poseStack.last().pose().set(basePose);
+
+        WorldBillboard.INSTANCE.begin(poseStack, collector,
+                cameraAccess.eyeX(), cameraAccess.eyeY(), cameraAccess.eyeZ());
+        try {
+            WorldLyricsRenderer.render(WorldLyricsState.get(), cameraAccess, settings,
+                    WorldBillboard.INSTANCE, System.nanoTime());
+            if (TRACE && !tracedRendered) {
+                tracedRendered = true;
+                System.out.println("[WorldLyrics/trace] 首次 update+collect 编排完成（active/fading 组帧）");
+            }
+        } finally {
+            WorldLyricsBridge.currentSettings = null;
+            WorldBillboard.INSTANCE.end();
+        }
+    }
+}

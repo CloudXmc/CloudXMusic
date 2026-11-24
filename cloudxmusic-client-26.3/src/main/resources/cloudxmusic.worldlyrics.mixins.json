@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "package": "com.muoniumplayer.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "GameRendererAccessor",
+    "RenderTypeAccessors",
+    "LevelRendererAlwaysOnTopGateMixin",
+    "GameRendererRenderLevelMixin",
+    "ProjectionMatrixBufferMixin",
+    "GlSurfaceMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
