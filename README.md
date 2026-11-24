@@ -1,5 +1,7 @@
 # 云朵音乐盒 · CloudXMusic
-
+>[!TIP]
+> **1.21.11 版本已停止维护，**&#8203; `2.6.0` 线不再发布更新；此后只针对 26.3（`3.0.0` 起）做技术性 Bug 修复，不再添加新功能</br>
+> **自3.0.0版本起，更新频率会相应降低，更新将仅以稳定性为主要目标**
 <p align="center">    
   <img src="cloudxmusic-client-26.3/src/main/resources/assets/cloudxmusic/icon.png" width="112" alt="云朵音乐盒图标">    
 </p>
