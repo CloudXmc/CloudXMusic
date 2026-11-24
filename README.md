@@ -12,11 +12,11 @@
  </p> 
 
 <p align="center">  
-  <img src="https://img.shields.io/badge/Version-3.0.0-D96A91?style=flat-square" alt="版本 3.0.0">  
-  <img src="https://img.shields.io/badge/License-GPL--3.0--only-3572A5?style=flat-square" alt="GPL-3.0-only">  
-  <img src="https://img.shields.io/badge/Minecraft-26.3-5A9B7B?style=flat-square" alt="Minecraft 26.3">  
-  <img src="https://img.shields.io/badge/Loader-Fabric-E9A23B?style=flat-square" alt="Fabric">  
-  <img src="https://img.shields.io/badge/Java-25-ED8B00?style=flat-square" alt="Java 25">  
+  <img src="docs/images/badges/version.svg" alt="版本 3.0.0">  
+  <img src="docs/images/badges/license.svg" alt="GPL-3.0-only">  
+  <img src="docs/images/badges/minecraft.svg" alt="Minecraft 26.3">  
+  <img src="docs/images/badges/loader.svg" alt="Fabric">  
+  <img src="docs/images/badges/java.svg" alt="Java 25">  
 </p>
 
 CloudXMusic 将网易云音乐、QQ 音乐与酷狗音乐接入同一套游戏内界面，提供独立账号、搜索与播放队列、账号歌单、逐字歌词、灵动岛 HUD 和 3D 世界歌词。三音源通过全局状态机交接播放权，账号凭证和底层播放器分别隔离。QQ 与酷狗通过 Java 直接访问对应服务，无需 Node.js 或额外部署音乐 API 服务

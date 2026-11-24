@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="105" height="20" role="img" aria-label="Minecraft: 26.3">
+  <title>Minecraft: 26.3</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <rect width="69" height="20" fill="#555"/>
+  <rect x="69" width="36" height="20" fill="#5A9B7B"/>
+  <rect width="105" height="20" fill="url(#s)"/>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
+    <text x="34.5" y="14" textLength="59" lengthAdjust="spacingAndGlyphs">Minecraft</text>
+    <text x="87.0" y="14" textLength="26" lengthAdjust="spacingAndGlyphs">26.3</text>
+  </g>
+</svg>
